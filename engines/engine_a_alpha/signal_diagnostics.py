@@ -1,0 +1,1 @@
+# Placeholder for future diagnostics (conflicts, regime logs, etc.)

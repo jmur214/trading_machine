@@ -1,0 +1,6 @@
+{
+    "max_risk_per_trade": 0.01,
+    "max_total_risk": 0.10,
+    "stop_multiple": 1.5,
+    "tp_multiple": 3.0
+  }

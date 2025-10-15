@@ -1,0 +1,3 @@
+def generate_signals(dataframe, edges):
+    ...
+    return [Signal(ticker, side, confidence, entry, stop, target)]
