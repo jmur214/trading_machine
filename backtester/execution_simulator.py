@@ -1,37 +1,81 @@
+import random
+
+
 class ExecutionSimulator:
     """
-    Simulate fills at next bar open +/- slippage (bps).
-    Example: slippage_bps = 10 → 0.10% price impact.
+    Simulates order execution for backtesting.
     """
 
-    def __init__(self, slippage_bps: float = 10.0, commission: float = 0.0):
-        self.slip = float(slippage_bps) / 10000.0
-        self.commission = float(commission)
+    def __init__(self, slippage_bps=10.0, commission=0.0):
+        self.slippage_bps = slippage_bps
+        self.commission = commission
 
-    def fill_at_next_open(self, order: dict, next_row) -> dict:
+    def _apply_slippage(self, price: float, side: str) -> float:
         """
-        Simulate a fill at the next bar's open price adjusted for slippage.
-        Returns a dict compatible with Engine C’s Fill dataclass.
+        Adjusts price based on slippage in basis points (bps).
+        Longs pay slightly more, shorts get slightly less.
         """
-        if next_row is None:
+        slip = price * (self.slippage_bps / 10000.0)
+        if side == "long":
+            return price + slip
+        elif side == "short":
+            return price - slip
+        return price
+
+    def fill_at_next_open(self, order: dict, next_bar: dict) -> dict:
+        """
+        Simulate an order being filled at the next bar's open price.
+        Returns a fill dict, or None if it can't fill.
+        """
+        if "Open" not in next_bar:
             return None
 
-        open_px = float(next_row["Open"])
-        side = order.get("side", "long")
+        open_px = float(next_bar["Open"])
+        side = order.get("side", "").lower()
+        qty = int(order.get("qty", 0))
+        ticker = order.get("ticker")
 
-        # Apply slippage: buy slightly higher, sell slightly lower
-        if side == "long":
-            fill_px = open_px * (1 + self.slip)
-        else:
-            fill_px = open_px * (1 - self.slip)
+        if qty <= 0 or side not in ("long", "short"):
+            return None
 
-        # Return full fill record
-        return {
-            "ticker": order.get("ticker"),
+        fill_price = self._apply_slippage(open_px, side)
+        commission = self.commission
+
+        fill = {
+            "ticker": ticker,
             "side": side,
-            "qty": order.get("qty", 0),
-            "fill_price": fill_px,      # ✅ consistent key for backtester
-            "price": fill_px,           # ✅ duplicate for compatibility
-            "commission": self.commission,
-            "timestamp": order.get("timestamp", None),
+            "qty": qty,
+            "price": fill_price,
+            "commission": commission,
         }
+
+        print(f"[EXEC] Filled {side} {ticker} x{qty} @ {fill_price:.2f}")
+        return fill
+
+    def exit_position(self, ticker: str, position, next_bar: dict):
+        """
+        Exit a position at the next open price (simulate sell or cover).
+        """
+        if position.qty == 0 or "Open" not in next_bar:
+            return None
+
+        open_px = float(next_bar["Open"])
+        qty = abs(position.qty)
+
+        # Determine correct exit side for clarity in logs
+        side = "exit"
+        direction = "cover" if position.qty < 0 else "exit"
+
+        fill_price = self._apply_slippage(open_px, side)
+        commission = self.commission
+
+        fill = {
+            "ticker": ticker,
+            "side": direction,
+            "qty": qty,
+            "price": fill_price,
+            "commission": commission,
+        }
+
+        print(f"[EXEC] {direction.upper()} {ticker} x{qty} @ {fill_price:.2f}")
+        return fill
