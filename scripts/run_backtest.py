@@ -8,6 +8,8 @@ from engines.engine_a_alpha.alpha_engine import AlphaEngine
 from engines.engine_b_risk.risk_engine import RiskEngine
 from backtester.backtest_controller import BacktestController
 from cockpit.logger import CockpitLogger
+# ✅ NEW:
+from cockpit.metrics import PerformanceMetrics
 
 
 def main():
@@ -47,7 +49,7 @@ def main():
     risk = RiskEngine(cfg_risk)
     cockpit = CockpitLogger(out_dir=str(root / "data" / "trade_logs"))
 
-    # --- Execution parameters (slippage, commission) ---
+    # --- Execution parameters ---
     exec_params = {
         "slippage_bps": float(cfg_bt.get("slippage_bps", 10.0)),
         "commission": float(cfg_bt.get("commission", 0.0)),
@@ -70,6 +72,29 @@ def main():
     print(f"Backtest complete. Snapshots: {len(history)}")
     print("Trade log:", str(root / "data" / "trade_logs" / "trades.csv"))
     print("Portfolio snapshots:", str(root / "data" / "trade_logs" / "portfolio_snapshots.csv"))
+
+    # ✅ NEW BLOCK: Calculate and print performance metrics
+    print("Calculating performance metrics...")
+    metrics = PerformanceMetrics(
+        snapshots_path=str(root / "data" / "trade_logs" / "portfolio_snapshots.csv"),
+        trades_path=str(root / "data" / "trade_logs" / "trades.csv"),
+    )
+
+    # Most versions expose .summary() or .summary_dict()
+    # Adjust depending on your class definition
+    if hasattr(metrics, "summary"):
+        stats = metrics.summary()
+    elif hasattr(metrics, "summary_dict"):
+        stats = metrics.summary_dict
+    else:
+        stats = {}
+
+    print("Performance Summary")
+    for k, v in stats.items():
+        print(f"{k}: {v}")
+
+
+    # (Optional) equity curve or drawdown plots can be added later here
 
 
 if __name__ == "__main__":

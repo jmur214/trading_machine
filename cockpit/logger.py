@@ -1,11 +1,14 @@
-import pandas as pd
+# cockpit/logger.py
+from __future__ import annotations
 from pathlib import Path
+import pandas as pd
+from datetime import datetime
 
 
 class CockpitLogger:
     """
     Handles logging of fills and portfolio snapshots to CSV.
-    Now includes realized PnL tracking on exits and header validation.
+    Keeps schema consistent and auto-repairs missing headers.
     """
 
     def __init__(self, out_dir: str, portfolio=None):
@@ -14,34 +17,15 @@ class CockpitLogger:
 
         self.trade_path = self.out_dir / "trades.csv"
         self.snap_path = self.out_dir / "portfolio_snapshots.csv"
-        self.portfolio = portfolio  # optional link to portfolio engine
+        self.portfolio = portfolio  # reference for live stats (optional)
 
         self._ensure_csv_headers()
 
-    # ---------------------------------------------------------------- #
-    # Internal utilities
-    # ---------------------------------------------------------------- #
-
+    # -------------------------
     def _ensure_csv_headers(self):
-        """Ensure trade and snapshot CSVs exist and have valid headers."""
-        trade_cols = [
-            "timestamp",
-            "ticker",
-            "side",
-            "qty",
-            "fill_price",
-            "commission",
-            "pnl",
-        ]
-        snap_cols = [
-            "timestamp",
-            "cash",
-            "market_value",
-            "realized_pnl",
-            "unrealized_pnl",
-            "equity",
-            "positions",
-        ]
+        """Ensure proper headers exist for trade and snapshot logs."""
+        trade_cols = ["timestamp", "ticker", "side", "qty", "fill_price", "commission", "pnl"]
+        snap_cols = ["timestamp", "cash", "market_value", "realized_pnl", "unrealized_pnl", "equity", "positions"]
 
         for path, cols in [(self.trade_path, trade_cols), (self.snap_path, snap_cols)]:
             if not path.exists() or path.stat().st_size == 0:
@@ -54,58 +38,77 @@ class CockpitLogger:
                 except Exception:
                     pd.DataFrame(columns=cols).to_csv(path, index=False)
 
-    def _append_to_csv(self, path, row_dict: dict):
+    # -------------------------
+    def _append_to_csv(self, path: Path, row_dict: dict):
+        """Safely append a single dictionary row to a CSV file."""
         df = pd.DataFrame([row_dict])
         df.to_csv(path, mode="a", header=False, index=False)
 
-    # ---------------------------------------------------------------- #
-    # Trade logging with PnL calculation
-    # ---------------------------------------------------------------- #
-
+    # -------------------------
     def log_fill(self, fill: dict, timestamp):
         """
-        Logs any fill event (entry or exit) to trades.csv.
-        Computes realized PnL if it's an exit or cover.
+        Logs each trade fill (entry or exit) into trades.csv.
+        Attempts to estimate realized PnL for exits when portfolio ref exists.
         """
-        ticker = fill.get("ticker")
+        if fill is None or "ticker" not in fill:
+            return
+
+        tkr = fill["ticker"]
         side = fill.get("side")
         qty = fill.get("qty")
         price = fill.get("price") or fill.get("fill_price")
         commission = fill.get("commission", 0.0)
+        realized_pnl = None
+
+        # Estimate realized PnL if portfolio reference and exit trades
+        if self.portfolio and side in ("exit", "cover"):
+            pos = self.portfolio.positions.get(tkr)
+            if pos:
+                prev_avg = getattr(pos, "avg_price", None)
+                if prev_avg is not None:
+                    sign = 1 if side == "exit" else -1  # exit=long sell, cover=short buy
+                    realized_pnl = round((float(price) - float(prev_avg)) * qty * sign, 2)
 
         row = {
             "timestamp": pd.to_datetime(timestamp),
-            "ticker": ticker,
+            "ticker": tkr,
             "side": side,
             "qty": qty,
             "fill_price": price,
             "commission": commission,
-            "pnl": None,
+            "pnl": realized_pnl,
         }
 
-        # Compute realized PnL if this is an exit or cover
-        if side in ("exit", "cover") and self.portfolio:
-            pos = self.portfolio.positions.get(ticker)
-            if pos:
-                avg_price = pos.avg_price
-                direction = 1 if pos.qty > 0 else -1
-                realized = (float(price) - avg_price) * qty * direction
-                row["pnl"] = round(realized, 2)
-
         self._append_to_csv(self.trade_path, row)
-        print(f"[LOGGER][DEBUG] Logged {side} {ticker} x{qty} @ {price} pnl={row['pnl']}")
+        print(f"[LOGGER] {timestamp}: {side.upper()} {tkr} x{qty} @ {price:.2f}")
 
-    # ---------------------------------------------------------------- #
-    # Portfolio snapshot logging
-    # ---------------------------------------------------------------- #
-
+    # -------------------------
     def log_snapshot(self, snap: dict):
-        """
-        Logs portfolio snapshot (equity, cash, open positions) to CSV.
-        """
+        """Append a portfolio equity snapshot (per-bar state)."""
+        if not isinstance(snap, dict) or "equity" not in snap:
+            return
+
+        snap = dict(snap)
         snap["timestamp"] = pd.to_datetime(snap["timestamp"])
         self._append_to_csv(self.snap_path, snap)
+
         print(
-            f"[LOGGER][DEBUG] Logged portfolio snapshot: "
-            f"equity={snap['equity']:.2f}, cash={snap['cash']:.2f}, positions={snap['positions']}"
+            f"[LOGGER][SNAPSHOT] {snap['timestamp']:%Y-%m-%d %H:%M} "
+            f"Equity={snap['equity']:.2f} | Cash={snap['cash']:.2f} | Pos={snap['positions']}"
         )
+
+    # -------------------------
+    def summarize_trades(self, n: int = 5):
+        """Quick console summary of last N trades."""
+        if not self.trade_path.exists():
+            print("[LOGGER] No trade log found.")
+            return
+
+        df = pd.read_csv(self.trade_path)
+        if df.empty:
+            print("[LOGGER] No trades yet.")
+            return
+
+        last = df.tail(n)
+        print("\n--- Recent Trades ---")
+        print(last.to_string(index=False))

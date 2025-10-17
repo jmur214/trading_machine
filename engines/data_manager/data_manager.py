@@ -15,8 +15,7 @@ class DataManager:
     def _normalize_df(df: pd.DataFrame) -> pd.DataFrame:
         """
         Ensure datetime index (tz-naive), numeric OHLCV,
-        fix scaling issues (prices in cents, thousands, etc.),
-        and compute ATR (Average True Range) for downstream risk models.
+        fix scaling, and compute ATR with proper warmup.
         """
         if df.empty:
             return df
@@ -78,7 +77,7 @@ class DataManager:
         # --- AUTO SCALE FIX ---
         median_price = df["Close"].median()
         scale = 1.0
-        while median_price > 1000:  # scale down until median < $1000
+        while median_price > 1000:
             median_price /= 10
             scale *= 10
 
@@ -97,17 +96,18 @@ class DataManager:
             if c in df.columns:
                 df[c] = df[c].astype(float)
 
-        # --- Compute ATR (Average True Range) ---
+        # --- Compute ATR (Average True Range) with proper warmup ---
         try:
-            high_low = df["High"] - df["Low"]
+            high_low = (df["High"] - df["Low"]).abs()
             high_close = (df["High"] - df["Close"].shift()).abs()
             low_close = (df["Low"] - df["Close"].shift()).abs()
             tr = pd.concat([high_low, high_close, low_close], axis=1).max(axis=1)
-            df["ATR"] = tr.rolling(window=14, min_periods=1).mean()
+            # Require a full 14 bars before ATR is considered valid (avoid micro ATR)
+            df["ATR"] = tr.rolling(window=14, min_periods=14).mean()
         except Exception as e:
             print(f"[DATA_MANAGER][WARN] Failed to compute ATR: {e}")
 
-        # --- Print preview for sanity ---
+        # Preview
         preview_cols = ["Close"]
         if "ATR" in df.columns:
             preview_cols.append("ATR")
@@ -132,9 +132,6 @@ class DataManager:
 
     # --------- public API ---------
     def ensure_data(self, tickers, start, end, timeframe="1d"):
-        """
-        Return dict[ticker] -> DataFrame with normalized OHLCV + ATR.
-        """
         out = {}
         for t in tickers:
             cached = self.load_cached(t, timeframe)
@@ -142,10 +139,7 @@ class DataManager:
                 out[t] = cached
                 continue
 
-            # Download from yfinance
             df = yf.download(t, start=start, end=end, interval=timeframe, progress=False)
-
-            # Flatten MultiIndex columns if needed (intraday data)
             if isinstance(df.columns, pd.MultiIndex):
                 df.columns = [" ".join([c for c in tup if c]).strip() for tup in df.columns]
 

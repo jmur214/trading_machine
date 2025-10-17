@@ -1,106 +1,132 @@
+# engines/engine_c_portfolio/portfolio_engine.py
+from __future__ import annotations
 from dataclasses import dataclass
-from typing import Dict
+from typing import Dict, List
 import pandas as pd
 
 
 @dataclass
 class Position:
-    qty: int = 0
+    qty: int = 0                 # signed qty: long >0, short <0
     avg_price: float = 0.0
     stop: float | None = None
     take_profit: float | None = None
 
-    def direction(self) -> int:
-        return 1 if self.qty > 0 else -1 if self.qty < 0 else 0
-
 
 class PortfolioEngine:
     """
-    Handles position tracking, realized/unrealized PnL, and total equity updates.
+    Signed-qty accounting with realized & unrealized PnL.
+    Realized PnL flows into cash at the moment of exit.
     """
 
     def __init__(self, initial_capital: float):
-        self.cash = float(initial_capital)
-        self.realized_pnl = 0.0
+        self.cash: float = float(initial_capital)
+        self.realized_pnl: float = 0.0
         self.positions: Dict[str, Position] = {}
-        self.history = []
+        self.history: List[dict] = []
 
+    # --------- core ops ---------
     def _get_or_new(self, ticker: str) -> Position:
         return self.positions.get(ticker, Position())
 
     def apply_fill(self, fill: dict) -> None:
         """
         fill keys:
-          ticker, side ∈ {'long','short','exit','cover'}, qty, price
+          ticker, side in {'long','short','exit','cover'}, qty, price
           optional: commission, stop, take_profit
+        Notes:
+          - For 'exit' we infer whether it's a sell (closing long) or buy-to-cover (closing short) from signed qty.
+          - For explicit 'cover' we treat it as buy-to-cover (closing short).
         """
-        ticker = fill.get("ticker")
-        side = fill.get("side", "").lower()
-        qty = int(fill.get("qty", 0))
+        ticker = str(fill.get("ticker"))
+        side = str(fill.get("side", "")).lower()
+        qty_raw = int(fill.get("qty", 0))
         price = float(fill.get("price") or fill.get("fill_price"))
         commission = float(fill.get("commission", 0.0))
 
-        if not ticker or qty <= 0:
+        if not ticker or qty_raw <= 0:
             return
 
         pos = self._get_or_new(ticker)
-        direction = pos.direction()
 
-        # Handle exits/covers
+        # Normalize 'exit' vs 'cover' for clarity
+        if side == "exit" and pos.qty < 0:
+            side = "cover"
+
+        # ---- CLOSE / REDUCE paths ----
         if side in ("exit", "cover"):
             if pos.qty == 0:
                 return
+            exit_qty = min(abs(pos.qty), qty_raw)
+            was_long = pos.qty > 0
+            sign = 1 if was_long else -1
 
-            exit_qty = min(abs(qty), abs(pos.qty))
-            realized = (price - pos.avg_price) * exit_qty * direction
-            self.realized_pnl += realized
-
-            # Adjust cash for closing trade
-            if direction > 0:  # closing long
+            # Cash flow: sell long adds cash; buy-to-cover short reduces cash
+            if was_long:
                 self.cash += exit_qty * price
-            else:  # closing short
+            else:
                 self.cash -= exit_qty * price
 
-            pos.qty -= exit_qty * direction
-
-            # Close position if fully exited
-            if pos.qty == 0:
-                pos.avg_price = 0.0
-                pos.stop = None
-                pos.take_profit = None
-
+            # Realized PnL is always (trade_px - avg_px) * (closed signed qty)
+            realized = (price - pos.avg_price) * (exit_qty * sign)
+            self.realized_pnl += realized
             self.cash -= commission
+
+            remaining = abs(pos.qty) - exit_qty
+            if remaining > 0:
+                pos.qty = remaining * sign
+            else:
+                pos = Position()  # fully flat
+
             self.positions[ticker] = pos
             return
 
-        # Handle new/added positions
-        signed_qty = qty if side == "long" else -qty
-        total_qty = pos.qty + signed_qty
+        # ---- OPEN / ADD paths ----
+        if side not in ("long", "short"):
+            return
 
-        # Adjust weighted average entry price
-        if pos.qty == 0:
-            pos.avg_price = price
-            pos.qty = signed_qty
-        elif (pos.qty > 0 and signed_qty > 0) or (pos.qty < 0 and signed_qty < 0):
-            total_cost = (pos.avg_price * abs(pos.qty)) + (price * abs(signed_qty))
-            pos.avg_price = total_cost / (abs(pos.qty) + abs(signed_qty))
-            pos.qty = total_qty
+        signed_qty = qty_raw if side == "long" else -qty_raw
+
+        # Cash flow:
+        #  - long buy uses cash
+        #  - short sell receives cash
+        if signed_qty > 0:
+            self.cash -= signed_qty * price
         else:
-            # Opposite direction → partial or full close
-            closing_qty = min(abs(pos.qty), abs(signed_qty))
-            realized = (price - pos.avg_price) * closing_qty * direction
-            self.realized_pnl += realized
-            pos.qty = pos.qty + signed_qty  # will flip or flatten
-            if pos.qty == 0:
-                pos.avg_price = 0.0
-                pos.stop = None
-                pos.take_profit = None
-            else:
-                pos.avg_price = price
+            self.cash += abs(signed_qty) * price
 
-        # Adjust cash (buy reduces cash, short increases)
-        self.cash -= signed_qty * price
         self.cash -= commission
+
+        # Same-direction add or new
+        if pos.qty == 0 or (pos.qty > 0 and signed_qty > 0) or (pos.qty < 0 and signed_qty < 0):
+            new_abs = abs(pos.qty) + abs(signed_qty)
+            total_cost = (abs(pos.qty) * pos.avg_price) + (abs(signed_qty) * price)
+            pos.qty += signed_qty
+            pos.avg_price = (total_cost / new_abs) if new_abs > 0 else 0.0
+        else:
+            # Reducing/closing or flipping
+            closing = min(abs(pos.qty), abs(signed_qty))
+            sign = 1 if pos.qty > 0 else -1
+            realized = (price - pos.avg_price) * (closing * sign)
+            self.realized_pnl += realized
+
+            net_abs = abs(pos.qty) - closing
+            if net_abs > 0:
+                pos.qty = net_abs * sign
+            else:
+                # Fully closed; if excess remains, open on the other side at this price
+                excess = abs(signed_qty) - closing
+                if excess > 0:
+                    pos.qty = excess * (-sign)
+                    pos.avg_price = price
+                else:
+                    pos = Position()
+
+        # optional SL/TP updates
+        if "stop" in fill and fill["stop"] is not None:
+            pos.stop = float(fill["stop"])
+        if "take_profit" in fill and fill["take_profit"] is not None:
+            pos.take_profit = float(fill["take_profit"])
 
         self.positions[ticker] = pos
 
@@ -110,11 +136,11 @@ class PortfolioEngine:
         for t, pos in self.positions.items():
             if pos.qty == 0:
                 continue
-            px = price_map.get(t, pos.avg_price)
-            market_value += pos.qty * px
+            px = float(price_map.get(t, pos.avg_price if pos.avg_price else 0.0))
+            market_value += pos.qty * px  # signed qty => shorts reduce MV
             unrealized += (px - pos.avg_price) * pos.qty
 
-        equity = self.cash + self.realized_pnl + unrealized
+        equity = self.cash + market_value
         snap = {
             "timestamp": pd.to_datetime(timestamp),
             "cash": round(self.cash, 2),
@@ -126,16 +152,31 @@ class PortfolioEngine:
         }
         self.history.append(snap)
         return snap
+
     def total_equity(self, price_map: Dict[str, float]) -> float:
-        """
-        Compute total account equity = cash + market value of all open positions.
-        This excludes realized PnL (since it’s already reflected in cash).
-        """
-        market_value = 0.0
+        mv = 0.0
         for t, pos in self.positions.items():
             if pos.qty == 0:
                 continue
-            px = price_map.get(t, pos.avg_price)
-            market_value += pos.qty * px
+            px = float(price_map.get(t, pos.avg_price if pos.avg_price else 0.0))
+            mv += pos.qty * px
+        return self.cash + mv
 
-        return self.cash + market_value
+    # --------- helpful portfolio stats (for true Engine C) ---------
+    def gross_notional(self, price_map: Dict[str, float]) -> float:
+        g = 0.0
+        for t, p in self.positions.items():
+            if p.qty == 0:
+                continue
+            px = float(price_map.get(t, p.avg_price if p.avg_price else 0.0))
+            g += abs(p.qty * px)
+        return g
+
+    def net_exposure(self, price_map: Dict[str, float]) -> float:
+        n = 0.0
+        for t, p in self.positions.items():
+            if p.qty == 0:
+                continue
+            px = float(price_map.get(t, p.avg_price if p.avg_price else 0.0))
+            n += p.qty * px
+        return n

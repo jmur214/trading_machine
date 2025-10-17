@@ -1,79 +1,222 @@
+# cockpit/metrics.py
+from __future__ import annotations
 import pandas as pd
 import numpy as np
 from math import sqrt
 
 
+def _epsilon_series(x: pd.Series, eps: float = 1e-9) -> pd.Series:
+    """Clamp very small magnitudes to avoid exploding pct/log returns."""
+    y = x.copy()
+    y = y.replace([np.inf, -np.inf], np.nan)
+    y = y.ffill()
+    y = y.bfill()
+    y = y.fillna(0.0)
+    y = y.where(y.abs() >= eps, np.sign(y) * eps)
+    return y
+
+
+def _compute_fifo_realized(trades: pd.DataFrame) -> pd.DataFrame:
+    """Lightweight FIFO pairing with commission impact."""
+    if trades is None or trades.empty:
+        return pd.DataFrame()
+
+    df = trades.copy()
+    for col in ("qty", "fill_price", "commission"):
+        if col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors="coerce")
+    if "commission" not in df.columns:
+        df["commission"] = 0.0
+
+    df["timestamp"] = pd.to_datetime(df["timestamp"], errors="coerce")
+    df = df.dropna(subset=["timestamp"]).sort_values(["ticker", "timestamp"])
+    if "pnl" not in df.columns:
+        df["pnl"] = np.nan
+
+    stacks: dict[str, list[dict]] = {}
+
+    def sign_for(side: str) -> int:
+        s = str(side).lower()
+        if s == "long":
+            return +1
+        if s == "short":
+            return -1
+        return 0
+
+    def closes(prev_sign: int, now_side: str) -> bool:
+        s = str(now_side).lower()
+        if s in ("exit", "cover"):
+            return True
+        ns = sign_for(s)
+        return prev_sign != 0 and ns != 0 and np.sign(prev_sign) != np.sign(ns)
+
+    for tkr, tdf in df.groupby("ticker", sort=False):
+        stack = []
+        prev_net = 0
+
+        def net_sign():
+            if not stack:
+                return 0
+            net = sum(leg["sign"] * leg["qty"] for leg in stack)
+            return int(np.sign(net)) if net != 0 else 0
+
+        for idx, row in tdf.iterrows():
+            side = str(row.get("side", "")).lower()
+            qty = int(row.get("qty", 0))
+            px = float(row.get("fill_price", np.nan))
+            comm = float(row.get("commission", 0.0))
+            if qty <= 0 or not np.isfinite(px):
+                continue
+
+            if side in ("long", "short"):
+                sgn = sign_for(side)
+                if prev_net == 0 or prev_net == sgn:
+                    stack.append({"sign": sgn, "price": px, "qty": qty, "commission": comm})
+                else:
+                    remaining = qty
+                    realized = 0.0
+                    total_comm = comm  # include exit-side commission
+                    while remaining > 0 and stack and np.sign(stack[0]["sign"]) != np.sign(sgn):
+                        leg = stack[0]
+                        m = min(remaining, leg["qty"])
+                        realized += (px - leg["price"]) * (m * leg["sign"])
+                        total_comm += leg.get("commission", 0.0)
+                        leg["qty"] -= m
+                        remaining -= m
+                        if leg["qty"] == 0:
+                            stack.pop(0)
+                    df.loc[idx, "pnl"] = round(realized - total_comm, 2)
+                    if remaining > 0:
+                        stack.append({"sign": sgn, "price": px, "qty": remaining, "commission": comm})
+
+            elif closes(prev_net, side):
+                remaining = qty
+                realized = 0.0
+                total_comm = comm
+                while remaining > 0 and stack:
+                    leg = stack[0]
+                    m = min(remaining, leg["qty"])
+                    realized += (px - leg["price"]) * (m * leg["sign"])
+                    total_comm += leg.get("commission", 0.0)
+                    leg["qty"] -= m
+                    remaining -= m
+                    if leg["qty"] == 0:
+                        stack.pop(0)
+                df.loc[idx, "pnl"] = round(realized - total_comm, 2)
+
+            prev_net = net_sign()
+
+    return df
+
+
 class PerformanceMetrics:
     """
-    Computes realistic portfolio-level trading performance metrics with sanity checks.
+    Computes key trading performance metrics from portfolio snapshots and trades.
+    Defends against impossible values: epsilon floors, NaN/inf guards, capped MDD domain.
     """
 
-    def __init__(self, snapshots_path: str, trades_path: str = None, risk_free_rate: float = 0.02):
-        self.snapshots = pd.read_csv(snapshots_path)
-        self.trades = pd.read_csv(trades_path) if trades_path else None
-        self.risk_free_rate = risk_free_rate
+    def __init__(self, snapshots_path: str, trades_path: str | None = None, risk_free_rate: float = 0.02):
+        self.snapshots_path = snapshots_path
+        self.trades_path = trades_path
+        self.risk_free_rate = float(risk_free_rate)
 
+        # Load snapshots
+        self.snapshots = pd.read_csv(self.snapshots_path)
         if "timestamp" in self.snapshots.columns:
             self.snapshots["timestamp"] = pd.to_datetime(self.snapshots["timestamp"], errors="coerce")
             self.snapshots = self.snapshots.dropna(subset=["timestamp"]).sort_values("timestamp")
 
-        self.equity = self.snapshots["equity"].astype(float)
-        self.returns = self.equity.pct_change().replace([np.inf, -np.inf], np.nan).dropna()
+        if "equity" not in self.snapshots.columns:
+            raise ValueError("[METRICS] snapshots missing 'equity' column")
+
+        # Clean equity and derive returns with epsilon/log safeguards
+        eq = pd.to_numeric(self.snapshots["equity"], errors="coerce")
+        eq = eq.replace([np.inf, -np.inf], np.nan).dropna()
+        self.equity = eq
+
+        # Epsilon floor to avoid divide-by-near-zero explosions
+        eq_eps = _epsilon_series(eq, eps=1.0)  # $1 floor
+        # Log-returns are more stable around sign changes; ignore non-positive equity
+        valid = eq_eps > 0
+        log_ret = pd.Series(dtype=float)
+        if valid.any():
+            v = eq_eps[valid]
+            log_ret = np.log(v / v.shift()).replace([np.inf, -np.inf], np.nan).dropna()
+        self.returns = log_ret
+
+        # Load trades and ensure realized PnL exists
+        self.trades = None
+        if trades_path:
+            try:
+                tdf = pd.read_csv(self.trades_path, engine="python", on_bad_lines="skip")
+                if tdf is not None and not tdf.empty:
+                    if ("pnl" not in tdf.columns) or (pd.to_numeric(tdf["pnl"], errors="coerce").isna().all()):
+                        tdf = _compute_fifo_realized(tdf)
+                    self.trades = tdf
+            except Exception:
+                self.trades = None
 
         print(f"[METRICS] Loaded {len(self.snapshots)} snapshots and {len(self.trades) if self.trades is not None else 0} trades.")
 
-    # ---------------- CORE METRICS ---------------- #
-
+    # ---- metrics ----
     def total_return(self):
-        r = (self.equity.iloc[-1] - self.equity.iloc[0]) / max(self.equity.iloc[0], 1e-6)
-        return np.clip(r, -1.0, 10.0)  # cap to -100% to +1000%
+        if self.equity.empty or self.equity.iloc[0] <= 0:
+            return np.nan
+        return (self.equity.iloc[-1] / self.equity.iloc[0]) - 1
 
     def cagr(self):
+        if self.snapshots.empty or self.equity.empty or self.equity.iloc[0] <= 0:
+            return np.nan
         days = (self.snapshots["timestamp"].iloc[-1] - self.snapshots["timestamp"].iloc[0]).days
         if days <= 0:
-            return 0.0
-        annual_factor = 365.0 / days
-        r = (self.equity.iloc[-1] / max(self.equity.iloc[0], 1e-6)) ** annual_factor - 1
-        return np.clip(r, -1.0, 10.0)
+            return np.nan
+        return (self.equity.iloc[-1] / self.equity.iloc[0]) ** (365.0 / days) - 1
 
     def volatility(self):
-        return float(self.returns.std() * sqrt(252)) if not self.returns.empty else 0.0
+        # log-return stdev annualized
+        return self.returns.std() * sqrt(252) if not self.returns.empty else np.nan
 
     def sharpe_ratio(self):
-        if self.returns.empty or self.returns.std() == 0:
-            return 0.0
-        excess = self.returns - (self.risk_free_rate / 252)
-        return round((excess.mean() / excess.std()) * sqrt(252), 3)
+        if self.returns.empty:
+            return np.nan
+        excess_daily = self.returns - (self.risk_free_rate / 252.0)
+        std = excess_daily.std()
+        return (excess_daily.mean() / std) * sqrt(252) if std > 0 else np.nan
 
     def max_drawdown(self):
-        roll_max = self.equity.cummax()
-        drawdowns = (self.equity - roll_max) / roll_max
-        return round(float(drawdowns.min() * 100), 2)
+        if self.equity.empty:
+            return np.nan
+        eq = self.equity.copy()
+        eq = eq.replace([np.inf, -np.inf], np.nan).dropna()
+        eq = eq[eq > 0]  # ignore zero/negative equity windows for MDD
+        if eq.empty:
+            return np.nan
+        roll_max = eq.cummax()
+        dd = (eq - roll_max) / roll_max
+        dd = dd.clip(lower=-1.0, upper=0.0)
+        return dd.min()
 
     def win_rate(self):
         if self.trades is None or "pnl" not in self.trades.columns:
-            return 0.0
-        closed = self.trades.dropna(subset=["pnl"])
-        if closed.empty:
-            return 0.0
-        return round(100 * (closed["pnl"] > 0).sum() / len(closed), 2)
-
-    # ---------------- SUMMARY ---------------- #
+            return np.nan
+        realized = self.trades.dropna(subset=["pnl"])
+        if realized.empty:
+            return np.nan
+        return (realized["pnl"] > 0).mean()
 
     def summary(self):
-        summary_dict = {
-            "Starting Equity": round(self.equity.iloc[0], 2),
-            "Ending Equity": round(self.equity.iloc[-1], 2),
-            "Net Profit": round(self.equity.iloc[-1] - self.equity.iloc[0], 2),
-            "Total Return (%)": round(self.total_return() * 100, 2),
-            "CAGR (%)": round(self.cagr() * 100, 2),
-            "Max Drawdown (%)": self.max_drawdown(),
-            "Sharpe Ratio": self.sharpe_ratio(),
-            "Volatility (%)": round(self.volatility() * 100, 2),
-            "Win Rate (%)": self.win_rate(),
+        s = {
+            "Starting Equity": None if self.equity.empty else round(float(self.equity.iloc[0]), 2),
+            "Ending Equity": None if self.equity.empty else round(float(self.equity.iloc[-1]), 2),
+            "Net Profit": None if self.equity.empty else round(float(self.equity.iloc[-1] - self.equity.iloc[0]), 2),
+            "Total Return (%)": None if pd.isna(self.total_return()) else round(self.total_return() * 100, 2),
+            "CAGR (%)": None if pd.isna(self.cagr()) else round(self.cagr() * 100, 2),
+            "Max Drawdown (%)": None if pd.isna(self.max_drawdown()) else round(self.max_drawdown() * 100, 2),
+            "Sharpe Ratio": None if pd.isna(self.sharpe_ratio()) else round(self.sharpe_ratio(), 3),
+            "Volatility (%)": None if pd.isna(self.volatility()) else round(self.volatility() * 100, 2),
+            "Win Rate (%)": None if pd.isna(self.win_rate()) else round(self.win_rate() * 100, 2),
         }
-
         print("\n[METRICS] Summary:")
-        for k, v in summary_dict.items():
-            print(f"  {k:25s}: {v}")
-        return summary_dict
+        for k, v in s.items():
+            print(f"  {k:20s}: {v}")
+        return s
