@@ -1,56 +1,42 @@
-import math
+# engines/engine_a_alpha/signal_formatter.py
+"""
+SignalFormatter
+---------------
+
+Turn continuous aggregate score into a discrete side + strength.
+
+Rules
+-----
+- |score| < exit_threshold  -> no signal
+- |score| >= enter_threshold -> side = sign(score), strength = |score| in [0,1]
+- In the "grey band" (exit_threshold .. enter_threshold), we emit nothing
+  (let existing positions persist; Engine B handles stop/TP logic).
+
+This keeps Alpha focused on *directional intent*, while Engine B sizes risk.
+"""
+
+from __future__ import annotations
+
+from typing import Optional, Tuple
 
 
 class SignalFormatter:
-    """
-    Converts scored signals into standardized trade intents for the Risk Engine.
-    """
+    def __init__(self, enter_threshold: float, exit_threshold: float, min_edge_contribution: float):
+        self.enter_threshold = float(enter_threshold)
+        self.exit_threshold = float(exit_threshold)
+        self.min_edge_contribution = float(min_edge_contribution)
 
-    def __init__(self, debug: bool = True):
-        self.debug = debug
+    @staticmethod
+    def _sign(x: float) -> int:
+        return 1 if x > 0 else (-1 if x < 0 else 0)
 
-    def format(self, scored: dict, timestamp):
-        """
-        Converts processed signals to a standardized intent list.
-        Each item includes: timestamp, ticker, side, score, and metadata.
-        """
-        intents = []
-
-        for ticker, d in sorted(scored.items()):
-            side = str(d.get("side", "none")).lower()
-            score = float(d.get("score", 0.0))
-
-            # Skip neutral or invalid signals
-            if side not in ("long", "short") or not math.isfinite(score) or abs(score) < 1e-6:
-                continue
-
-            meta_edges = d.get("contrib", [])
-            if not isinstance(meta_edges, list):
-                meta_edges = []
-
-            intent = {
-                "timestamp": timestamp,
-                "ticker": ticker,
-                "side": side,
-                "score": round(score, 4),
-                "meta": {
-                    "edges_triggered": meta_edges,
-                    "n_edges": len(meta_edges),
-                    "avg_signal": round(
-                        sum(c.get("signal", 0.0) for c in meta_edges) / len(meta_edges), 4
-                    ) if meta_edges else 0.0,
-                },
-            }
-            intents.append(intent)
-
-        if self.debug:
-            if intents:
-                brief = [
-                    f"{i['ticker']}:{i['side']}({i['score']:+.3f})"
-                    for i in intents
-                ]
-                print(f"[FORMATTER][{timestamp}] → {len(intents)} signals: {', '.join(brief)}")
-            else:
-                print(f"[FORMATTER][{timestamp}] No actionable signals.")
-
-        return intents
+    def to_side_and_strength(self, score: float) -> tuple[Optional[str], float]:
+        a = float(score)
+        mag = abs(a)
+        if mag < self.exit_threshold:
+            return None, 0.0
+        if mag >= self.enter_threshold:
+            side = "long" if a > 0 else "short"
+            return side, min(1.0, mag)
+        # grey zone: do nothing
+        return None, 0.0

@@ -1,79 +1,121 @@
-import traceback
-import numbers
+# engines/engine_a_alpha/signal_collector.py
+"""
+SignalCollector
+---------------
+
+Calls each active edge module to obtain raw (unnormalized) scores per ticker.
+
+Edge module conventions supported (first match wins):
+- function compute_signals(data_map: Dict[str, DataFrame], now: Timestamp) -> Dict[str, float]
+- function generate_signals(data_map: Dict[str, DataFrame], now: Timestamp) -> Dict[str, float]
+- function generate(data_map: Dict[str, DataFrame], now: Timestamp) -> Dict[str, float]
+- class Edge with method compute_signals(self, data_map, now)
+
+Returned values may be any real number; downstream will normalize/clamp.
+"""
+
+from __future__ import annotations
+from typing import Dict
+import inspect
+import pandas as pd
 
 
 class SignalCollector:
-    """
-    Collects raw edge signals for each ticker.
+    def __init__(self, edges: Dict[str, object], debug: bool = False):
+        self.edges = dict(edges or {})
+        self.debug = bool(debug)
 
-    Expected edge interface:
-        generate(df: pd.DataFrame) -> {"signal": float, "weight": float}
+    # --- introspection helpers --- #
+    def _call_edge(self, edge_obj: object, data_map: Dict[str, pd.DataFrame], now: pd.Timestamp) -> Dict[str, float]:
+        if self.debug:
+            print(f"[COLLECTOR][DEBUG] Attempting edge object: {edge_obj}")
 
-    Returns:
-        dict[ticker -> list[{"signal": float, "weight": float, "edge": str}]]
-    """
-
-    def __init__(self, edges: dict, edge_weights: dict | None = None, debug: bool = True):
-        self.edges = edges or {}
-        self.edge_weights = edge_weights or {}
-        self.debug = debug
-
-    # ---------------- Internal Helpers ----------------
-    def _coerce_number(self, x, default=0.0) -> float:
-        """Try to convert to float safely."""
-        try:
-            if isinstance(x, numbers.Number):
-                return float(x)
-            return float(str(x).strip())
-        except Exception:
-            return float(default)
-
-    # ---------------- Main Collector ----------------
-    def collect(self, market_slice: dict, timestamp=None) -> dict:
-        out = {t: [] for t in market_slice.keys()}
-        if not self.edges:
+        # 1) function compute_signals(...)
+        fn = getattr(edge_obj, "compute_signals", None)
+        if callable(fn):
             if self.debug:
-                print("[ALPHA][COLLECTOR] No active edges configured.")
-            return out
+                print(f"[COLLECTOR][DEBUG] Calling compute_signals() for {edge_obj}")
+            result = fn(data_map, now)
+            if self.debug:
+                print(f"[COLLECTOR][DEBUG] Result from compute_signals(): {result}")
+            return dict(result or {})
 
-        for ticker, df in market_slice.items():
-            if df is None or df.empty:
+        # 2) function generate_signals(...)
+        gs = getattr(edge_obj, "generate_signals", None)
+        if callable(gs):
+            if self.debug:
+                print(f"[COLLECTOR][DEBUG] Calling generate_signals() for {edge_obj}")
+            result = gs(data_map, now)
+            if self.debug:
+                print(f"[COLLECTOR][DEBUG] Result from generate_signals(): {result}")
+            return dict(result or {})
+
+        # 3) function generate(...)
+        gn = getattr(edge_obj, "generate", None)
+        if callable(gn):
+            if self.debug:
+                print(f"[COLLECTOR][DEBUG] Calling generate() for {edge_obj}")
+            result = gn(data_map, now)
+            if self.debug:
+                print(f"[COLLECTOR][DEBUG] Result from generate(): {result}")
+            return dict(result or {})
+
+        # 4) class Edge(...).compute_signals(...)
+        if inspect.isclass(edge_obj):
+            try:
                 if self.debug:
-                    print(f"[ALPHA][COLLECTOR][{ticker}] Empty data frame — skipping.")
-                continue
-
-            for edge_name, edge_mod in self.edges.items():
-                try:
-                    payload = edge_mod.generate(df)
-                    if not isinstance(payload, dict):
-                        if self.debug:
-                            print(f"[ALPHA][WARN][{edge_name}] Returned non-dict payload for {ticker}")
-                        continue
-
-                    # Coerce values
-                    s = self._coerce_number(payload.get("signal", 0.0), 0.0)
-                    w_cfg = self.edge_weights.get(edge_name)
-                    w_mod = payload.get("weight")
-                    w = self._coerce_number(w_cfg if w_cfg is not None else w_mod, 1.0)
-
-                    # Skip invalid or zero signals
-                    if not isinstance(s, (int, float)) or abs(s) <= 1e-9:
-                        continue
-
-                    out[ticker].append({
-                        "signal": s,
-                        "weight": w,
-                        "edge": edge_name,
-                    })
-
-                except Exception as e:
+                    print(f"[COLLECTOR][DEBUG] Instantiating edge class {edge_obj}")
+                inst = edge_obj()  # no-arg ctor
+                m = getattr(inst, "compute_signals", None)
+                if callable(m):
                     if self.debug:
-                        msg = "".join(traceback.format_exception_only(type(e), e)).strip()
-                        print(f"[ALPHA][ERROR][{edge_name}] {ticker}: {msg}")
-                    continue
+                        print(f"[COLLECTOR][DEBUG] Calling class.compute_signals() for {edge_obj}")
+                    result = m(data_map, now)
+                    if self.debug:
+                        print(f"[COLLECTOR][DEBUG] Result from class.compute_signals(): {result}")
+                    return dict(result or {})
+            except Exception as inst_err:
+                if self.debug:
+                    print(f"[COLLECTOR][DEBUG] Failed to instantiate edge class {edge_obj}: {inst_err}")
 
         if self.debug:
-            summary = {t: len(v) for t, v in out.items()}
-            print(f"[ALPHA][COLLECTOR] Summary: {summary}")
+            print(f"[COLLECTOR][DEBUG] Edge {edge_obj} not supported — no recognized function found.")
+        return {}
 
-        return out
+    # --- public --- #
+    def collect(self, data_map: Dict[str, pd.DataFrame], now: pd.Timestamp) -> Dict[str, Dict[str, float]]:
+        """
+        Returns:
+            scores[ticker][edge_name] = raw_score (float)
+        """
+        scores: Dict[str, Dict[str, float]] = {}
+
+        for edge_name, edge_obj in self.edges.items():
+            if self.debug:
+                print(f"[COLLECTOR][DEBUG] Executing edge: {edge_name}")
+
+            try:
+                m = self._call_edge(edge_obj, data_map, now)  # ticker->score
+
+                if not isinstance(m, dict):
+                    if self.debug:
+                        print(f"[COLLECTOR][DEBUG] Edge {edge_name} returned non-dict: {type(m)}")
+                    continue
+
+                if not m and self.debug:
+                    print(f"[COLLECTOR][DEBUG] Edge {edge_name} returned empty result")
+
+                for tkr, val in m.items():
+                    scores.setdefault(tkr, {})
+                    try:
+                        scores[tkr][edge_name] = float(val)
+                    except Exception as conv_err:
+                        if self.debug:
+                            print(f"[COLLECTOR][DEBUG] Edge {edge_name} bad value for {tkr}: {val} ({conv_err})")
+                        continue
+
+            except Exception as e:
+                if self.debug:
+                    print(f"[COLLECTOR][DEBUG] Edge '{edge_name}' failed: {e}")
+
+        return scores

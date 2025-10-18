@@ -8,8 +8,10 @@ from engines.engine_a_alpha.alpha_engine import AlphaEngine
 from engines.engine_b_risk.risk_engine import RiskEngine
 from backtester.backtest_controller import BacktestController
 from cockpit.logger import CockpitLogger
-# ✅ NEW:
 from cockpit.metrics import PerformanceMetrics
+
+# ✅ NEW: import StrategyGovernor
+from engines.engine_d_research.governor import StrategyGovernor
 
 
 def main():
@@ -44,8 +46,19 @@ def main():
 
     print(f"[ALPHA] Loaded {len(edges)} edges: {list(edges.keys())}")
 
+    # ✅ NEW: Instantiate the StrategyGovernor
+    governor = StrategyGovernor(
+        config_path=str(root / "config" / "governor_settings.json"),
+        state_path=str(root / "data" / "governor" / "edge_weights.json"),
+    )
+
     # --- Initialize engines ---
-    alpha = AlphaEngine(edges=edges, edge_weights=edge_weights, debug=True)
+    alpha = AlphaEngine(
+        edges=edges,
+        edge_weights=edge_weights,
+        debug=True,
+        governor=governor,  # ✅ pass it in
+    )
     risk = RiskEngine(cfg_risk)
     cockpit = CockpitLogger(out_dir=str(root / "data" / "trade_logs"))
 
@@ -73,15 +86,20 @@ def main():
     print("Trade log:", str(root / "data" / "trade_logs" / "trades.csv"))
     print("Portfolio snapshots:", str(root / "data" / "trade_logs" / "portfolio_snapshots.csv"))
 
-    # ✅ NEW BLOCK: Calculate and print performance metrics
-    print("Calculating performance metrics...")
-    metrics = PerformanceMetrics(
-        snapshots_path=str(root / "data" / "trade_logs" / "portfolio_snapshots.csv"),
-        trades_path=str(root / "data" / "trade_logs" / "trades.csv"),
-    )
+    # ✅ NEW BLOCK: Update governor with fresh trade results
+    try:
+        metrics = PerformanceMetrics(
+            snapshots_path=str(root / "data" / "trade_logs" / "portfolio_snapshots.csv"),
+            trades_path=str(root / "data" / "trade_logs" / "trades.csv"),
+        )
+        governor.update_from_trades(metrics.trades, metrics.snapshots)
+        governor.save_weights()
+        print("[GOVERNOR] Edge weights updated and saved.")
+    except Exception as e:
+        print(f"[GOVERNOR][WARN] Could not update governor: {e}")
 
-    # Most versions expose .summary() or .summary_dict()
-    # Adjust depending on your class definition
+    # --- Performance Summary ---
+    print("\nCalculating performance metrics...")
     if hasattr(metrics, "summary"):
         stats = metrics.summary()
     elif hasattr(metrics, "summary_dict"):
@@ -89,12 +107,9 @@ def main():
     else:
         stats = {}
 
-    print("Performance Summary")
+    print("\nPerformance Summary")
     for k, v in stats.items():
         print(f"{k}: {v}")
-
-
-    # (Optional) equity curve or drawdown plots can be added later here
 
 
 if __name__ == "__main__":

@@ -296,7 +296,7 @@ def run_dashboard(live: bool = False,
 
     # ---------------------------- Layout ---------------------------- #
     app.layout = html.Div(
-        style={"backgroundColor": "#111", "color": "#EEE", "padding": "18px"},
+        style={"backgroundColor": "#123", "color": "#EEE", "padding": "18px"},
         children=[
             html.H1("Trading Dashboard", style={"textAlign": "center"}),
 
@@ -306,9 +306,9 @@ def run_dashboard(live: bool = False,
                 parent_style={"color": "#000"},
                 children=[
                     dcc.Tab(label="Mode", value="tab-mode", selected_style={"background": "#222"}),
-                    dcc.Tab(label="Summary", value="tab-summary", selected_style={"background": "#222"}),
                     dcc.Tab(label="Dashboard", value="tab-dashboard", selected_style={"background": "#222"}),
                     dcc.Tab(label="Analytics", value="tab-analytics", selected_style={"background": "#222"}),
+                    dcc.Tab(label="Intel", value="tab-intel", selected_style={"background": "#222"}),
                     dcc.Tab(label="Settings", value="tab-settings", selected_style={"background": "#222"}),
                 ],
             ),
@@ -327,61 +327,106 @@ def run_dashboard(live: bool = False,
     def render_tab(tab_value):
         if tab_value == "tab-mode":
             return _mode_layout()
-        elif tab_value == "tab-summary":
-            return _summary_layout()
         elif tab_value == "tab-dashboard":
             return _dashboard_layout()
         elif tab_value == "tab-analytics":
             return _analytics_layout()
+        elif tab_value == "tab-intel":
+            from intelligence.news_summarizer import NewsSummarizer
+            ns = NewsSummarizer()
+            summary_text = ns.summarize()
+            return html.Pre(
+                summary_text,
+                style={
+                    "whiteSpace": "pre-wrap",
+                    "fontSize": "17px",
+                    "fontFamily": "Menlo, Consolas, monospace",
+                    "padding": "30px",
+                    "backgroundColor": "#0c0c0c",
+                    "color": "#e0e0e0",
+                    "borderRadius": "10px",
+                    "border": "1px solid #333",
+                    "lineHeight": "1.7",
+                },
+            )
         else:
             return _settings_layout()
         # ---------- Mode tab ---------- #
     def _mode_layout():
         return html.Div(
-            style={"padding": "20px"},
+            # full-width/height feel with dark gradient and centered content
+            style={
+                "minHeight": "78vh",
+                "background": "linear-gradient(180deg,#121212,#101010,#0c0c0c)",
+                "borderRadius": "12px",
+                "padding": "28px 28px 40px 28px",
+                "boxShadow": "0 0 12px rgba(0,0,0,0.55)",
+            },
             children=[
-                html.H3("Select Trading Mode"),
-                dcc.RadioItems(
-                    id="mode_selector",
-                    options=[
-                        {"label": "Backtest", "value": "backtest"},
-                        {"label": "Paper Trading", "value": "paper"},
-                    ],
-                    value="backtest",
-                    labelStyle={"display": "block"},
-                    style={"marginBottom": "15px"},
-                ),
-                html.Button(
-                    "INITIATE LIVE",
-                    id="go_live_button",
-                    n_clicks=0,
+                html.Div(
                     style={
-                        "backgroundColor": "red",
-                        "color": "white",
-                        "padding": "10px 20px",
-                        "border": "none",
-                        "cursor": "not-allowed",
-                        "opacity": 0.6,
+                        "display": "flex",
+                        "justifyContent": "space-between",
+                        "alignItems": "flex-start",
+                        "gap": "24px",
+                        "flexWrap": "wrap",
                     },
-                    disabled=True,
+                    children=[
+                        # Left: mode controls card
+                        html.Div(
+                            style={
+                                "flex": "0 0 320px",
+                                "backgroundColor": "#171717",
+                                "border": "1px solid #2a2a2a",
+                                "borderRadius": "10px",
+                                "padding": "18px 20px",
+                            },
+                            children=[
+                                html.H3("Select Trading Mode", style={"marginTop": 0}),
+                                dcc.RadioItems(
+                                    id="mode_selector",
+                                    options=[
+                                        {"label": "Backtest", "value": "backtest"},
+                                        {"label": "Paper Trading", "value": "paper"},
+                                    ],
+                                    value="backtest",
+                                    labelStyle={"display": "block", "margin": "10px 0"},
+                                    style={"fontSize": "16px"},
+                                ),
+                                html.Button(
+                                    "INITIATE LIVE",
+                                    id="go_live_button",
+                                    n_clicks=0,
+                                    style={
+                                        "backgroundColor": "red",
+                                        "color": "white",
+                                        "padding": "10px 20px",
+                                        "border": "none",
+                                        "cursor": "not-allowed",
+                                        "opacity": 0.6,
+                                        "marginTop": "10px",
+                                    },
+                                    disabled=True,
+                                ),
+                                html.Div(id="mode_status", style={"marginTop": "12px", "fontSize": "16px"}),
+                            ],
+                        ),
+                        # Right: performance summary card (mode-aware)
+                        html.Div(
+                            id="mode_summary_box",
+                            style={
+                                "flex": "1 1 480px",
+                                "minWidth": "420px",
+                                "backgroundColor": "#171717",
+                                "border": "1px solid #2a2a2a",
+                                "borderRadius": "10px",
+                                "padding": "18px 22px",
+                            },
+                        ),
+                    ],
                 ),
-                html.Br(),
-                html.Div(id="mode_status", style={"marginTop": "20px", "fontSize": "18px"}),
             ],
         )
-
-    # ---------- Summary tab ---------- #
-    def _summary_layout():
-        summary = summarize_period(base_snapshots, base_trades)
-        summary_list = html.Ul([html.Li(f"{k}: {v}") for k, v in summary.items()])
-        return html.Div(
-            style={"padding": "20px"},
-            children=[
-                html.H3("(Backtest) Performance Summary"),
-                summary_list,
-            ],
-        )
-
     # ---------- Mode selector callback ---------- #
     @app.callback(
         Output("mode_status", "children"),
@@ -391,6 +436,50 @@ def run_dashboard(live: bool = False,
         snapshots_path = f"data/trade_logs/{mode_value}/portfolio_snapshots.csv"
         trades_path = f"data/trade_logs/{mode_value}/trades.csv"
         return f"Active Mode: {mode_value.capitalize()}"
+    # New: mode-aware summary content inside the Mode tab
+    @app.callback(
+        Output("mode_summary_box", "children"),
+        Input("mode_selector", "value"),
+        prevent_initial_call=False,
+    )
+    def _update_mode_summary(mode_value):
+        # choose files based on mode
+        snapshots_path = f"data/trade_logs/{mode_value}/portfolio_snapshots.csv"
+        trades_path = f"data/trade_logs/{mode_value}/trades.csv"
+
+        # load frames (use PerformanceMetrics if available, else direct CSVs)
+        if PerformanceMetrics is not None:
+            try:
+                m = PerformanceMetrics(snapshots_path=snapshots_path, trades_path=trades_path)
+                df_snap = m.snapshots.copy()
+                df_tr = m.trades.copy() if m.trades is not None else pd.DataFrame()
+            except Exception:
+                df_snap = safe_read_csv(snapshots_path)
+                df_tr = safe_read_csv(trades_path)
+        else:
+            df_snap = safe_read_csv(snapshots_path)
+            df_tr = safe_read_csv(trades_path)
+
+        # Ensure FIFO PnL exists when needed (for Win Rate correctness)
+        if df_tr is not None and not df_tr.empty:
+            if ("pnl" not in df_tr.columns) or (df_tr["pnl"].isna().all()):
+                df_tr = compute_trade_pnl_fifo(df_tr)
+
+        summary = summarize_period(df_snap, df_tr)
+        items = [html.Li(f"{k}: {v}") for k, v in summary.items()]
+
+        return html.Div(
+            [
+                html.H3(f"({mode_value.capitalize()}) Performance Summary", style={"marginTop": 0}),
+                html.Ul(items, style={"listStyleType": "none", "paddingLeft": "0", "lineHeight": "1.8"}),
+            ],
+            style={
+                "backgroundColor": "#1b1b1b",
+                "padding": "14px 18px",
+                "borderRadius": "8px",
+                "boxShadow": "0 0 8px rgba(0,0,0,0.5)",
+            },
+        )
 
     # ---------- Dashboard tab components ---------- #
     def _dashboard_layout():
@@ -405,14 +494,13 @@ def run_dashboard(live: bool = False,
                             options=[
                                 {"label": "Backtest", "value": "backtest"},
                                 {"label": "Paper", "value": "paper"},
-                                {"label": "Live (placeholder)", "value": "live"},
+                                {"label": "Live", "value": "live"},
                             ],
                             value="backtest",
                             labelStyle={"display": "inline-block", "marginRight": "16px"},
                             inputStyle={"marginRight": "6px"},
                             style={"color": "#EEE"},
                         ),
-                        html.Div(id="mode_label", style={"marginTop": "6px", "opacity": 0.85}),
                     ],
                     style={"margin": "6px 0 18px 0", "padding": "8px 12px", "border": "1px solid #333", "borderRadius": "8px"},
                 ),

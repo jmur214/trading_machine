@@ -1,0 +1,18 @@
+{
+  "active_edges": [
+    "atr_breakout",
+    "momentum_trend",
+    "rsi_reversal"
+  ],
+  "edge_weights": {
+    "momentum_trend": 0.4,
+    "rsi_reversal": 0.4,
+    "atr_breakout": 0.2
+  },
+  "edge_params": {
+    "momentum_trend": {
+      "lookback": 20,
+      "threshold": 0.5
+    }
+  }
+}

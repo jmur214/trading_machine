@@ -1,3 +1,14 @@
 pandas>=2.0.0
 numpy>=1.24.0
 yfinance>=0.2.40
+requests
+feedparser
+beautifulsoup4
+vaderSentiment
+pandas
+python-dateutil
+lxml               # speeds up HTML parsing
+newspaper3k        # article text extraction
+tqdm               # progress bars for batch scraping
+schedule           # for daily updates
+pyarrow # for parquet storage dependency

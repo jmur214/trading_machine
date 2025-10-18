@@ -1,0 +1,19 @@
+{
+  "generated_at": "2025-10-17 00:00:00+00:00",
+  "recent_days": 90,
+  "edges": [
+    {
+      "edge": "momentum_trend",
+      "rows": 4,
+      "mean_score": 0.0,
+      "mean_sharpe": 0.0,
+      "mean_cagr_pct": 0.0,
+      "mean_win_rate_pct": 0.0,
+      "mean_max_dd_pct": 0.0,
+      "stability_sd": 0.0,
+      "recent_trend_per_day": NaN,
+      "last_completed_on": "2024-12-31 00:00:00+00:00",
+      "total_trades": 0
+    }
+  ]
+}

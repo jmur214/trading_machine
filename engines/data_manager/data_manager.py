@@ -112,7 +112,14 @@ class DataManager:
         if "ATR" in df.columns:
             preview_cols.append("ATR")
         print(f"[DATA_MANAGER] Preview after normalization:\n{df[preview_cols].head()}\n")
-
+               
+                # --- Add PrevClose column (for execution sanity checks) ---
+        try:
+            if "Close" in df.columns and "PrevClose" not in df.columns:
+                df["PrevClose"] = df["Close"].shift(1)
+        except Exception as e:
+            print(f"[DATA_MANAGER][WARN] Could not add PrevClose: {e}")
+            
         return df
 
     def cache_path(self, ticker: str, timeframe: str) -> Path:

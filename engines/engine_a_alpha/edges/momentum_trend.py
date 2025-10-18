@@ -1,19 +1,34 @@
 import numpy as np
 import pandas as pd
 
-def generate(df: pd.DataFrame):
+EDGE_NAME = "momentum_trend"
+EDGE_GROUP = "technical"
+
+def generate(df_map, now, cfg=None):
     """
-    Momentum-based edge: compares short-term vs long-term momentum.
-    Returns signal ∈ [-1, +1].
+    Momentum/trend edge: compares price to moving average.
+    Emits positive signal if Close > MA, negative otherwise.
     """
-    if len(df) < 50 or "Close" not in df.columns:
-        return {"signal": 0.0, "weight": 1.0}
+    results = {}
 
-    close = df["Close"]
-    short_ret = close.pct_change(5).iloc[-1]
-    long_ret = close.pct_change(20).iloc[-1]
+    for ticker, df in df_map.items():
+        if len(df) < 50 or "Close" not in df.columns or now not in df.index:
+            results[ticker] = 0.0
+            continue
 
-    # Smooth and normalize signal
-    raw_signal = np.tanh((short_ret - long_ret) * 10)
+        ma = df["Close"].rolling(50).mean()
+        if now not in ma.index:
+            results[ticker] = 0.0
+            continue
 
-    return {"signal": float(raw_signal), "weight": 1.0}
+        close_now = df.loc[now, "Close"]
+        ma_now = ma.loc[now]
+
+        if np.isnan(close_now) or np.isnan(ma_now):
+            results[ticker] = 0.0
+            continue
+
+        signal = np.tanh((close_now / ma_now - 1.0) * 10.0)
+        results[ticker] = float(signal)
+
+    return results
