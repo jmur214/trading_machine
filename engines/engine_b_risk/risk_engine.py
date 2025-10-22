@@ -5,6 +5,7 @@ from typing import Optional, Dict, Any
 import math
 import pandas as pd
 import numpy as np
+from debug_config import is_debug_enabled, is_info_enabled
 
 
 @dataclass
@@ -22,6 +23,7 @@ class RiskConfig:
     min_qty: int = 1
     round_qty: bool = True
     min_notional: float = 50.0              # enforce minimum ticket size (USD)
+    force_min_qty_on_signal: bool = True     # if sizing rounds to 0, optionally force 1 share when safe
 
     # Portfolio-level constraints
     max_positions: int = 5
@@ -156,13 +158,18 @@ class RiskEngine:
         self.last_skip_reason = None
 
         # Validate side
+        from debug_config import is_debug_enabled
         if side not in ("long", "short", "none"):
             self._fail(ticker, "invalid_side")
+            if is_debug_enabled("RISK"):
+                print(f"[RISK][DEBUG] Rejected signal for {ticker} — reason={self.last_skip_by_ticker.get(ticker)}")
             return None
 
         # Warmup
         if len(df_hist) < self.cfg.min_bars_warmup:
             self._fail(ticker, "warmup_insufficient_bars")
+            if is_debug_enabled("RISK"):
+                print(f"[RISK][DEBUG] Rejected signal for {ticker} — reason={self.last_skip_by_ticker.get(ticker)}")
             return None
 
         # Cooldown (optional): require N bars between orders per ticker
@@ -171,6 +178,8 @@ class RiskEngine:
             last_bi = self._last_action_bar.get(ticker, -10_000)
             if (bi - last_bi) < int(self.cfg.cooldown_bars):
                 self._fail(ticker, "cooldown_active")
+                if is_debug_enabled("RISK"):
+                    print(f"[RISK][DEBUG] Rejected signal for {ticker} — reason={self.last_skip_by_ticker.get(ticker)}")
                 return None
 
         # Exit / neutral signals
@@ -180,6 +189,8 @@ class RiskEngine:
             return {"ticker": ticker, "side": "exit", "qty": abs(int(current_qty))}
         if side == "none":
             self._fail(ticker, "neutral_no_position")
+            if is_debug_enabled("RISK"):
+                print(f"[RISK][DEBUG] Rejected signal for {ticker} — reason={self.last_skip_by_ticker.get(ticker)}")
             return None
 
         # Flip logic: if holding opposite direction, exit first (entry deferred to next bar by controller)
@@ -190,23 +201,65 @@ class RiskEngine:
                 self._last_action_bar[ticker] = self._bar_index(df_hist)
                 return {"ticker": ticker, "side": "exit", "qty": abs(int(current_qty))}
 
+        # --- Detect flip in signal direction (close and reverse next bar) ---
+        current_pos = None
+        try:
+            if self.portfolio and ticker in self.portfolio.positions:
+                current_pos = self.portfolio.positions[ticker]
+        except Exception:
+            current_pos = None
+
+        if current_pos:
+            if (current_pos.side == "long" and side == "short") or (current_pos.side == "short" and side == "long"):
+                self._last_action_bar[ticker] = self._bar_index(df_hist)
+                if is_debug_enabled("RISK"):
+                    print(f"[RISK][DEBUG] Signal flip detected for {ticker}: closing current {current_pos.side} before reversing.")
+                return {
+                    "ticker": ticker,
+                    "side": "exit",
+                    "qty": abs(int(current_pos.qty)),
+                    "reason": "flip_exit",
+                    "edge": signal.get("edge", "Unknown"),
+                }
+
         # No-shorts policy
         if side == "short" and not self.cfg.allow_shorts:
             self._fail(ticker, "shorts_not_allowed")
+            if is_debug_enabled("RISK"):
+                print(f"[RISK][DEBUG] Rejected signal for {ticker} — reason={self.last_skip_by_ticker.get(ticker)}")
             return None
 
         # Portfolio constraints
         if self._positions_count() >= self.cfg.max_positions and current_qty == 0:
             self._fail(ticker, "max_positions_reached")
+            if is_debug_enabled("RISK"):
+                print(f"[RISK][DEBUG] Rejected signal for {ticker} — reason={self.last_skip_by_ticker.get(ticker)}")
             return None
 
         # Price & ATR
         row = self._last_row(df_hist)
         if "Close" not in row or not np.isfinite(row["Close"]):
             self._fail(ticker, "close_missing")
+            if is_debug_enabled("RISK"):
+                print(f"[RISK][DEBUG] Rejected signal for {ticker} — reason={self.last_skip_by_ticker.get(ticker)}")
             return None
         price = float(row["Close"])
         raw_atr = float(row.get("ATR", 0.0))
+        # --- Sanity filter for abnormal prices/ATR ---
+        if price <= 0 or not np.isfinite(price):
+            self._fail(ticker, "invalid_price")
+            if is_debug_enabled("RISK"):
+                print(f"[RISK][DEBUG] Rejected signal for {ticker} — reason={self.last_skip_by_ticker.get(ticker)}")
+            return None
+        if not np.isfinite(raw_atr) or raw_atr <= 0:
+            self._fail(ticker, "invalid_atr")
+            if is_debug_enabled("RISK"):
+                print(f"[RISK][DEBUG] Rejected signal for {ticker} — reason={self.last_skip_by_ticker.get(ticker)}")
+            return None
+        if raw_atr > price * 0.5:
+            if is_info_enabled() or is_debug_enabled("RISK"):
+                print(f"[RISK][WARN] Abnormally large ATR for {ticker}: atr={raw_atr}, price={price}")
+            raw_atr = price * 0.2  # clamp for safety
         atr = self._effective_atr(price, raw_atr)
 
         # --- Sizing path A: align to target weights (if provided/enabled) ---
@@ -227,12 +280,20 @@ class RiskEngine:
             denom = max(abs(target_notional), 1e-9)
             if abs(delta_notional) / denom < float(self.cfg.rebalance_tolerance):
                 self._fail(ticker, "rebalance_within_tolerance")
+                if is_debug_enabled("RISK"):
+                    print(f"[RISK][DEBUG] Rejected signal for {ticker} — reason={self.last_skip_by_ticker.get(ticker)}")
                 return None
 
             add_qty = int(delta_notional / price)
             if add_qty == 0:
-                self._fail(ticker, "rebalance_rounds_to_zero")
-                return None
+                # Try to enforce a minimum 1-share adjustment if rounding-to-zero and notional is meaningful
+                if self.cfg.force_min_qty_on_signal and abs(delta_notional) >= float(self.cfg.min_notional):
+                    add_qty = 1
+                else:
+                    self._fail(ticker, "rebalance_rounds_to_zero")
+                    if is_debug_enabled("RISK"):
+                        print(f"[RISK][DEBUG] Rejected signal for {ticker} — reason={self.last_skip_by_ticker.get(ticker)}")
+                    return None
 
             chosen_side = "long" if add_qty > 0 else "short"
             add_qty = abs(add_qty)
@@ -251,6 +312,8 @@ class RiskEngine:
             risk_budget = max(0.0, float(equity) * self.cfg.risk_per_trade_pct)
             if risk_budget <= 0:
                 self._fail(ticker, "non_positive_risk_budget")
+                if is_debug_enabled("RISK"):
+                    print(f"[RISK][DEBUG] Rejected signal for {ticker} — reason={self.last_skip_by_ticker.get(ticker)}")
                 return None
 
             raw_qty = risk_budget / stop_dist
@@ -261,16 +324,45 @@ class RiskEngine:
                 target_qty = math.floor(target_qty)
 
             add_qty = int(max(target_qty - abs(int(current_qty)), 0))
-            print(
-                f"[RISK][DBG] {ticker} side={side} price={price:.4f} atr={atr:.4f} "
-                f"risk_budget={risk_budget:.2f} stop_dist={stop_dist:.4f} "
-                f"raw_qty={raw_qty:.2f} max_val={max_value:.2f} "
-                f"max_qty_by_value={max_qty_by_value:.2f} target_qty={target_qty:.2f} "
-                f"current_qty={current_qty}"
-            )
+            if is_debug_enabled("RISK"):
+                print(
+                    f"[RISK][DBG] {ticker} side={side} price={price:.4f} atr={atr:.4f} "
+                    f"risk_budget={risk_budget:.2f} stop_dist={stop_dist:.4f} "
+                    f"raw_qty={raw_qty:.2f} max_val={max_value:.2f} "
+                    f"max_qty_by_value={max_qty_by_value:.2f} target_qty={target_qty:.2f} "
+                    f"current_qty={current_qty}"
+                )
             if add_qty <= 0:
-                self._fail(ticker, "no_incremental_size")
-                return None
+                # If sizing rounded down to zero, optionally force a 1-share probe when safe
+                forced = False
+                if self.cfg.force_min_qty_on_signal and side in ("long", "short") and current_qty == 0:
+                    # Ensure ticket clears minimum notional and (roughly) exposure
+                    if price >= float(self.cfg.min_notional):
+                        try:
+                            price_map = {ticker: price}
+                            gross_after = self._gross_exposure(price_map) + (abs(1 * price) / max(float(equity), 1e-9))
+                            if gross_after <= float(self.cfg.max_gross_exposure):
+                                add_qty = 1
+                                forced = True
+                        except Exception:
+                            # If exposure check unavailable, still allow the 1-share probe
+                            add_qty = 1
+                            forced = True
+                if not forced:
+                    self._fail(ticker, "no_incremental_size")
+                    if is_debug_enabled("RISK"):
+                        delta = float(target_qty) - float(abs(current_qty))
+                        print(
+                            f"[RISK][DEBUG] Rejected signal for {ticker} — reason=no_incremental_size "
+                            f"(target_qty={target_qty:.2f}, current_qty={current_qty}, delta={delta:.2f}, "
+                            f"side={side})"
+                        )
+                    return None
+                else:
+                    meta.update({
+                        "sizing_mode": meta.get("sizing_mode", "atr_risk"),
+                        "forced_min_qty": True
+                    })
 
             meta.update({
                 "sizing_mode": "atr_risk",
@@ -286,9 +378,13 @@ class RiskEngine:
         # Enforce minimum notional and min qty
         if add_qty < max(int(self.cfg.min_qty), 1):
             self._fail(ticker, "below_min_qty")
+            if is_debug_enabled("RISK"):
+                print(f"[RISK][DEBUG] Rejected signal for {ticker} — reason={self.last_skip_by_ticker.get(ticker)}")
             return None
         if (add_qty * price) < float(self.cfg.min_notional):
             self._fail(ticker, "below_min_notional")
+            if is_debug_enabled("RISK"):
+                print(f"[RISK][DEBUG] Rejected signal for {ticker} — reason={self.last_skip_by_ticker.get(ticker)}")
             return None
 
         # Gross exposure guard
@@ -297,6 +393,8 @@ class RiskEngine:
             gross_after = self._gross_exposure(price_map) + (abs(add_qty * price) / max(float(equity), 1e-9))
             if gross_after > float(self.cfg.max_gross_exposure):
                 self._fail(ticker, "gross_exposure_limit")
+                if is_debug_enabled("RISK"):
+                    print(f"[RISK][DEBUG] Rejected signal for {ticker} — reason={self.last_skip_by_ticker.get(ticker)}")
                 return None
         except Exception:
             # If portfolio not attached or other issue, fail open (but this is logged)
@@ -309,6 +407,7 @@ class RiskEngine:
         else:
             stop = price + self.cfg.atr_stop_mult * atr
             tp = price - self.cfg.atr_tp_mult * atr
+
 
         # Record action bar for cooldown purposes
         self._last_action_bar[ticker] = self._bar_index(df_hist)
@@ -328,4 +427,6 @@ class RiskEngine:
             "edge_group": edge_group,
         }
 
+        if is_debug_enabled("RISK"):
+            print(f"[RISK][DEBUG] Approved order for {ticker}: {order}")
         return order

@@ -1,5 +1,0 @@
-edge,combo_idx,wf_idx,start,end,lookback,threshold,error
-momentum_trend,1,1,2024-01-01,2024-12-31,10,0.5,PerformanceMetrics.__init__() missing 1 required positional argument: 'snapshots_path'
-momentum_trend,2,1,2024-01-01,2024-12-31,10,1.0,PerformanceMetrics.__init__() missing 1 required positional argument: 'snapshots_path'
-momentum_trend,3,1,2024-01-01,2024-12-31,20,0.5,PerformanceMetrics.__init__() missing 1 required positional argument: 'snapshots_path'
-momentum_trend,4,1,2024-01-01,2024-12-31,20,1.0,PerformanceMetrics.__init__() missing 1 required positional argument: 'snapshots_path'

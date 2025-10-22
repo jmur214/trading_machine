@@ -1,0 +1,11 @@
+{
+    "lookback": [15, 20, 30],
+    "rets_window": [3, 5, 10],
+    "top_n": [1, 2],
+    "bottom_n": [1, 2],
+    "vol_window": [15, 20, 30],
+    "vol_target": [0.08, 0.10, 0.12],
+    "neutralize": ["dollar"],
+    "z_clip": [2.5, 3.0],
+    "min_lookback": [40]
+  }

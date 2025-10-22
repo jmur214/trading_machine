@@ -12,3 +12,8 @@ newspaper3k        # article text extraction
 tqdm               # progress bars for batch scraping
 schedule           # for daily updates
 pyarrow # for parquet storage dependency
+openai # I'm actually not sure if this is how it works but I installed it to help on my command line
+alpaca-trade-api
+python-dotenv # for .env file for secret keys
+alpaca-py
+psutil

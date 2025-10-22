@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from typing import Optional, Dict, Any
 import math
 import pandas as pd
+from debug_config import is_debug_enabled, is_info_enabled
 
 
 # ------------------------------- Config -------------------------------- #
@@ -67,8 +68,12 @@ class ExecutionSimulator:
 
     # ---------------------------- internals ---------------------------- #
 
-    def _log(self, msg: str) -> None:
-        if self.params.verbose:
+    def _log_debug(self, msg: str) -> None:
+        if self.params.verbose and is_debug_enabled("EXEC"):
+            print(msg)
+
+    def _log_info(self, msg: str) -> None:
+        if self.params.verbose and is_info_enabled("EXEC"):
             print(msg)
 
     def _apply_slippage(self, price: float, side: str) -> float:
@@ -119,7 +124,7 @@ class ExecutionSimulator:
         order: {'ticker','side','qty', 'edge'?, 'meta'?}
         next_bar_like: row-like w/ Open, High, Low, Close, PrevClose?
         """
-                # --- Safe price selection & gap sanity check -------------------
+        # --- Safe price selection & gap sanity check -------------------
         try:
             fill_px = float(next_bar_like.get("Open", next_bar_like.get("Close")))
         except Exception:
@@ -134,7 +139,7 @@ class ExecutionSimulator:
         if math.isfinite(fill_px) and math.isfinite(prev_close) and prev_close > 0:
             gap = abs(fill_px / prev_close - 1.0)
             if gap > self.params.gap_warn:
-                self._log(
+                self._log_info(
                     f"[EXEC][WARN] Suspicious gap {gap:.1%} on {order.get('ticker','?')} "
                     f"at {getattr(next_bar_like, 'name', '?')}: "
                     f"PrevClose={prev_close:.4f}, Open={fill_px:.4f}"
@@ -155,8 +160,8 @@ class ExecutionSimulator:
         if math.isfinite(prev) and prev > 0:
             gap = abs(raw / prev - 1.0)
             if gap > self.params.gap_warn:
-                self._log(f"[WARN][EXEC] Gap > {self.params.gap_warn:.0%} on {ticker}: "
-                          f"prev={prev:.4f}, open={raw:.4f} ({gap:.1%})")
+                self._log_info(f"[WARN][EXEC] Gap > {self.params.gap_warn:.0%} on {ticker}: "
+                               f"prev={prev:.4f}, open={raw:.4f} ({gap:.1%})")
 
         traded = self._apply_slippage(raw, side)
         fill = {
@@ -172,7 +177,7 @@ class ExecutionSimulator:
         if "meta" in order:
             fill["meta"] = order["meta"]
 
-        self._log(f"[EXEC] Filled {side} {ticker} x{qty} @ {traded:.4f}")
+        self._log_info(f"[EXEC] Filled {side} {ticker} x{qty} @ {traded:.4f}")
         return fill
 
     def check_stops_and_targets(self, ticker: str, position, bar_like: Any) -> Optional[dict]:
@@ -252,7 +257,7 @@ class ExecutionSimulator:
             "commission": float(self.params.commission),
             "trigger": trigger,
         }
-        self._log(f"[EXEC] {exec_side.upper()} via {trigger} {ticker} x{qty} @ {px:.4f}")
+        self._log_info(f"[EXEC] {exec_side.upper()} via {trigger} {ticker} x{qty} @ {px:.4f}")
         return fill
 
     def exit_position(self, ticker: str, position, next_bar_like: Any) -> Optional[dict]:

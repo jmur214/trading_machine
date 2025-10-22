@@ -1,3 +1,6 @@
+from dotenv import load_dotenv
+load_dotenv()
+import os
 import sys
 import importlib
 from pathlib import Path
@@ -29,7 +32,11 @@ def main():
     init_cap = float(cfg_bt["initial_capital"])
 
     # --- Prepare data ---
-    dm = DataManager(cache_dir=str(root / "data" / "processed"))
+    print("[DEBUG] Alpaca keys:", os.getenv("ALPACA_API_KEY"), os.getenv("ALPACA_BASE_URL"))
+    dm = DataManager(cache_dir=str(root / "data" / "processed"),
+                     api_key=os.getenv("ALPACA_API_KEY"),
+                     secret_key=os.getenv("ALPACA_SECRET_KEY"),
+                     base_url=os.getenv("ALPACA_BASE_URL"))
     data_map = dm.ensure_data(tickers, start, end, timeframe=timeframe)
 
     # --- Load active edges dynamically ---
@@ -80,6 +87,10 @@ def main():
 
     # --- Run backtest ---
     history = controller.run(start, end)
+
+    # --- Ensure all logs are flushed and closed ---
+    controller.logger.flush()
+    controller.logger.close()
 
     # --- Results ---
     print(f"Backtest complete. Snapshots: {len(history)}")

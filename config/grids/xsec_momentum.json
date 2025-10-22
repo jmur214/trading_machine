@@ -1,0 +1,8 @@
+{
+  "lookback": [60],
+  "top_n": [1],
+  "bottom_n": [1],
+  "vol_window": [20],
+  "vol_target": [0.10],
+  "neutralize": ["dollar"]
+}

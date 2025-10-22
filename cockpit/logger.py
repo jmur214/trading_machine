@@ -4,6 +4,22 @@ from pathlib import Path
 import pandas as pd
 from datetime import datetime
 from typing import Optional, Dict, Any
+from debug_config import is_debug_enabled
+import threading
+import time
+
+
+def is_info_enabled() -> bool:
+    from debug_config import DEBUG_LEVELS
+    return DEBUG_LEVELS.get("LOGGER_INFO", False)
+
+# Helper: checks if logging is enabled, based on DEBUG_LEVELS
+def is_logger_enabled() -> bool:
+    try:
+        from debug_config import DEBUG_LEVELS
+        return DEBUG_LEVELS.get("LOGGER_ENABLED", True)
+    except ImportError:
+        return True
 
 
 class CockpitLogger:
@@ -41,8 +57,8 @@ class CockpitLogger:
         "positions",
     ]
 
-    def __init__(self, out_dir: str, portfolio: Optional[Any] = None, verbose: bool = True):
-        self.out_dir = Path(out_dir)
+    def __init__(self, out_dir: str = "data/trade_logs", portfolio: Optional[Any] = None, verbose: bool = True, flush_interval: float = 3.0, flush_each_fill: bool = False):
+        self.out_dir = Path("data/trade_logs")
         self.out_dir.mkdir(parents=True, exist_ok=True)
 
         self.trade_path = self.out_dir / "trades.csv"
@@ -50,7 +66,19 @@ class CockpitLogger:
         self.portfolio = portfolio
         self.verbose = verbose
 
+        self._snap_buffer = []
+        self._trade_buffer = []
+        self._buffer_limit = 500
+
+        self._lock = threading.Lock()
+        self._stop_event = threading.Event()
+        self._flush_interval = flush_interval
+        self._flush_thread = threading.Thread(target=self._auto_flush_loop, daemon=True)
+
+        self.flush_each_fill = flush_each_fill
+
         self._ensure_csv_headers()
+        self._flush_thread.start()
 
     # -------------------------------------------------------------------- #
     def _ensure_csv_headers(self) -> None:
@@ -77,27 +105,50 @@ class CockpitLogger:
                         if c not in df.columns:
                             df[c] = None
                     df.to_csv(path, index=False)
-                    if self.verbose:
-                        print(f"[LOGGER] Updated schema for {path.name} → {all_cols}")
+                    if is_info_enabled() or is_debug_enabled("LOGGER"):
+                        print(f"[LOGGER][INFO] Updated schema for {path.name} → {all_cols}")
             except Exception as e:
                 print(f"[LOGGER][WARN] Could not read {path.name}, recreating file: {e}")
                 pd.DataFrame(columns=cols).to_csv(path, index=False)
 
     # -------------------------------------------------------------------- #
+    def _flush_buffer(self, path: Path, buffer: list) -> None:
+        """Flush the buffered rows to disk and clear the buffer."""
+        with self._lock:
+            if not buffer:
+                return
+            df = pd.DataFrame(buffer)
+            df.to_csv(path, mode="a", header=False, index=False)
+            buffer.clear()
+            if is_info_enabled() or is_debug_enabled("LOGGER"):
+                print(f"[LOGGER][INFO] Auto-flushed {len(df)} rows to {path.name}")
+
+    # -------------------------------------------------------------------- #
     def _append_to_csv(self, path: Path, row_dict: dict) -> None:
-        """Safely append a single dict row to a CSV file."""
-        df = pd.DataFrame([row_dict])
-        df.to_csv(path, mode="a", header=False, index=False)
+        """Append a single dict row to the appropriate buffer and flush if needed."""
+        if path == self.trade_path:
+            self._trade_buffer.append(row_dict)
+            if len(self._trade_buffer) >= self._buffer_limit:
+                self._flush_buffer(self.trade_path, self._trade_buffer)
+            if self.flush_each_fill:
+                self.flush()
+        elif path == self.snap_path:
+            self._snap_buffer.append(row_dict)
+            if len(self._snap_buffer) >= self._buffer_limit:
+                self._flush_buffer(self.snap_path, self._snap_buffer)
+        else:
+            # Fallback: write immediately if unknown path
+            df = pd.DataFrame([row_dict])
+            with self._lock:
+                df.to_csv(path, mode="a", header=False, index=False)
 
     # -------------------------------------------------------------------- #
     def _calc_realized_pnl(self, fill: dict) -> Optional[float]:
         """
         Estimate realized PnL for exits when portfolio reference exists.
         Uses average price and direction of the position.
+        If no portfolio is present, fallback to simple calculation if possible.
         """
-        if not self.portfolio:
-            return None
-
         tkr = fill.get("ticker")
         side = str(fill.get("side", "")).lower()
         qty = float(fill.get("qty", 0))
@@ -106,14 +157,17 @@ class CockpitLogger:
         if side not in ("exit", "cover"):
             return None
 
-        pos = self.portfolio.positions.get(tkr)
-        if not pos or not getattr(pos, "avg_price", None):
-            return None
+        if self.portfolio:
+            pos = self.portfolio.positions.get(tkr)
+            if pos and getattr(pos, "avg_price", None) is not None:
+                avg = float(pos.avg_price)
+                sign = 1 if side == "exit" else -1  # exit=long sell, cover=short buy
+                pnl = round((px - avg) * qty * sign, 2)
+                return pnl
 
-        avg = float(pos.avg_price)
-        sign = 1 if side == "exit" else -1  # exit=long sell, cover=short buy
-        pnl = round((px - avg) * qty * sign, 2)
-        return pnl
+        # Fallback: estimate pnl as zero if no portfolio or avg_price info
+        # or try to infer from fill meta if available (not implemented here)
+        return 0.0
 
     # -------------------------------------------------------------------- #
     def log_fill(self, fill: Dict[str, Any], timestamp: Any) -> None:
@@ -121,6 +175,9 @@ class CockpitLogger:
         Logs each fill (entry, exit, or SL/TP trigger) to trades.csv.
         Auto-includes metadata: edge, trigger, meta.
         """
+        if not is_logger_enabled():
+            return
+
         if not fill or "ticker" not in fill:
             return
 
@@ -143,17 +200,36 @@ class CockpitLogger:
 
         self._append_to_csv(self.trade_path, row)
 
-        if self.verbose:
+        if is_info_enabled() or is_debug_enabled("LOGGER"):
             px = row["fill_price"]
             print(
-                f"[LOGGER] {timestamp}: {row['side'].upper()} {row['ticker']} x{row['qty']} @ {px:.2f} "
+                f"[LOGGER][INFO] {timestamp}: {row['side'].upper()} {row['ticker']} x{row['qty']} @ {px:.2f} "
                 f"(edge={row['edge']}{'/' + row['edge_group'] if row['edge_group'] else ''}, "
                 f"trigger={row['trigger'] or 'manual'})"
             )
 
     # -------------------------------------------------------------------- #
+    def log_trade(self, fill: Dict[str, Any], timestamp: Any = None) -> None:
+        """
+        Backward-compatible alias for log_fill().
+
+        Some modules still call logger.log_trade(fill) instead of logger.log_fill(fill, ts).
+        This keeps compatibility across versions.
+        """
+        if timestamp is None:
+            timestamp = datetime.utcnow()
+        try:
+            self.log_fill(fill, timestamp)
+        except Exception as e:
+            if is_info_enabled() or is_debug_enabled("LOGGER"):
+                print(f"[LOGGER][WARN] log_trade fallback failed: {e}")
+
+    # -------------------------------------------------------------------- #
     def log_snapshot(self, snap: Dict[str, Any]) -> None:
         """Append a portfolio snapshot per bar (timestamp required)."""
+        if not is_logger_enabled():
+            return
+
         if not isinstance(snap, dict) or "equity" not in snap:
             return
 
@@ -161,25 +237,68 @@ class CockpitLogger:
         snap["timestamp"] = pd.to_datetime(snap["timestamp"])
         self._append_to_csv(self.snap_path, snap)
 
-        if self.verbose:
+        if is_info_enabled() or is_debug_enabled("LOGGER"):
             print(
-                f"[LOGGER][SNAPSHOT] {snap['timestamp']:%Y-%m-%d %H:%M} "
+                f"[LOGGER][INFO] [SNAPSHOT] {snap['timestamp']:%Y-%m-%d %H:%M} "
                 f"Equity={snap['equity']:.2f} | Cash={snap['cash']:.2f} | "
                 f"Pos={snap['positions']}"
             )
 
     # -------------------------------------------------------------------- #
+    def flush(self) -> None:
+        """Force flush any remaining buffered rows to disk."""
+        with self._lock:
+            # Flush trades
+            if self._trade_buffer:
+                df_t = pd.DataFrame(self._trade_buffer)
+                df_t.to_csv(self.trade_path, mode="a", header=False, index=False)
+                flushed_t = len(df_t)
+                self._trade_buffer.clear()
+            else:
+                flushed_t = 0
+
+            # Flush snapshots
+            if self._snap_buffer:
+                df_s = pd.DataFrame(self._snap_buffer)
+                df_s.to_csv(self.snap_path, mode="a", header=False, index=False)
+                flushed_s = len(df_s)
+                self._snap_buffer.clear()
+            else:
+                flushed_s = 0
+
+            if is_info_enabled() or is_debug_enabled("LOGGER"):
+                if flushed_t or flushed_s:
+                    print(f"[LOGGER][INFO] Flushed trades={flushed_t}, snapshots={flushed_s}")
+
+    # -------------------------------------------------------------------- #
     def summarize_trades(self, n: int = 5) -> None:
         """Quick console summary of the last N trades."""
         if not self.trade_path.exists():
-            print("[LOGGER] No trade log found.")
+            print("[LOGGER][INFO] No trade log found.")
             return
 
         df = pd.read_csv(self.trade_path)
         if df.empty:
-            print("[LOGGER] No trades yet.")
+            print("[LOGGER][INFO] No trades yet.")
             return
 
         cols = [c for c in ["timestamp", "ticker", "side", "qty", "fill_price", "pnl", "edge", "trigger"] if c in df]
         print("\n--- Recent Trades ---")
         print(df[cols].tail(n).to_string(index=False))
+
+    # -------------------------------------------------------------------- #
+    def _auto_flush_loop(self) -> None:
+        while not self._stop_event.is_set():
+            time.sleep(self._flush_interval)
+            if self._stop_event.is_set():
+                break
+            if self._lock.locked():
+                continue
+            self.flush()
+
+    # -------------------------------------------------------------------- #
+    def close(self) -> None:
+        """Stop background thread and flush all buffers safely."""
+        self._stop_event.set()
+        self._flush_thread.join(timeout=5)
+        self.flush()

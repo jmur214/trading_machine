@@ -1,5 +1,11 @@
-# cockpit/metrics.py
 from __future__ import annotations
+# cockpit/metrics.py
+from debug_config import is_debug_enabled
+
+def is_info_enabled() -> bool:
+    from debug_config import DEBUG_LEVELS
+    return DEBUG_LEVELS.get("METRICS_INFO", False)
+
 import pandas as pd
 import numpy as np
 from math import sqrt
@@ -155,8 +161,17 @@ class PerformanceMetrics:
                     self.trades = tdf
             except Exception:
                 self.trades = None
+        if is_debug_enabled("METRICS") or is_info_enabled():
+            print(f"[METRICS] Loaded {len(self.snapshots)} snapshots and {len(self.trades) if self.trades is not None else 0} trades.")
 
-        print(f"[METRICS] Loaded {len(self.snapshots)} snapshots and {len(self.trades) if self.trades is not None else 0} trades.")
+    def _to_native(self, x):
+        if isinstance(x, (np.floating, np.float32, np.float64)):
+            return float(x)
+        if isinstance(x, (np.integer, np.int64, np.int32)):
+            return int(x)
+        if pd.isna(x):
+            return 0.0
+        return x
 
     # ---- metrics ----
     def total_return(self):
@@ -204,8 +219,9 @@ class PerformanceMetrics:
             return np.nan
         return (realized["pnl"] > 0).mean()
 
-    def summary(self):
-        s = {
+    def _compute_summary(self) -> dict:
+        """Compute metrics once without recursion between summary() and summary_metrics()."""
+        return {
             "Starting Equity": None if self.equity.empty else round(float(self.equity.iloc[0]), 2),
             "Ending Equity": None if self.equity.empty else round(float(self.equity.iloc[-1]), 2),
             "Net Profit": None if self.equity.empty else round(float(self.equity.iloc[-1] - self.equity.iloc[0]), 2),
@@ -216,7 +232,18 @@ class PerformanceMetrics:
             "Volatility (%)": None if pd.isna(self.volatility()) else round(self.volatility() * 100, 2),
             "Win Rate (%)": None if pd.isna(self.win_rate()) else round(self.win_rate() * 100, 2),
         }
-        print("\n[METRICS] Summary:")
-        for k, v in s.items():
-            print(f"  {k:20s}: {v}")
+
+    def summary(self):
+        s = self._compute_summary()
+        if is_debug_enabled("METRICS") or is_info_enabled():
+            print("\n[METRICS] Summary:")
+            for k, v in s.items():
+                print(f"  {k:20s}: {v}")
         return s
+
+    def summary_metrics(self) -> dict:
+        """Return a JSON/DB-safe metrics dictionary for automated harness use."""
+        s = self._compute_summary()
+        clean = {k: self._to_native(v) for k, v in s.items()}
+        clean["Trades"] = int(len(self.trades)) if self.trades is not None else 0
+        return clean

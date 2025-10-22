@@ -1,289 +1,43 @@
-timestamp,ticker,side,qty,fill_price,commission,pnl,edge,trigger,meta,edge_group
-2022-08-18,MSFT,short,1,171.690138,0.0,,test_edge,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 50.0, 'stop_dist': 43.32203571428572, 'atr': 28.881357142857144, 'raw_qty': 1.154147056471591, 'max_value': 1500.0, 'max_qty_by_value': 8.217647123275665, 'target_qty': 1.0}"
-2022-08-24,MSFT,exit,1,181.18863000000002,0.0,,test_edge,,,
-2022-08-25,MSFT,short,1,165.668166,0.0,,test_edge,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 49.905015080000005, 'stop_dist': 40.92867857142857, 'atr': 27.285785714285712, 'raw_qty': 1.2193165482463835, 'max_value': 1497.1504524, 'max_qty_by_value': 8.25467526272261, 'target_qty': 1.0}"
-2022-08-31,MSFT,exit,1,247.670082,0.0,,test_edge,,,
-2022-09-06,MSFT,short,1,213.06871800000002,0.0,,test_edge,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 49.08499592000001, 'stop_dist': 46.47117857142857, 'atr': 30.980785714285712, 'raw_qty': 1.0562459879203165, 'max_value': 1472.5498776000002, 'max_qty_by_value': 6.442896985395137, 'target_qty': 1.0}"
-2022-09-08,MSFT,exit,1,202.995801,0.0,,test_edge,,,
-2022-11-28,MSFT,short,1,247.534218,0.0,,test_edge,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 49.18572509000001, 'stop_dist': 27.602399999999996, 'atr': 18.4016, 'raw_qty': 1.7819365377648329, 'max_value': 1475.5717527000004, 'max_qty_by_value': 16.037428839883493, 'target_qty': 1.0}"
-2022-12-02,MSFT,exit,1,215.069715,0.0,,test_edge,,,
-2023-05-16,MSFT,short,1,267.03569699999997,0.0,,test_edge,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 49.51037012000002, 'stop_dist': 49.0095, 'atr': 32.673, 'raw_qty': 1.010219857782675, 'max_value': 1485.3111036000005, 'max_qty_by_value': 9.091978720044075, 'target_qty': 1.0}"
-2023-05-19,MSFT,exit,1,275.191533,0.0,,test_edge,,,
-2023-07-05,MSFT,long,1,181.905724,0.0,,test_edge,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 49.428811760000016, 'stop_dist': 37.5261, 'atr': 25.017400000000002, 'raw_qty': 1.317184886252502, 'max_value': 1482.8643528000005, 'max_qty_by_value': 11.854663976272517, 'target_qty': 1.0}"
-2023-07-06,MSFT,exit,1,281.330388,0.0,,test_edge,,,
-2023-08-23,MSFT,long,1,211.875664,0.0,,test_edge,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 50.423058400000016, 'stop_dist': 48.253800000000005, 'atr': 32.169200000000004, 'raw_qty': 1.044955182804256, 'max_value': 1512.6917520000004, 'max_qty_by_value': 9.404596645238305, 'target_qty': 1.0}"
-2023-08-24,MSFT,exit,1,232.581186,0.0,,test_edge,,,
-2023-08-28,MSFT,short,1,147.936915,0.0,,test_edge,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 50.630113620000024, 'stop_dist': 46.90242857142857, 'atr': 31.268285714285717, 'raw_qty': 1.0794774420453408, 'max_value': 1518.9034086000006, 'max_qty_by_value': 7.004687345105403, 'target_qty': 1.0}"
-2023-08-30,MSFT,exit,1,152.068779,0.0,,test_edge,,,
-2023-08-31,MSFT,short,1,263.84589,0.0,,test_edge,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 50.588794980000024, 'stop_dist': 45.66630000000001, 'atr': 30.444200000000002, 'raw_qty': 1.1077927263649565, 'max_value': 1517.6638494000006, 'max_qty_by_value': 9.97013453728461, 'target_qty': 1.0}"
-2023-09-07,MSFT,exit,1,183.62619,0.0,,test_edge,,,
-2023-09-12,MSFT,short,1,175.479345,0.0,,test_edge,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 51.39099198000002, 'stop_dist': 49.749900000000004, 'atr': 33.1666, 'raw_qty': 1.0329868397725426, 'max_value': 1541.7297594000004, 'max_qty_by_value': 9.296881557952883, 'target_qty': 1.0}"
-2023-09-14,MSFT,exit,1,202.46732999999998,0.0,,test_edge,,,
-2023-09-19,MSFT,short,1,164.89394099999998,0.0,,test_edge,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 51.121112130000014, 'stop_dist': 50.50260000000001, 'atr': 33.668400000000005, 'raw_qty': 1.0122471344049615, 'max_value': 1533.6333639000002, 'max_qty_by_value': 9.110224209644652, 'target_qty': 1.0}"
-2023-09-21,MSFT,exit,1,355.24839599999996,0.0,,test_edge,,,
-2023-10-17,MSFT,short,1,183.201615,0.0,,test_edge,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 49.217567580000015, 'stop_dist': 41.76278571428572, 'atr': 27.841857142857148, 'raw_qty': 1.1785029838937264, 'max_value': 1476.5270274000004, 'max_qty_by_value': 6.663629512591391, 'target_qty': 1.0}"
-2023-10-19,MSFT,exit,1,250.270479,0.0,,test_edge,,,
-2023-10-20,MSFT,short,1,250.02672299999998,0.0,,test_edge,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 48.54687894000001, 'stop_dist': 40.59321428571428, 'atr': 27.062142857142856, 'raw_qty': 1.1959358181962154, 'max_value': 1456.4063682000003, 'max_qty_by_value': 5.813510117714684, 'target_qty': 1.0}"
-2023-10-26,MSFT,exit,1,377.906715,0.0,,test_edge,,,
-2023-11-27,MSFT,short,1,221.570208,0.0,,test_edge,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 47.268079020000016, 'stop_dist': 30.5298, 'atr': 20.3532, 'raw_qty': 1.5482603561110788, 'max_value': 1418.0423706000004, 'max_qty_by_value': 13.934343204999708, 'target_qty': 1.0}"
-2023-12-01,MSFT,exit,1,330.074595,0.0,,test_edge,,,
-2023-12-27,MSFT,short,1,148.904946,0.0,,test_edge,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 46.183035150000016, 'stop_dist': 38.0193, 'atr': 25.3462, 'raw_qty': 1.214726077281802, 'max_value': 1385.4910545000005, 'max_qty_by_value': 10.93253469553622, 'target_qty': 1.0}"
-2024-01-02,MSFT,exit,1,252.333414,0.0,,test_edge,,,
-2024-01-16,MSFT,short,1,271.75097700000003,0.0,,test_edge,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 45.14875047000002, 'stop_dist': 43.80128571428571, 'atr': 29.200857142857142, 'raw_qty': 1.030763132491219, 'max_value': 1354.4625141000004, 'max_qty_by_value': 6.252943115339872, 'target_qty': 1.0}"
-2024-01-17,MSFT,exit,1,222.118659,0.0,,test_edge,,,
-2024-02-28,MSFT,short,1,131.69916899999998,0.0,,test_edge,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 45.645073650000015, 'stop_dist': 44.507400000000004, 'atr': 29.6716, 'raw_qty': 1.0255614493320215, 'max_value': 1369.3522095000003, 'max_qty_by_value': 9.230053043988192, 'target_qty': 1.0}"
-2024-02-29,MSFT,exit,1,319.153527,0.0,,test_edge,,,
-2024-04-09,MSFT,short,1,124.844031,0.0,,test_edge,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 43.77053007000001, 'stop_dist': 35.133642857142846, 'atr': 23.422428571428565, 'raw_qty': 1.2458295385985356, 'max_value': 1313.1159021, 'max_qty_by_value': 9.200386074521456, 'target_qty': 1.0}"
-2024-04-12,MSFT,exit,1,192.345462,0.0,,test_edge,,,
-2024-04-15,MSFT,short,1,202.53226500000002,0.0,,test_edge,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 43.09551576, 'stop_dist': 34.27939285714285, 'atr': 22.85292857142857, 'raw_qty': 1.2571843363620168, 'max_value': 1292.8654728, 'max_qty_by_value': 6.714858743728509, 'target_qty': 1.0}"
-2024-04-19,MSFT,exit,1,305.352342,0.0,,test_edge,,,
-2024-05-09,MSFT,short,1,146.750103,0.0,,test_edge,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 42.06731498999999, 'stop_dist': 35.376900000000006, 'atr': 23.584600000000002, 'raw_qty': 1.18911818135563, 'max_value': 1262.0194496999998, 'max_qty_by_value': 10.702063632200671, 'target_qty': 1.0}"
-2024-05-10,MSFT,exit,1,133.88897699999998,0.0,,test_edge,,,
-2024-05-13,MSFT,short,1,154.24759799999998,0.0,,test_edge,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 42.19592625000001, 'stop_dist': 40.206900000000005, 'atr': 26.8046, 'raw_qty': 1.0494697738447878, 'max_value': 1265.8777875, 'max_qty_by_value': 9.445227964603092, 'target_qty': 1.0}"
-2024-05-17,MSFT,exit,1,153.36847799999998,0.0,,test_edge,,,
-2024-05-28,MSFT,short,1,157.02282,0.0,,test_edge,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 42.20471745, 'stop_dist': 35.5659, 'atr': 23.7106, 'raw_qty': 1.1866624336794513, 'max_value': 1266.1415235, 'max_qty_by_value': 10.679961903115062, 'target_qty': 1.0}"
-2024-06-03,MSFT,exit,1,174.672153,0.0,,test_edge,,,
-2024-06-10,MSFT,long,1,139.968829,0.0,,test_edge,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 42.02822412, 'stop_dist': 40.865100000000005, 'atr': 27.243400000000005, 'raw_qty': 1.0284625296402063, 'max_value': 1260.8467236, 'max_qty_by_value': 9.256162766761856, 'target_qty': 1.0}"
-2024-06-11,MSFT,exit,1,145.365489,0.0,,test_edge,,,
-2024-06-17,MSFT,long,1,208.1079,0.0,,test_edge,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 42.08219072, 'stop_dist': 40.746, 'atr': 27.164, 'raw_qty': 1.0327931752810091, 'max_value': 1262.4657215999998, 'max_qty_by_value': 9.295138577529082, 'target_qty': 1.0}"
-2024-06-18,MSFT,exit,1,170.953875,0.0,,test_edge,,,
-2024-07-05,MSFT,short,1,159.842997,0.0,,test_edge,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 41.710650470000004, 'stop_dist': 29.7984, 'atr': 19.8656, 'raw_qty': 1.3997614123577107, 'max_value': 1251.3195140999999, 'max_qty_by_value': 12.597852711219392, 'target_qty': 1.0}"
-2024-07-10,MSFT,exit,1,181.779039,0.0,,test_edge,,,
-2024-07-24,MSFT,long,1,268.326058,0.0,,test_edge,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 41.491290049999996, 'stop_dist': 39.3213, 'atr': 26.2142, 'raw_qty': 1.055186121771152, 'max_value': 1244.7387015, 'max_qty_by_value': 9.496675095940368, 'target_qty': 1.0}"
-2024-07-25,MSFT,exit,1,299.138562,0.0,,test_edge,,,
-2024-08-27,MSFT,short,1,134.794071,0.0,,test_edge,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 41.79941509, 'stop_dist': 37.51082142857143, 'atr': 25.00721428571429, 'raw_qty': 1.1143295054093911, 'max_value': 1253.9824526999998, 'max_qty_by_value': 9.53395818913083, 'target_qty': 1.0}"
-2024-08-28,MSFT,exit,1,148.678173,0.0,,test_edge,,,
-2024-08-29,MSFT,short,1,170.281548,0.0,,test_edge,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 41.660574069999996, 'stop_dist': 34.28196428571429, 'atr': 22.85464285714286, 'raw_qty': 1.2152329931502923, 'max_value': 1249.8172220999998, 'max_qty_by_value': 8.39778549658328, 'target_qty': 1.0}"
-2024-09-05,MSFT,exit,1,141.81304500000002,0.0,,test_edge,,,
-2024-09-17,MSFT,short,1,188.553258,0.0,,test_edge,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 41.945259099999994, 'stop_dist': 41.50410000000001, 'atr': 27.669400000000003, 'raw_qty': 1.0106292896364453, 'max_value': 1258.3577729999997, 'max_qty_by_value': 9.095663606728008, 'target_qty': 1.0}"
-2024-09-19,MSFT,exit,1,216.848934,0.0,,test_edge,,,
-2024-09-26,MSFT,long,1,145.06492,0.0,,test_edge,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 41.66230234, 'stop_dist': 40.1892, 'atr': 26.7928, 'raw_qty': 1.0366541842086927, 'max_value': 1249.8690702, 'max_qty_by_value': 9.329887657878235, 'target_qty': 1.0}"
-2024-09-27,MSFT,exit,1,148.812039,0.0,,test_edge,,,
-2024-10-04,MSFT,short,1,191.505303,0.0,,test_edge,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 41.69977353, 'stop_dist': 41.059200000000004, 'atr': 27.3728, 'raw_qty': 1.015601217997428, 'max_value': 1250.9932059, 'max_qty_by_value': 9.140410961976853, 'target_qty': 1.0}"
-2024-10-10,MSFT,exit,1,138.345516,0.0,,test_edge,,,
-2024-10-11,MSFT,short,1,141.30755100000002,0.0,,test_edge,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 42.2313714, 'stop_dist': 41.54520000000001, 'atr': 27.696800000000003, 'raw_qty': 1.0165162618064179, 'max_value': 1266.941142, 'max_qty_by_value': 9.14864635625776, 'target_qty': 1.0}"
-2024-10-17,MSFT,exit,1,148.0518,0.0,,test_edge,,,
-2024-10-18,MSFT,short,1,171.281547,0.0,,test_edge,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 42.163928909999996, 'stop_dist': 35.400107142857145, 'atr': 23.60007142857143, 'raw_qty': 1.191067833208737, 'max_value': 1264.9178673, 'max_qty_by_value': 8.535208281376518, 'target_qty': 1.0}"
-2024-10-24,MSFT,exit,1,135.680184,0.0,,test_edge,,,
-2024-10-25,MSFT,short,1,168.822009,0.0,,test_edge,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 42.519942539999995, 'stop_dist': 40.744800000000005, 'atr': 27.163200000000003, 'raw_qty': 1.043567339635978, 'max_value': 1275.5982761999996, 'max_qty_by_value': 9.3921060567238, 'target_qty': 1.0}"
-2024-10-31,MSFT,exit,1,539.17029,0.0,,test_edge,,,
-2024-12-19,MSFT,short,1,229.407363,0.0,,test_edge,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 38.81645973, 'stop_dist': 35.15860714285715, 'atr': 23.43907142857143, 'raw_qty': 1.1040386091599188, 'max_value': 1164.4937919, 'max_qty_by_value': 4.763827412710425, 'target_qty': 1.0}"
-2024-12-20,MSFT,exit,1,641.9943629999999,0.0,,test_edge,,,
-2024-12-26,MSFT,short,1,81.860058,0.0,,test_edge,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 34.69058973, 'stop_dist': 21.4935, 'atr': 14.329, 'raw_qty': 1.6140037560192615, 'max_value': 1040.7176919, 'max_qty_by_value': 14.526033804173357, 'target_qty': 1.0}"
-2024-12-30,MSFT,exit,1,131.455413,0.0,,test_edge,,,
-2022-08-18,MSFT,short,1,171.690138,0.0,,test_edge,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 50.0, 'stop_dist': 43.32203571428572, 'atr': 28.881357142857144, 'raw_qty': 1.154147056471591, 'max_value': 1500.0, 'max_qty_by_value': 8.217647123275665, 'target_qty': 1.0}"
-2022-08-24,MSFT,exit,1,181.18863000000002,0.0,,test_edge,,,
-2022-08-25,MSFT,short,1,165.668166,0.0,,test_edge,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 49.905015080000005, 'stop_dist': 40.92867857142857, 'atr': 27.285785714285712, 'raw_qty': 1.2193165482463835, 'max_value': 1497.1504524, 'max_qty_by_value': 8.25467526272261, 'target_qty': 1.0}"
-2022-08-31,MSFT,exit,1,247.670082,0.0,,test_edge,,,
-2022-09-06,MSFT,short,1,213.06871800000002,0.0,,test_edge,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 49.08499592000001, 'stop_dist': 46.47117857142857, 'atr': 30.980785714285712, 'raw_qty': 1.0562459879203165, 'max_value': 1472.5498776000002, 'max_qty_by_value': 6.442896985395137, 'target_qty': 1.0}"
-2022-09-08,MSFT,exit,1,202.995801,0.0,,test_edge,,,
-2022-11-28,MSFT,short,1,247.534218,0.0,,test_edge,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 49.18572509000001, 'stop_dist': 27.602399999999996, 'atr': 18.4016, 'raw_qty': 1.7819365377648329, 'max_value': 1475.5717527000004, 'max_qty_by_value': 16.037428839883493, 'target_qty': 1.0}"
-2022-12-02,MSFT,exit,1,215.069715,0.0,,test_edge,,,
-2023-05-16,MSFT,short,1,267.03569699999997,0.0,,test_edge,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 49.51037012000002, 'stop_dist': 49.0095, 'atr': 32.673, 'raw_qty': 1.010219857782675, 'max_value': 1485.3111036000005, 'max_qty_by_value': 9.091978720044075, 'target_qty': 1.0}"
-2023-05-19,MSFT,exit,1,275.191533,0.0,,test_edge,,,
-2023-07-05,MSFT,long,1,181.905724,0.0,,test_edge,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 49.428811760000016, 'stop_dist': 37.5261, 'atr': 25.017400000000002, 'raw_qty': 1.317184886252502, 'max_value': 1482.8643528000005, 'max_qty_by_value': 11.854663976272517, 'target_qty': 1.0}"
-2023-07-06,MSFT,exit,1,281.330388,0.0,,test_edge,,,
-2023-08-23,MSFT,long,1,211.875664,0.0,,test_edge,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 50.423058400000016, 'stop_dist': 48.253800000000005, 'atr': 32.169200000000004, 'raw_qty': 1.044955182804256, 'max_value': 1512.6917520000004, 'max_qty_by_value': 9.404596645238305, 'target_qty': 1.0}"
-2023-08-24,MSFT,exit,1,232.581186,0.0,,test_edge,,,
-2023-08-28,MSFT,short,1,147.936915,0.0,,test_edge,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 50.630113620000024, 'stop_dist': 46.90242857142857, 'atr': 31.268285714285717, 'raw_qty': 1.0794774420453408, 'max_value': 1518.9034086000006, 'max_qty_by_value': 7.004687345105403, 'target_qty': 1.0}"
-2023-08-30,MSFT,exit,1,152.068779,0.0,,test_edge,,,
-2023-08-31,MSFT,short,1,263.84589,0.0,,test_edge,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 50.588794980000024, 'stop_dist': 45.66630000000001, 'atr': 30.444200000000002, 'raw_qty': 1.1077927263649565, 'max_value': 1517.6638494000006, 'max_qty_by_value': 9.97013453728461, 'target_qty': 1.0}"
-2023-09-07,MSFT,exit,1,183.62619,0.0,,test_edge,,,
-2023-09-12,MSFT,short,1,175.479345,0.0,,test_edge,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 51.39099198000002, 'stop_dist': 49.749900000000004, 'atr': 33.1666, 'raw_qty': 1.0329868397725426, 'max_value': 1541.7297594000004, 'max_qty_by_value': 9.296881557952883, 'target_qty': 1.0}"
-2023-09-14,MSFT,exit,1,202.46732999999998,0.0,,test_edge,,,
-2023-09-19,MSFT,short,1,164.89394099999998,0.0,,test_edge,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 51.121112130000014, 'stop_dist': 50.50260000000001, 'atr': 33.668400000000005, 'raw_qty': 1.0122471344049615, 'max_value': 1533.6333639000002, 'max_qty_by_value': 9.110224209644652, 'target_qty': 1.0}"
-2023-09-21,MSFT,exit,1,355.24839599999996,0.0,,test_edge,,,
-2023-10-17,MSFT,short,1,183.201615,0.0,,test_edge,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 49.217567580000015, 'stop_dist': 41.76278571428572, 'atr': 27.841857142857148, 'raw_qty': 1.1785029838937264, 'max_value': 1476.5270274000004, 'max_qty_by_value': 6.663629512591391, 'target_qty': 1.0}"
-2023-10-19,MSFT,exit,1,250.270479,0.0,,test_edge,,,
-2023-10-20,MSFT,short,1,250.02672299999998,0.0,,test_edge,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 48.54687894000001, 'stop_dist': 40.59321428571428, 'atr': 27.062142857142856, 'raw_qty': 1.1959358181962154, 'max_value': 1456.4063682000003, 'max_qty_by_value': 5.813510117714684, 'target_qty': 1.0}"
-2023-10-26,MSFT,exit,1,377.906715,0.0,,test_edge,,,
-2023-11-27,MSFT,short,1,221.570208,0.0,,test_edge,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 47.268079020000016, 'stop_dist': 30.5298, 'atr': 20.3532, 'raw_qty': 1.5482603561110788, 'max_value': 1418.0423706000004, 'max_qty_by_value': 13.934343204999708, 'target_qty': 1.0}"
-2023-12-01,MSFT,exit,1,330.074595,0.0,,test_edge,,,
-2023-12-27,MSFT,short,1,148.904946,0.0,,test_edge,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 46.183035150000016, 'stop_dist': 38.0193, 'atr': 25.3462, 'raw_qty': 1.214726077281802, 'max_value': 1385.4910545000005, 'max_qty_by_value': 10.93253469553622, 'target_qty': 1.0}"
-2024-01-02,MSFT,exit,1,252.333414,0.0,,test_edge,,,
-2024-01-16,MSFT,short,1,271.75097700000003,0.0,,test_edge,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 45.14875047000002, 'stop_dist': 43.80128571428571, 'atr': 29.200857142857142, 'raw_qty': 1.030763132491219, 'max_value': 1354.4625141000004, 'max_qty_by_value': 6.252943115339872, 'target_qty': 1.0}"
-2024-01-17,MSFT,exit,1,222.118659,0.0,,test_edge,,,
-2024-02-28,MSFT,short,1,131.69916899999998,0.0,,test_edge,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 45.645073650000015, 'stop_dist': 44.507400000000004, 'atr': 29.6716, 'raw_qty': 1.0255614493320215, 'max_value': 1369.3522095000003, 'max_qty_by_value': 9.230053043988192, 'target_qty': 1.0}"
-2024-02-29,MSFT,exit,1,319.153527,0.0,,test_edge,,,
-2024-04-09,MSFT,short,1,124.844031,0.0,,test_edge,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 43.77053007000001, 'stop_dist': 35.133642857142846, 'atr': 23.422428571428565, 'raw_qty': 1.2458295385985356, 'max_value': 1313.1159021, 'max_qty_by_value': 9.200386074521456, 'target_qty': 1.0}"
-2024-04-12,MSFT,exit,1,192.345462,0.0,,test_edge,,,
-2024-04-15,MSFT,short,1,202.53226500000002,0.0,,test_edge,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 43.09551576, 'stop_dist': 34.27939285714285, 'atr': 22.85292857142857, 'raw_qty': 1.2571843363620168, 'max_value': 1292.8654728, 'max_qty_by_value': 6.714858743728509, 'target_qty': 1.0}"
-2024-04-19,MSFT,exit,1,305.352342,0.0,,test_edge,,,
-2024-05-09,MSFT,short,1,146.750103,0.0,,test_edge,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 42.06731498999999, 'stop_dist': 35.376900000000006, 'atr': 23.584600000000002, 'raw_qty': 1.18911818135563, 'max_value': 1262.0194496999998, 'max_qty_by_value': 10.702063632200671, 'target_qty': 1.0}"
-2024-05-10,MSFT,exit,1,133.88897699999998,0.0,,test_edge,,,
-2024-05-13,MSFT,short,1,154.24759799999998,0.0,,test_edge,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 42.19592625000001, 'stop_dist': 40.206900000000005, 'atr': 26.8046, 'raw_qty': 1.0494697738447878, 'max_value': 1265.8777875, 'max_qty_by_value': 9.445227964603092, 'target_qty': 1.0}"
-2024-05-17,MSFT,exit,1,153.36847799999998,0.0,,test_edge,,,
-2024-05-28,MSFT,short,1,157.02282,0.0,,test_edge,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 42.20471745, 'stop_dist': 35.5659, 'atr': 23.7106, 'raw_qty': 1.1866624336794513, 'max_value': 1266.1415235, 'max_qty_by_value': 10.679961903115062, 'target_qty': 1.0}"
-2024-06-03,MSFT,exit,1,174.672153,0.0,,test_edge,,,
-2024-06-10,MSFT,long,1,139.968829,0.0,,test_edge,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 42.02822412, 'stop_dist': 40.865100000000005, 'atr': 27.243400000000005, 'raw_qty': 1.0284625296402063, 'max_value': 1260.8467236, 'max_qty_by_value': 9.256162766761856, 'target_qty': 1.0}"
-2024-06-11,MSFT,exit,1,145.365489,0.0,,test_edge,,,
-2024-06-17,MSFT,long,1,208.1079,0.0,,test_edge,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 42.08219072, 'stop_dist': 40.746, 'atr': 27.164, 'raw_qty': 1.0327931752810091, 'max_value': 1262.4657215999998, 'max_qty_by_value': 9.295138577529082, 'target_qty': 1.0}"
-2024-06-18,MSFT,exit,1,170.953875,0.0,,test_edge,,,
-2024-07-05,MSFT,short,1,159.842997,0.0,,test_edge,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 41.710650470000004, 'stop_dist': 29.7984, 'atr': 19.8656, 'raw_qty': 1.3997614123577107, 'max_value': 1251.3195140999999, 'max_qty_by_value': 12.597852711219392, 'target_qty': 1.0}"
-2024-07-10,MSFT,exit,1,181.779039,0.0,,test_edge,,,
-2024-07-24,MSFT,long,1,268.326058,0.0,,test_edge,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 41.491290049999996, 'stop_dist': 39.3213, 'atr': 26.2142, 'raw_qty': 1.055186121771152, 'max_value': 1244.7387015, 'max_qty_by_value': 9.496675095940368, 'target_qty': 1.0}"
-2024-07-25,MSFT,exit,1,299.138562,0.0,,test_edge,,,
-2024-08-27,MSFT,short,1,134.794071,0.0,,test_edge,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 41.79941509, 'stop_dist': 37.51082142857143, 'atr': 25.00721428571429, 'raw_qty': 1.1143295054093911, 'max_value': 1253.9824526999998, 'max_qty_by_value': 9.53395818913083, 'target_qty': 1.0}"
-2024-08-28,MSFT,exit,1,148.678173,0.0,,test_edge,,,
-2024-08-29,MSFT,short,1,170.281548,0.0,,test_edge,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 41.660574069999996, 'stop_dist': 34.28196428571429, 'atr': 22.85464285714286, 'raw_qty': 1.2152329931502923, 'max_value': 1249.8172220999998, 'max_qty_by_value': 8.39778549658328, 'target_qty': 1.0}"
-2024-09-05,MSFT,exit,1,141.81304500000002,0.0,,test_edge,,,
-2024-09-17,MSFT,short,1,188.553258,0.0,,test_edge,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 41.945259099999994, 'stop_dist': 41.50410000000001, 'atr': 27.669400000000003, 'raw_qty': 1.0106292896364453, 'max_value': 1258.3577729999997, 'max_qty_by_value': 9.095663606728008, 'target_qty': 1.0}"
-2024-09-19,MSFT,exit,1,216.848934,0.0,,test_edge,,,
-2024-09-26,MSFT,long,1,145.06492,0.0,,test_edge,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 41.66230234, 'stop_dist': 40.1892, 'atr': 26.7928, 'raw_qty': 1.0366541842086927, 'max_value': 1249.8690702, 'max_qty_by_value': 9.329887657878235, 'target_qty': 1.0}"
-2024-09-27,MSFT,exit,1,148.812039,0.0,,test_edge,,,
-2024-10-04,MSFT,short,1,191.505303,0.0,,test_edge,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 41.69977353, 'stop_dist': 41.059200000000004, 'atr': 27.3728, 'raw_qty': 1.015601217997428, 'max_value': 1250.9932059, 'max_qty_by_value': 9.140410961976853, 'target_qty': 1.0}"
-2024-10-10,MSFT,exit,1,138.345516,0.0,,test_edge,,,
-2024-10-11,MSFT,short,1,141.30755100000002,0.0,,test_edge,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 42.2313714, 'stop_dist': 41.54520000000001, 'atr': 27.696800000000003, 'raw_qty': 1.0165162618064179, 'max_value': 1266.941142, 'max_qty_by_value': 9.14864635625776, 'target_qty': 1.0}"
-2024-10-17,MSFT,exit,1,148.0518,0.0,,test_edge,,,
-2024-10-18,MSFT,short,1,171.281547,0.0,,test_edge,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 42.163928909999996, 'stop_dist': 35.400107142857145, 'atr': 23.60007142857143, 'raw_qty': 1.191067833208737, 'max_value': 1264.9178673, 'max_qty_by_value': 8.535208281376518, 'target_qty': 1.0}"
-2024-10-24,MSFT,exit,1,135.680184,0.0,,test_edge,,,
-2024-10-25,MSFT,short,1,168.822009,0.0,,test_edge,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 42.519942539999995, 'stop_dist': 40.744800000000005, 'atr': 27.163200000000003, 'raw_qty': 1.043567339635978, 'max_value': 1275.5982761999996, 'max_qty_by_value': 9.3921060567238, 'target_qty': 1.0}"
-2024-10-31,MSFT,exit,1,539.17029,0.0,,test_edge,,,
-2024-12-19,MSFT,short,1,229.407363,0.0,,test_edge,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 38.81645973, 'stop_dist': 35.15860714285715, 'atr': 23.43907142857143, 'raw_qty': 1.1040386091599188, 'max_value': 1164.4937919, 'max_qty_by_value': 4.763827412710425, 'target_qty': 1.0}"
-2024-12-20,MSFT,exit,1,641.9943629999999,0.0,,test_edge,,,
-2024-12-26,MSFT,short,1,81.860058,0.0,,test_edge,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 34.69058973, 'stop_dist': 21.4935, 'atr': 14.329, 'raw_qty': 1.6140037560192615, 'max_value': 1040.7176919, 'max_qty_by_value': 14.526033804173357, 'target_qty': 1.0}"
-2024-12-30,MSFT,exit,1,131.455413,0.0,,test_edge,,,
-2022-08-18,MSFT,short,1,171.690138,0.0,,test_edge,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 50.0, 'stop_dist': 43.32203571428572, 'atr': 28.881357142857144, 'raw_qty': 1.154147056471591, 'max_value': 1500.0, 'max_qty_by_value': 8.217647123275665, 'target_qty': 1.0}"
-2022-08-24,MSFT,exit,1,181.18863000000002,0.0,,test_edge,,,
-2022-08-25,MSFT,short,1,165.668166,0.0,,test_edge,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 49.905015080000005, 'stop_dist': 40.92867857142857, 'atr': 27.285785714285712, 'raw_qty': 1.2193165482463835, 'max_value': 1497.1504524, 'max_qty_by_value': 8.25467526272261, 'target_qty': 1.0}"
-2022-08-31,MSFT,exit,1,247.670082,0.0,,test_edge,,,
-2022-09-06,MSFT,short,1,213.06871800000002,0.0,,test_edge,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 49.08499592000001, 'stop_dist': 46.47117857142857, 'atr': 30.980785714285712, 'raw_qty': 1.0562459879203165, 'max_value': 1472.5498776000002, 'max_qty_by_value': 6.442896985395137, 'target_qty': 1.0}"
-2022-09-08,MSFT,exit,1,202.995801,0.0,,test_edge,,,
-2022-11-28,MSFT,short,1,247.534218,0.0,,test_edge,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 49.18572509000001, 'stop_dist': 27.602399999999996, 'atr': 18.4016, 'raw_qty': 1.7819365377648329, 'max_value': 1475.5717527000004, 'max_qty_by_value': 16.037428839883493, 'target_qty': 1.0}"
-2022-12-02,MSFT,exit,1,215.069715,0.0,,test_edge,,,
-2023-05-16,MSFT,short,1,267.03569699999997,0.0,,test_edge,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 49.51037012000002, 'stop_dist': 49.0095, 'atr': 32.673, 'raw_qty': 1.010219857782675, 'max_value': 1485.3111036000005, 'max_qty_by_value': 9.091978720044075, 'target_qty': 1.0}"
-2023-05-19,MSFT,exit,1,275.191533,0.0,,test_edge,,,
-2023-07-05,MSFT,long,1,181.905724,0.0,,test_edge,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 49.428811760000016, 'stop_dist': 37.5261, 'atr': 25.017400000000002, 'raw_qty': 1.317184886252502, 'max_value': 1482.8643528000005, 'max_qty_by_value': 11.854663976272517, 'target_qty': 1.0}"
-2023-07-06,MSFT,exit,1,281.330388,0.0,,test_edge,,,
-2023-08-23,MSFT,long,1,211.875664,0.0,,test_edge,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 50.423058400000016, 'stop_dist': 48.253800000000005, 'atr': 32.169200000000004, 'raw_qty': 1.044955182804256, 'max_value': 1512.6917520000004, 'max_qty_by_value': 9.404596645238305, 'target_qty': 1.0}"
-2023-08-24,MSFT,exit,1,232.581186,0.0,,test_edge,,,
-2023-08-28,MSFT,short,1,147.936915,0.0,,test_edge,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 50.630113620000024, 'stop_dist': 46.90242857142857, 'atr': 31.268285714285717, 'raw_qty': 1.0794774420453408, 'max_value': 1518.9034086000006, 'max_qty_by_value': 7.004687345105403, 'target_qty': 1.0}"
-2023-08-30,MSFT,exit,1,152.068779,0.0,,test_edge,,,
-2023-08-31,MSFT,short,1,263.84589,0.0,,test_edge,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 50.588794980000024, 'stop_dist': 45.66630000000001, 'atr': 30.444200000000002, 'raw_qty': 1.1077927263649565, 'max_value': 1517.6638494000006, 'max_qty_by_value': 9.97013453728461, 'target_qty': 1.0}"
-2023-09-07,MSFT,exit,1,183.62619,0.0,,test_edge,,,
-2023-09-12,MSFT,short,1,175.479345,0.0,,test_edge,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 51.39099198000002, 'stop_dist': 49.749900000000004, 'atr': 33.1666, 'raw_qty': 1.0329868397725426, 'max_value': 1541.7297594000004, 'max_qty_by_value': 9.296881557952883, 'target_qty': 1.0}"
-2023-09-14,MSFT,exit,1,202.46732999999998,0.0,,test_edge,,,
-2023-09-19,MSFT,short,1,164.89394099999998,0.0,,test_edge,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 51.121112130000014, 'stop_dist': 50.50260000000001, 'atr': 33.668400000000005, 'raw_qty': 1.0122471344049615, 'max_value': 1533.6333639000002, 'max_qty_by_value': 9.110224209644652, 'target_qty': 1.0}"
-2023-09-21,MSFT,exit,1,355.24839599999996,0.0,,test_edge,,,
-2023-10-17,MSFT,short,1,183.201615,0.0,,test_edge,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 49.217567580000015, 'stop_dist': 41.76278571428572, 'atr': 27.841857142857148, 'raw_qty': 1.1785029838937264, 'max_value': 1476.5270274000004, 'max_qty_by_value': 6.663629512591391, 'target_qty': 1.0}"
-2023-10-19,MSFT,exit,1,250.270479,0.0,,test_edge,,,
-2023-10-20,MSFT,short,1,250.02672299999998,0.0,,test_edge,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 48.54687894000001, 'stop_dist': 40.59321428571428, 'atr': 27.062142857142856, 'raw_qty': 1.1959358181962154, 'max_value': 1456.4063682000003, 'max_qty_by_value': 5.813510117714684, 'target_qty': 1.0}"
-2023-10-26,MSFT,exit,1,377.906715,0.0,,test_edge,,,
-2023-11-27,MSFT,short,1,221.570208,0.0,,test_edge,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 47.268079020000016, 'stop_dist': 30.5298, 'atr': 20.3532, 'raw_qty': 1.5482603561110788, 'max_value': 1418.0423706000004, 'max_qty_by_value': 13.934343204999708, 'target_qty': 1.0}"
-2023-12-01,MSFT,exit,1,330.074595,0.0,,test_edge,,,
-2023-12-27,MSFT,short,1,148.904946,0.0,,test_edge,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 46.183035150000016, 'stop_dist': 38.0193, 'atr': 25.3462, 'raw_qty': 1.214726077281802, 'max_value': 1385.4910545000005, 'max_qty_by_value': 10.93253469553622, 'target_qty': 1.0}"
-2024-01-02,MSFT,exit,1,252.333414,0.0,,test_edge,,,
-2024-01-16,MSFT,short,1,271.75097700000003,0.0,,test_edge,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 45.14875047000002, 'stop_dist': 43.80128571428571, 'atr': 29.200857142857142, 'raw_qty': 1.030763132491219, 'max_value': 1354.4625141000004, 'max_qty_by_value': 6.252943115339872, 'target_qty': 1.0}"
-2024-01-17,MSFT,exit,1,222.118659,0.0,,test_edge,,,
-2024-02-28,MSFT,short,1,131.69916899999998,0.0,,test_edge,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 45.645073650000015, 'stop_dist': 44.507400000000004, 'atr': 29.6716, 'raw_qty': 1.0255614493320215, 'max_value': 1369.3522095000003, 'max_qty_by_value': 9.230053043988192, 'target_qty': 1.0}"
-2024-02-29,MSFT,exit,1,319.153527,0.0,,test_edge,,,
-2024-04-09,MSFT,short,1,124.844031,0.0,,test_edge,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 43.77053007000001, 'stop_dist': 35.133642857142846, 'atr': 23.422428571428565, 'raw_qty': 1.2458295385985356, 'max_value': 1313.1159021, 'max_qty_by_value': 9.200386074521456, 'target_qty': 1.0}"
-2024-04-12,MSFT,exit,1,192.345462,0.0,,test_edge,,,
-2024-04-15,MSFT,short,1,202.53226500000002,0.0,,test_edge,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 43.09551576, 'stop_dist': 34.27939285714285, 'atr': 22.85292857142857, 'raw_qty': 1.2571843363620168, 'max_value': 1292.8654728, 'max_qty_by_value': 6.714858743728509, 'target_qty': 1.0}"
-2024-04-19,MSFT,exit,1,305.352342,0.0,,test_edge,,,
-2024-05-09,MSFT,short,1,146.750103,0.0,,test_edge,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 42.06731498999999, 'stop_dist': 35.376900000000006, 'atr': 23.584600000000002, 'raw_qty': 1.18911818135563, 'max_value': 1262.0194496999998, 'max_qty_by_value': 10.702063632200671, 'target_qty': 1.0}"
-2024-05-10,MSFT,exit,1,133.88897699999998,0.0,,test_edge,,,
-2024-05-13,MSFT,short,1,154.24759799999998,0.0,,test_edge,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 42.19592625000001, 'stop_dist': 40.206900000000005, 'atr': 26.8046, 'raw_qty': 1.0494697738447878, 'max_value': 1265.8777875, 'max_qty_by_value': 9.445227964603092, 'target_qty': 1.0}"
-2024-05-17,MSFT,exit,1,153.36847799999998,0.0,,test_edge,,,
-2024-05-28,MSFT,short,1,157.02282,0.0,,test_edge,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 42.20471745, 'stop_dist': 35.5659, 'atr': 23.7106, 'raw_qty': 1.1866624336794513, 'max_value': 1266.1415235, 'max_qty_by_value': 10.679961903115062, 'target_qty': 1.0}"
-2024-06-03,MSFT,exit,1,174.672153,0.0,,test_edge,,,
-2024-06-10,MSFT,long,1,139.968829,0.0,,test_edge,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 42.02822412, 'stop_dist': 40.865100000000005, 'atr': 27.243400000000005, 'raw_qty': 1.0284625296402063, 'max_value': 1260.8467236, 'max_qty_by_value': 9.256162766761856, 'target_qty': 1.0}"
-2024-06-11,MSFT,exit,1,145.365489,0.0,,test_edge,,,
-2024-06-17,MSFT,long,1,208.1079,0.0,,test_edge,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 42.08219072, 'stop_dist': 40.746, 'atr': 27.164, 'raw_qty': 1.0327931752810091, 'max_value': 1262.4657215999998, 'max_qty_by_value': 9.295138577529082, 'target_qty': 1.0}"
-2024-06-18,MSFT,exit,1,170.953875,0.0,,test_edge,,,
-2024-07-05,MSFT,short,1,159.842997,0.0,,test_edge,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 41.710650470000004, 'stop_dist': 29.7984, 'atr': 19.8656, 'raw_qty': 1.3997614123577107, 'max_value': 1251.3195140999999, 'max_qty_by_value': 12.597852711219392, 'target_qty': 1.0}"
-2024-07-10,MSFT,exit,1,181.779039,0.0,,test_edge,,,
-2024-07-24,MSFT,long,1,268.326058,0.0,,test_edge,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 41.491290049999996, 'stop_dist': 39.3213, 'atr': 26.2142, 'raw_qty': 1.055186121771152, 'max_value': 1244.7387015, 'max_qty_by_value': 9.496675095940368, 'target_qty': 1.0}"
-2024-07-25,MSFT,exit,1,299.138562,0.0,,test_edge,,,
-2024-08-27,MSFT,short,1,134.794071,0.0,,test_edge,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 41.79941509, 'stop_dist': 37.51082142857143, 'atr': 25.00721428571429, 'raw_qty': 1.1143295054093911, 'max_value': 1253.9824526999998, 'max_qty_by_value': 9.53395818913083, 'target_qty': 1.0}"
-2024-08-28,MSFT,exit,1,148.678173,0.0,,test_edge,,,
-2024-08-29,MSFT,short,1,170.281548,0.0,,test_edge,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 41.660574069999996, 'stop_dist': 34.28196428571429, 'atr': 22.85464285714286, 'raw_qty': 1.2152329931502923, 'max_value': 1249.8172220999998, 'max_qty_by_value': 8.39778549658328, 'target_qty': 1.0}"
-2024-09-05,MSFT,exit,1,141.81304500000002,0.0,,test_edge,,,
-2024-09-17,MSFT,short,1,188.553258,0.0,,test_edge,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 41.945259099999994, 'stop_dist': 41.50410000000001, 'atr': 27.669400000000003, 'raw_qty': 1.0106292896364453, 'max_value': 1258.3577729999997, 'max_qty_by_value': 9.095663606728008, 'target_qty': 1.0}"
-2024-09-19,MSFT,exit,1,216.848934,0.0,,test_edge,,,
-2024-09-26,MSFT,long,1,145.06492,0.0,,test_edge,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 41.66230234, 'stop_dist': 40.1892, 'atr': 26.7928, 'raw_qty': 1.0366541842086927, 'max_value': 1249.8690702, 'max_qty_by_value': 9.329887657878235, 'target_qty': 1.0}"
-2024-09-27,MSFT,exit,1,148.812039,0.0,,test_edge,,,
-2024-10-04,MSFT,short,1,191.505303,0.0,,test_edge,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 41.69977353, 'stop_dist': 41.059200000000004, 'atr': 27.3728, 'raw_qty': 1.015601217997428, 'max_value': 1250.9932059, 'max_qty_by_value': 9.140410961976853, 'target_qty': 1.0}"
-2024-10-10,MSFT,exit,1,138.345516,0.0,,test_edge,,,
-2024-10-11,MSFT,short,1,141.30755100000002,0.0,,test_edge,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 42.2313714, 'stop_dist': 41.54520000000001, 'atr': 27.696800000000003, 'raw_qty': 1.0165162618064179, 'max_value': 1266.941142, 'max_qty_by_value': 9.14864635625776, 'target_qty': 1.0}"
-2024-10-17,MSFT,exit,1,148.0518,0.0,,test_edge,,,
-2024-10-18,MSFT,short,1,171.281547,0.0,,test_edge,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 42.163928909999996, 'stop_dist': 35.400107142857145, 'atr': 23.60007142857143, 'raw_qty': 1.191067833208737, 'max_value': 1264.9178673, 'max_qty_by_value': 8.535208281376518, 'target_qty': 1.0}"
-2024-10-24,MSFT,exit,1,135.680184,0.0,,test_edge,,,
-2024-10-25,MSFT,short,1,168.822009,0.0,,test_edge,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 42.519942539999995, 'stop_dist': 40.744800000000005, 'atr': 27.163200000000003, 'raw_qty': 1.043567339635978, 'max_value': 1275.5982761999996, 'max_qty_by_value': 9.3921060567238, 'target_qty': 1.0}"
-2024-10-31,MSFT,exit,1,539.17029,0.0,,test_edge,,,
-2024-12-19,MSFT,short,1,229.407363,0.0,,test_edge,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 38.81645973, 'stop_dist': 35.15860714285715, 'atr': 23.43907142857143, 'raw_qty': 1.1040386091599188, 'max_value': 1164.4937919, 'max_qty_by_value': 4.763827412710425, 'target_qty': 1.0}"
-2024-12-20,MSFT,exit,1,641.9943629999999,0.0,,test_edge,,,
-2024-12-26,MSFT,short,1,81.860058,0.0,,test_edge,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 34.69058973, 'stop_dist': 21.4935, 'atr': 14.329, 'raw_qty': 1.6140037560192615, 'max_value': 1040.7176919, 'max_qty_by_value': 14.526033804173357, 'target_qty': 1.0}"
-2024-12-30,MSFT,exit,1,131.455413,0.0,,test_edge,,,
-2022-08-18,MSFT,short,1,171.690138,0.0,,momentum_trend,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 50.0, 'stop_dist': 43.32203571428572, 'atr': 28.881357142857144, 'raw_qty': 1.154147056471591, 'max_value': 1500.0, 'max_qty_by_value': 8.217647123275665, 'target_qty': 1.0}"
-2022-08-24,MSFT,exit,1,181.18863000000002,0.0,,momentum_trend,,,
-2022-08-25,MSFT,short,1,165.668166,0.0,,momentum_trend,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 49.905015080000005, 'stop_dist': 40.92867857142857, 'atr': 27.285785714285712, 'raw_qty': 1.2193165482463835, 'max_value': 1497.1504524, 'max_qty_by_value': 8.25467526272261, 'target_qty': 1.0}"
-2022-08-31,MSFT,exit,1,247.670082,0.0,,momentum_trend,,,
-2022-09-06,MSFT,short,1,213.06871800000002,0.0,,momentum_trend,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 49.08499592000001, 'stop_dist': 46.47117857142857, 'atr': 30.980785714285712, 'raw_qty': 1.0562459879203165, 'max_value': 1472.5498776000002, 'max_qty_by_value': 6.442896985395137, 'target_qty': 1.0}"
-2022-09-08,MSFT,exit,1,202.995801,0.0,,momentum_trend,,,
-2022-11-28,MSFT,short,1,247.534218,0.0,,momentum_trend,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 49.18572509000001, 'stop_dist': 27.602399999999996, 'atr': 18.4016, 'raw_qty': 1.7819365377648329, 'max_value': 1475.5717527000004, 'max_qty_by_value': 16.037428839883493, 'target_qty': 1.0}"
-2022-12-02,MSFT,exit,1,215.069715,0.0,,momentum_trend,,,
-2023-05-16,MSFT,short,1,267.03569699999997,0.0,,momentum_trend,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 49.51037012000002, 'stop_dist': 49.0095, 'atr': 32.673, 'raw_qty': 1.010219857782675, 'max_value': 1485.3111036000005, 'max_qty_by_value': 9.091978720044075, 'target_qty': 1.0}"
-2023-05-19,MSFT,exit,1,275.191533,0.0,,momentum_trend,,,
-2023-07-05,MSFT,long,1,181.905724,0.0,,momentum_trend,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 49.428811760000016, 'stop_dist': 37.5261, 'atr': 25.017400000000002, 'raw_qty': 1.317184886252502, 'max_value': 1482.8643528000005, 'max_qty_by_value': 11.854663976272517, 'target_qty': 1.0}"
-2023-07-06,MSFT,exit,1,281.330388,0.0,,momentum_trend,,,
-2023-08-23,MSFT,long,1,211.875664,0.0,,momentum_trend,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 50.423058400000016, 'stop_dist': 48.253800000000005, 'atr': 32.169200000000004, 'raw_qty': 1.044955182804256, 'max_value': 1512.6917520000004, 'max_qty_by_value': 9.404596645238305, 'target_qty': 1.0}"
-2023-08-24,MSFT,exit,1,232.581186,0.0,,momentum_trend,,,
-2023-08-28,MSFT,short,1,147.936915,0.0,,momentum_trend,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 50.630113620000024, 'stop_dist': 46.90242857142857, 'atr': 31.268285714285717, 'raw_qty': 1.0794774420453408, 'max_value': 1518.9034086000006, 'max_qty_by_value': 7.004687345105403, 'target_qty': 1.0}"
-2023-08-30,MSFT,exit,1,152.068779,0.0,,momentum_trend,,,
-2023-08-31,MSFT,short,1,263.84589,0.0,,momentum_trend,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 50.588794980000024, 'stop_dist': 45.66630000000001, 'atr': 30.444200000000002, 'raw_qty': 1.1077927263649565, 'max_value': 1517.6638494000006, 'max_qty_by_value': 9.97013453728461, 'target_qty': 1.0}"
-2023-09-07,MSFT,exit,1,183.62619,0.0,,momentum_trend,,,
-2023-09-12,MSFT,short,1,175.479345,0.0,,momentum_trend,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 51.39099198000002, 'stop_dist': 49.749900000000004, 'atr': 33.1666, 'raw_qty': 1.0329868397725426, 'max_value': 1541.7297594000004, 'max_qty_by_value': 9.296881557952883, 'target_qty': 1.0}"
-2023-09-14,MSFT,exit,1,202.46732999999998,0.0,,momentum_trend,,,
-2023-09-19,MSFT,short,1,164.89394099999998,0.0,,momentum_trend,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 51.121112130000014, 'stop_dist': 50.50260000000001, 'atr': 33.668400000000005, 'raw_qty': 1.0122471344049615, 'max_value': 1533.6333639000002, 'max_qty_by_value': 9.110224209644652, 'target_qty': 1.0}"
-2023-09-21,MSFT,exit,1,355.24839599999996,0.0,,momentum_trend,,,
-2023-10-17,MSFT,short,1,183.201615,0.0,,momentum_trend,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 49.217567580000015, 'stop_dist': 41.76278571428572, 'atr': 27.841857142857148, 'raw_qty': 1.1785029838937264, 'max_value': 1476.5270274000004, 'max_qty_by_value': 6.663629512591391, 'target_qty': 1.0}"
-2023-10-19,MSFT,exit,1,250.270479,0.0,,momentum_trend,,,
-2023-10-20,MSFT,short,1,250.02672299999998,0.0,,momentum_trend,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 48.54687894000001, 'stop_dist': 40.59321428571428, 'atr': 27.062142857142856, 'raw_qty': 1.1959358181962154, 'max_value': 1456.4063682000003, 'max_qty_by_value': 5.813510117714684, 'target_qty': 1.0}"
-2023-10-26,MSFT,exit,1,377.906715,0.0,,momentum_trend,,,
-2023-11-27,MSFT,short,1,221.570208,0.0,,momentum_trend,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 47.268079020000016, 'stop_dist': 30.5298, 'atr': 20.3532, 'raw_qty': 1.5482603561110788, 'max_value': 1418.0423706000004, 'max_qty_by_value': 13.934343204999708, 'target_qty': 1.0}"
-2023-12-01,MSFT,exit,1,330.074595,0.0,,momentum_trend,,,
-2023-12-27,MSFT,short,1,148.904946,0.0,,momentum_trend,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 46.183035150000016, 'stop_dist': 38.0193, 'atr': 25.3462, 'raw_qty': 1.214726077281802, 'max_value': 1385.4910545000005, 'max_qty_by_value': 10.93253469553622, 'target_qty': 1.0}"
-2024-01-02,MSFT,exit,1,252.333414,0.0,,momentum_trend,,,
-2024-01-16,MSFT,short,1,271.75097700000003,0.0,,momentum_trend,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 45.14875047000002, 'stop_dist': 43.80128571428571, 'atr': 29.200857142857142, 'raw_qty': 1.030763132491219, 'max_value': 1354.4625141000004, 'max_qty_by_value': 6.252943115339872, 'target_qty': 1.0}"
-2024-01-17,MSFT,exit,1,222.118659,0.0,,momentum_trend,,,
-2024-02-28,MSFT,short,1,131.69916899999998,0.0,,momentum_trend,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 45.645073650000015, 'stop_dist': 44.507400000000004, 'atr': 29.6716, 'raw_qty': 1.0255614493320215, 'max_value': 1369.3522095000003, 'max_qty_by_value': 9.230053043988192, 'target_qty': 1.0}"
-2024-02-29,MSFT,exit,1,319.153527,0.0,,momentum_trend,,,
-2024-04-09,MSFT,short,1,124.844031,0.0,,momentum_trend,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 43.77053007000001, 'stop_dist': 35.133642857142846, 'atr': 23.422428571428565, 'raw_qty': 1.2458295385985356, 'max_value': 1313.1159021, 'max_qty_by_value': 9.200386074521456, 'target_qty': 1.0}"
-2024-04-12,MSFT,exit,1,192.345462,0.0,,momentum_trend,,,
-2024-04-15,MSFT,short,1,202.53226500000002,0.0,,momentum_trend,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 43.09551576, 'stop_dist': 34.27939285714285, 'atr': 22.85292857142857, 'raw_qty': 1.2571843363620168, 'max_value': 1292.8654728, 'max_qty_by_value': 6.714858743728509, 'target_qty': 1.0}"
-2024-04-19,MSFT,exit,1,305.352342,0.0,,momentum_trend,,,
-2024-05-09,MSFT,short,1,146.750103,0.0,,momentum_trend,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 42.06731498999999, 'stop_dist': 35.376900000000006, 'atr': 23.584600000000002, 'raw_qty': 1.18911818135563, 'max_value': 1262.0194496999998, 'max_qty_by_value': 10.702063632200671, 'target_qty': 1.0}"
-2024-05-10,MSFT,exit,1,133.88897699999998,0.0,,momentum_trend,,,
-2024-05-13,MSFT,short,1,154.24759799999998,0.0,,momentum_trend,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 42.19592625000001, 'stop_dist': 40.206900000000005, 'atr': 26.8046, 'raw_qty': 1.0494697738447878, 'max_value': 1265.8777875, 'max_qty_by_value': 9.445227964603092, 'target_qty': 1.0}"
-2024-05-17,MSFT,exit,1,153.36847799999998,0.0,,momentum_trend,,,
-2024-05-28,MSFT,short,1,157.02282,0.0,,momentum_trend,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 42.20471745, 'stop_dist': 35.5659, 'atr': 23.7106, 'raw_qty': 1.1866624336794513, 'max_value': 1266.1415235, 'max_qty_by_value': 10.679961903115062, 'target_qty': 1.0}"
-2024-06-03,MSFT,exit,1,174.672153,0.0,,momentum_trend,,,
-2024-06-10,MSFT,long,1,139.968829,0.0,,momentum_trend,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 42.02822412, 'stop_dist': 40.865100000000005, 'atr': 27.243400000000005, 'raw_qty': 1.0284625296402063, 'max_value': 1260.8467236, 'max_qty_by_value': 9.256162766761856, 'target_qty': 1.0}"
-2024-06-11,MSFT,exit,1,145.365489,0.0,,momentum_trend,,,
-2024-06-17,MSFT,long,1,208.1079,0.0,,momentum_trend,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 42.08219072, 'stop_dist': 40.746, 'atr': 27.164, 'raw_qty': 1.0327931752810091, 'max_value': 1262.4657215999998, 'max_qty_by_value': 9.295138577529082, 'target_qty': 1.0}"
-2024-06-18,MSFT,exit,1,170.953875,0.0,,momentum_trend,,,
-2024-07-05,MSFT,short,1,159.842997,0.0,,momentum_trend,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 41.710650470000004, 'stop_dist': 29.7984, 'atr': 19.8656, 'raw_qty': 1.3997614123577107, 'max_value': 1251.3195140999999, 'max_qty_by_value': 12.597852711219392, 'target_qty': 1.0}"
-2024-07-10,MSFT,exit,1,181.779039,0.0,,momentum_trend,,,
-2024-07-24,MSFT,long,1,268.326058,0.0,,momentum_trend,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 41.491290049999996, 'stop_dist': 39.3213, 'atr': 26.2142, 'raw_qty': 1.055186121771152, 'max_value': 1244.7387015, 'max_qty_by_value': 9.496675095940368, 'target_qty': 1.0}"
-2024-07-25,MSFT,exit,1,299.138562,0.0,,momentum_trend,,,
-2024-08-27,MSFT,short,1,134.794071,0.0,,momentum_trend,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 41.79941509, 'stop_dist': 37.51082142857143, 'atr': 25.00721428571429, 'raw_qty': 1.1143295054093911, 'max_value': 1253.9824526999998, 'max_qty_by_value': 9.53395818913083, 'target_qty': 1.0}"
-2024-08-28,MSFT,exit,1,148.678173,0.0,,momentum_trend,,,
-2024-08-29,MSFT,short,1,170.281548,0.0,,momentum_trend,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 41.660574069999996, 'stop_dist': 34.28196428571429, 'atr': 22.85464285714286, 'raw_qty': 1.2152329931502923, 'max_value': 1249.8172220999998, 'max_qty_by_value': 8.39778549658328, 'target_qty': 1.0}"
-2024-09-05,MSFT,exit,1,141.81304500000002,0.0,,momentum_trend,,,
-2024-09-17,MSFT,short,1,188.553258,0.0,,momentum_trend,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 41.945259099999994, 'stop_dist': 41.50410000000001, 'atr': 27.669400000000003, 'raw_qty': 1.0106292896364453, 'max_value': 1258.3577729999997, 'max_qty_by_value': 9.095663606728008, 'target_qty': 1.0}"
-2024-09-19,MSFT,exit,1,216.848934,0.0,,momentum_trend,,,
-2024-09-26,MSFT,long,1,145.06492,0.0,,momentum_trend,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 41.66230234, 'stop_dist': 40.1892, 'atr': 26.7928, 'raw_qty': 1.0366541842086927, 'max_value': 1249.8690702, 'max_qty_by_value': 9.329887657878235, 'target_qty': 1.0}"
-2024-09-27,MSFT,exit,1,148.812039,0.0,,momentum_trend,,,
-2024-10-04,MSFT,short,1,191.505303,0.0,,momentum_trend,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 41.69977353, 'stop_dist': 41.059200000000004, 'atr': 27.3728, 'raw_qty': 1.015601217997428, 'max_value': 1250.9932059, 'max_qty_by_value': 9.140410961976853, 'target_qty': 1.0}"
-2024-10-10,MSFT,exit,1,138.345516,0.0,,momentum_trend,,,
-2024-10-11,MSFT,short,1,141.30755100000002,0.0,,momentum_trend,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 42.2313714, 'stop_dist': 41.54520000000001, 'atr': 27.696800000000003, 'raw_qty': 1.0165162618064179, 'max_value': 1266.941142, 'max_qty_by_value': 9.14864635625776, 'target_qty': 1.0}"
-2024-10-17,MSFT,exit,1,148.0518,0.0,,momentum_trend,,,
-2024-10-18,MSFT,short,1,171.281547,0.0,,momentum_trend,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 42.163928909999996, 'stop_dist': 35.400107142857145, 'atr': 23.60007142857143, 'raw_qty': 1.191067833208737, 'max_value': 1264.9178673, 'max_qty_by_value': 8.535208281376518, 'target_qty': 1.0}"
-2024-10-24,MSFT,exit,1,135.680184,0.0,,momentum_trend,,,
-2024-10-25,MSFT,short,1,168.822009,0.0,,momentum_trend,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 42.519942539999995, 'stop_dist': 40.744800000000005, 'atr': 27.163200000000003, 'raw_qty': 1.043567339635978, 'max_value': 1275.5982761999996, 'max_qty_by_value': 9.3921060567238, 'target_qty': 1.0}"
-2024-10-31,MSFT,exit,1,539.17029,0.0,,momentum_trend,,,
-2024-12-19,MSFT,short,1,229.407363,0.0,,momentum_trend,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 38.81645973, 'stop_dist': 35.15860714285715, 'atr': 23.43907142857143, 'raw_qty': 1.1040386091599188, 'max_value': 1164.4937919, 'max_qty_by_value': 4.763827412710425, 'target_qty': 1.0}"
-2024-12-20,MSFT,exit,1,641.9943629999999,0.0,,momentum_trend,,,
-2024-12-26,MSFT,short,1,81.860058,0.0,,momentum_trend,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 34.69058973, 'stop_dist': 21.4935, 'atr': 14.329, 'raw_qty': 1.6140037560192615, 'max_value': 1040.7176919, 'max_qty_by_value': 14.526033804173357, 'target_qty': 1.0}"
-2024-12-30,MSFT,exit,1,131.455413,0.0,,momentum_trend,,,
+timestamp,ticker,side,qty,fill_price,commission,pnl,edge,edge_group,trigger,meta
+2022-02-15,AAPL,short,149,170.70911999999998,0.0,,test_edge,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 1000.0, 'stop_dist': 6.699642857142855, 'atr': 4.46642857142857, 'raw_qty': 149.26168772322623, 'max_value': 30000.0, 'max_qty_by_value': 177.57783828578195, 'target_qty': 149.0}"
+2022-02-15,MSFT,short,71,299.73996,0.0,,test_edge,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 1000.0, 'stop_dist': 14.041607142857169, 'atr': 9.361071428571446, 'raw_qty': 71.21691910521015, 'max_value': 30000.0, 'max_qty_by_value': 101.73284953711554, 'target_qty': 71.0}"
+2022-02-15,SPY,short,68,443.37618,0.0,,test_edge,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 1000.0, 'stop_dist': 14.1375, 'atr': 9.424999999999999, 'raw_qty': 70.73386383731211, 'max_value': 30000.0, 'max_qty_by_value': 68.3542573309941, 'target_qty': 68.0}"
+2022-02-17,AAPL,exit,149,170.74908,0.0,,test_edge,,,
+2022-03-21,MSFT,exit,71,298.646055,0.0,,test_edge,,,
+2022-03-22,SPY,exit,68,445.554,0.0,,test_edge,,,
+2022-02-15,AAPL,short,149,170.70911999999998,0.0,,test_edge,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 1000.0, 'stop_dist': 6.699642857142855, 'atr': 4.46642857142857, 'raw_qty': 149.26168772322623, 'max_value': 30000.0, 'max_qty_by_value': 177.57783828578195, 'target_qty': 149.0}"
+2022-02-15,MSFT,short,71,299.73996,0.0,,test_edge,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 1000.0, 'stop_dist': 14.041607142857169, 'atr': 9.361071428571446, 'raw_qty': 71.21691910521015, 'max_value': 30000.0, 'max_qty_by_value': 101.73284953711554, 'target_qty': 71.0}"
+2022-02-15,SPY,short,68,443.37618,0.0,,test_edge,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 1000.0, 'stop_dist': 14.1375, 'atr': 9.424999999999999, 'raw_qty': 70.73386383731211, 'max_value': 30000.0, 'max_qty_by_value': 68.3542573309941, 'target_qty': 68.0}"
+2022-02-17,AAPL,exit,149,170.74908,0.0,,test_edge,,,
+2022-03-21,MSFT,exit,71,298.646055,0.0,,test_edge,,,
+2022-03-22,SPY,exit,68,445.554,0.0,,test_edge,,,
+2022-02-15,AAPL,short,149,170.70911999999998,0.0,,test_edge,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 1000.0, 'stop_dist': 6.699642857142855, 'atr': 4.46642857142857, 'raw_qty': 149.26168772322623, 'max_value': 30000.0, 'max_qty_by_value': 177.57783828578195, 'target_qty': 149.0}"
+2022-02-15,MSFT,short,71,299.73996,0.0,,test_edge,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 1000.0, 'stop_dist': 14.041607142857169, 'atr': 9.361071428571446, 'raw_qty': 71.21691910521015, 'max_value': 30000.0, 'max_qty_by_value': 101.73284953711554, 'target_qty': 71.0}"
+2022-02-15,SPY,short,68,443.37618,0.0,,test_edge,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 1000.0, 'stop_dist': 14.1375, 'atr': 9.424999999999999, 'raw_qty': 70.73386383731211, 'max_value': 30000.0, 'max_qty_by_value': 68.3542573309941, 'target_qty': 68.0}"
+2022-02-17,AAPL,exit,149,170.74908,0.0,,test_edge,,,
+2022-03-21,MSFT,exit,71,298.646055,0.0,,test_edge,,,
+2022-03-22,SPY,exit,68,445.554,0.0,,test_edge,,,
+2022-02-15,AAPL,short,149,170.70911999999998,0.0,,test_edge,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 1000.0, 'stop_dist': 6.699642857142855, 'atr': 4.46642857142857, 'raw_qty': 149.26168772322623, 'max_value': 30000.0, 'max_qty_by_value': 177.57783828578195, 'target_qty': 149.0}"
+2022-02-15,MSFT,short,71,299.73996,0.0,,test_edge,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 1000.0, 'stop_dist': 14.041607142857169, 'atr': 9.361071428571446, 'raw_qty': 71.21691910521015, 'max_value': 30000.0, 'max_qty_by_value': 101.73284953711554, 'target_qty': 71.0}"
+2022-02-15,SPY,short,68,443.37618,0.0,,test_edge,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 1000.0, 'stop_dist': 14.1375, 'atr': 9.424999999999999, 'raw_qty': 70.73386383731211, 'max_value': 30000.0, 'max_qty_by_value': 68.3542573309941, 'target_qty': 68.0}"
+2022-02-17,AAPL,exit,149,170.74908,0.0,,test_edge,,,
+2022-03-21,MSFT,exit,71,298.646055,0.0,,test_edge,,,
+2022-03-22,SPY,exit,68,445.554,0.0,,test_edge,,,
+2022-02-15,AAPL,short,149,170.70911999999998,0.0,,test_edge,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 1000.0, 'stop_dist': 6.699642857142855, 'atr': 4.46642857142857, 'raw_qty': 149.26168772322623, 'max_value': 30000.0, 'max_qty_by_value': 177.57783828578195, 'target_qty': 149.0}"
+2022-02-15,MSFT,short,71,299.73996,0.0,,test_edge,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 1000.0, 'stop_dist': 14.041607142857169, 'atr': 9.361071428571446, 'raw_qty': 71.21691910521015, 'max_value': 30000.0, 'max_qty_by_value': 101.73284953711554, 'target_qty': 71.0}"
+2022-02-15,SPY,short,68,443.37618,0.0,,test_edge,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 1000.0, 'stop_dist': 14.1375, 'atr': 9.424999999999999, 'raw_qty': 70.73386383731211, 'max_value': 30000.0, 'max_qty_by_value': 68.3542573309941, 'target_qty': 68.0}"
+2022-02-17,AAPL,exit,149,170.74908,0.0,,test_edge,,,
+2022-03-21,MSFT,exit,71,298.646055,0.0,,test_edge,,,
+2022-03-22,SPY,exit,68,445.554,0.0,,test_edge,,,
+2022-02-15,AAPL,short,149,170.70911999999998,0.0,,test_edge,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 1000.0, 'stop_dist': 6.699642857142855, 'atr': 4.46642857142857, 'raw_qty': 149.26168772322623, 'max_value': 30000.0, 'max_qty_by_value': 177.57783828578195, 'target_qty': 149.0}"
+2022-02-15,MSFT,short,71,299.73996,0.0,,test_edge,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 1000.0, 'stop_dist': 14.041607142857169, 'atr': 9.361071428571446, 'raw_qty': 71.21691910521015, 'max_value': 30000.0, 'max_qty_by_value': 101.73284953711554, 'target_qty': 71.0}"
+2022-02-15,SPY,short,68,443.37618,0.0,,test_edge,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 1000.0, 'stop_dist': 14.1375, 'atr': 9.424999999999999, 'raw_qty': 70.73386383731211, 'max_value': 30000.0, 'max_qty_by_value': 68.3542573309941, 'target_qty': 68.0}"
+2022-02-17,AAPL,exit,149,170.74908,0.0,,test_edge,,,
+2022-03-21,MSFT,exit,71,298.646055,0.0,,test_edge,,,
+2022-03-22,SPY,exit,68,445.554,0.0,,test_edge,,,
+2022-02-15,AAPL,short,149,170.70911999999998,0.0,,test_edge,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 1000.0, 'stop_dist': 6.699642857142855, 'atr': 4.46642857142857, 'raw_qty': 149.26168772322623, 'max_value': 30000.0, 'max_qty_by_value': 177.57783828578195, 'target_qty': 149.0}"
+2022-02-15,MSFT,short,71,299.73996,0.0,,test_edge,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 1000.0, 'stop_dist': 14.041607142857169, 'atr': 9.361071428571446, 'raw_qty': 71.21691910521015, 'max_value': 30000.0, 'max_qty_by_value': 101.73284953711554, 'target_qty': 71.0}"
+2022-02-15,SPY,short,68,443.37618,0.0,,test_edge,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 1000.0, 'stop_dist': 14.1375, 'atr': 9.424999999999999, 'raw_qty': 70.73386383731211, 'max_value': 30000.0, 'max_qty_by_value': 68.3542573309941, 'target_qty': 68.0}"
+2022-02-17,AAPL,exit,149,170.74908,0.0,25441.61,test_edge,,,
+2022-03-21,MSFT,exit,71,298.646055,0.0,21203.87,test_edge,,,
+2022-03-22,SPY,exit,68,445.554,0.0,30297.67,test_edge,,,

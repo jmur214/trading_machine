@@ -1,6 +1,21 @@
 {
-    "max_risk_per_trade": 0.01,
-    "max_total_risk": 0.10,
-    "stop_multiple": 1.5,
-    "tp_multiple": 3.0
-  }
+  "risk_per_trade_pct": 0.01,
+  "atr_stop_mult": 1.5,
+  "atr_tp_mult": 3.0,
+  "cap_atr_to_pct_of_price": 0.20,
+  "atr_floor_pct_of_price": 0.005,
+  "max_pos_value_pct": 0.30,
+  "min_qty": 1,
+  "round_qty": true,
+  "min_notional": 100.0,
+  "force_min_qty_on_signal": true,
+
+  "max_positions": 5,
+  "max_gross_exposure": 1.0,
+  "allow_shorts": true,
+  "min_bars_warmup": 30,
+
+  "enforce_target_allocations": true,
+  "rebalance_tolerance": 0.05,
+  "cooldown_bars": 0
+}

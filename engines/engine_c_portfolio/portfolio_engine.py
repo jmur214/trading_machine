@@ -5,6 +5,8 @@ from typing import Dict, List, Optional
 import pandas as pd
 import numpy as np
 
+from debug_config import is_debug_enabled, is_info_enabled
+
 from .policy import PortfolioPolicy, PortfolioPolicyConfig
 
 
@@ -32,6 +34,14 @@ class PortfolioEngine:
         self.policy = PortfolioPolicy(policy_cfg or PortfolioPolicyConfig())
         self.current_target_weights: Dict[str, float] = {}
 
+    def _log_debug(self, msg: str):
+        if is_debug_enabled("PORTFOLIO"):
+            print(f"[PORTFOLIO][DEBUG] {msg}")
+
+    def _log_info(self, msg: str):
+        if is_info_enabled("PORTFOLIO"):
+            print(f"[PORTFOLIO][INFO] {msg}")
+
     # --------- core ops ---------
     def _get_or_new(self, ticker: str) -> Position:
         return self.positions.get(ticker, Position())
@@ -51,6 +61,8 @@ class PortfolioEngine:
 
         if not ticker or qty_raw <= 0:
             return
+
+        self._log_info(f"Applying fill: ticker={ticker}, side={side}, qty={qty_raw}, price={price}")
 
         pos = self._get_or_new(ticker)
 
@@ -72,6 +84,7 @@ class PortfolioEngine:
 
             realized = (price - pos.avg_price) * (exit_qty * sign)
             self.realized_pnl += realized
+            self._log_info(f"Realized PnL from closing: {realized:.2f}")
             self.cash -= commission
 
             remaining = abs(pos.qty) - exit_qty
@@ -81,6 +94,7 @@ class PortfolioEngine:
                 pos = Position()
 
             self.positions[ticker] = pos
+            self._log_info(f"Updated position for {ticker}: qty={pos.qty}, avg_price={pos.avg_price}")
             return
 
         # ---- OPEN / ADD ----
@@ -104,6 +118,7 @@ class PortfolioEngine:
             sign = 1 if pos.qty > 0 else -1
             realized = (price - pos.avg_price) * (closing * sign)
             self.realized_pnl += realized
+            self._log_info(f"Realized PnL from closing: {realized:.2f}")
             net_abs = abs(pos.qty) - closing
             if net_abs > 0:
                 pos.qty = net_abs * sign
@@ -121,6 +136,7 @@ class PortfolioEngine:
             pos.take_profit = float(fill["take_profit"])
 
         self.positions[ticker] = pos
+        self._log_info(f"Updated position for {ticker}: qty={pos.qty}, avg_price={pos.avg_price}")
 
     # ------------------------------------------------------------------ #
     def snapshot(self, timestamp, price_map: Dict[str, float]) -> dict:
@@ -144,6 +160,7 @@ class PortfolioEngine:
             "positions": sum(1 for p in self.positions.values() if p.qty != 0),
         }
         self.history.append(snap)
+        self._log_debug(f"Snapshot recorded: {snap}")
         return snap
     # ------------------------------------------------------------------ #
     def total_equity(self, price_map: Dict[str, float]) -> float:
@@ -169,6 +186,7 @@ class PortfolioEngine:
         """
         weights = self.policy.allocate(signals, price_data, equity)
         self.current_target_weights = weights
+        self._log_debug(f"Computed target allocations from signals: {signals} -> weights: {weights}")
         return weights
 
     def target_notional_values(self, equity: float) -> Dict[str, float]:
@@ -185,6 +203,7 @@ class PortfolioEngine:
                 continue
             px = float(price_map.get(t, p.avg_price if p.avg_price else 0.0))
             g += abs(p.qty * px)
+        self._log_debug(f"Gross notional calculated: {g}")
         return g
 
     def net_exposure(self, price_map: Dict[str, float]) -> float:
@@ -194,4 +213,5 @@ class PortfolioEngine:
                 continue
             px = float(price_map.get(t, p.avg_price if p.avg_price else 0.0))
             n += p.qty * px
+        self._log_debug(f"Net exposure calculated: {n}")
         return n

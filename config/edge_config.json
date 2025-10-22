@@ -1,12 +1,30 @@
 {
   "active_edges": [
-    "momentum_trend",
-    "rsi_reversal",
-    "atr_breakout"
+    "xsec_momentum"
   ],
+  "edge_params": {
+    "xsec_momentum": {
+      "lookback": 10,
+      "vol_pct": 11.58,
+      "source_run": "results",
+      "Starting Equity": 100000.0,
+      "Ending Equity": 95476.32,
+      "Net Profit": -4523.68,
+      "Total Return (%)": -4.52,
+      "CAGR (%)": -4.59,
+      "Max Drawdown (%)": -10.34,
+      "Sharpe Ratio": -0.577,
+      "Volatility (%)": 11.58,
+      "Win Rate (%)": 42.55,
+      "Trades": 96.0,
+      "top_n": 1.0,
+      "bottom_n": 1.0,
+      "vol_window": 15.0,
+      "vol_target": 0.08,
+      "neutralize": "dollar"
+    }
+  },
   "edge_weights": {
-    "momentum_trend": 0.4,
-    "rsi_reversal": 0.4,
-    "atr_breakout": 0.2
+    "xsec_momentum": 1.0
   }
 }

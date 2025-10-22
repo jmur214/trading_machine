@@ -1,4 +1,3 @@
-# engines/engine_d_governor/governor.py
 from __future__ import annotations
 
 import json
@@ -197,7 +196,11 @@ class StrategyGovernor:
                     proposed *= (1.0 - corr_penalty)
 
             # warmup: avoid hard zeros too early
-            total_days_covered = (pd.to_datetime(end) - pd.to_datetime(start)).days
+            # Warmup period measured on the actual filtered window
+            try:
+                total_days_covered = int((dfw["timestamp"].max().normalize() - dfw["timestamp"].min().normalize()).days)
+            except Exception:
+                total_days_covered = int(self.cfg.rolling_window_days)
             if total_days_covered < self.cfg.warmup_days and proposed == 0.0:
                 proposed = max(self.cfg.sr_weight_floor, 0.5)
 

@@ -57,7 +57,9 @@ from engines.engine_c_portfolio.portfolio_engine import PortfolioEngine, Positio
 from backtester.execution_simulator import ExecutionSimulator
 from backtester.backtest_controller import BacktestController
 from cockpit.logger import CockpitLogger
-
+# --- NEW: Alpaca broker adapter ---
+from brokers.alpaca_broker import AlpacaBroker
+from analytics.edge_feedback import update_edge_weights_from_latest_trades
 
 # =============================================================================
 # Modes / Interfaces
@@ -128,7 +130,39 @@ class DryRunExecutionAdapter(ExecutionAdapter):
             "price": float(fill_price),
             "commission": float(self.commission),
         }
+    
+# --- NEW: Alpaca Broker Adapter ---
+class AlpacaExecutionAdapter(ExecutionAdapter):
+    """
+    Adapter that routes live/paper trades through AlpacaBroker.
+    """
+    def __init__(self, paper: bool = True):
+        super().__init__(dry_run=False)
+        self.broker = AlpacaBroker(paper=paper)
 
+    def place_order(self, order: dict) -> Optional[dict]:
+        ticker = order.get("ticker")
+        side = order.get("side")
+        qty = float(order.get("qty", 0))
+        if not ticker or qty <= 0:
+            print(f"[ALPACA_ADAPTER][WARN] Invalid order: {order}")
+            return None
+
+        try:
+            result = self.broker.place_order(ticker, side, qty)
+            print(f"[ALPACA_ADAPTER][INFO] Sent {side.upper()} {qty} {ticker}")
+            # Build synthetic fill to keep the portfolio consistent
+            return {
+                "ticker": ticker,
+                "side": side,
+                "qty": int(qty),
+                "price": float(order.get("price", 0.0)),  # fallback to intended price
+                "commission": 0.0,
+                "edge": order.get("edge", "Unknown"),
+            }
+        except Exception as e:
+            print(f"[ALPACA_ADAPTER][ERROR] Failed to place order: {e}")
+            return None
 
 # =============================================================================
 # Paper Trade Controller (streaming simulation)
@@ -482,16 +516,27 @@ class ModeController:
         self.risk = RiskEngine(self.cfg_risk)
 
         # --- Cockpit ---
-        self.cockpit = CockpitLogger(out_dir=str(self.root / "data" / "trade_logs"))
+        self.cockpit = CockpitLogger(out_dir=str(self.root / "data" / "trade_logs"), flush_each_fill=True)
+        print(f"[COCKPIT] Trade log -> {self.cockpit.trade_path}")
+        print(f"[COCKPIT] Snapshot log -> {self.cockpit.snap_path}")
 
     # ---------------------------- Helpers ---------------------------- #
 
     def _load_edges(self) -> Dict[str, object]:
         edges: Dict[str, object] = {}
         active_edges = self.cfg_edges.get("active_edges", [])
+        # Load edge parameters from edge_config if present
+        edge_params = self.cfg_edges.get("edge_params", {})
         for edge_name in active_edges:
             try:
                 mod = importlib.import_module(f"engines.engine_a_alpha.edges.{edge_name}")
+                # If the module has set_params and config exists, call it
+                params = edge_params.get(edge_name)
+                if params and hasattr(mod, "set_params") and callable(getattr(mod, "set_params")):
+                    try:
+                        mod.set_params(params)
+                    except Exception as e:
+                        print(f"[ALPHA][WARN] Could not set params for edge '{edge_name}': {e}")
                 edges[edge_name] = mod
             except Exception as e:
                 print(f"[ALPHA][ERROR] Could not import edge '{edge_name}': {e}")
@@ -515,11 +560,13 @@ class ModeController:
         )
         history = controller.run(self.start, self.end)
         print(f"[BACKTEST] Complete. Snapshots: {len(history)}")
+        self.cockpit.close()
         return history
 
     def run_paper(self, fill_bar_delay: int = 1, sleep_seconds: float = 0.0) -> List[dict]:
         """
         Simulated streaming using historical data, with configurable fill delay.
+        Automatically updates StrategyGovernor weights from latest trade logs.
         """
         data_map = self._ensure_data_map()
         paper = PaperTradeController(
@@ -532,14 +579,28 @@ class ModeController:
             paper_params=PaperParams(fill_bar_delay=fill_bar_delay, sleep_seconds=sleep_seconds),
             mode_label="paper",
         )
+
         history = paper.run(self.start, self.end)
         print(f"[PAPER] Complete. Snapshots: {len(history)}")
+
+        # ✅ NEW: adaptive weight update via Governor feedback
+        try:
+            update_edge_weights_from_latest_trades(
+                trade_log_path=str(self.root / "data" / "trade_logs" / "trades.csv"),
+                snapshot_path=str(self.root / "data" / "trade_logs" / "portfolio_snapshots.csv"),
+                config_path=str(self.root / "config" / "governor_settings.json"),
+                state_path=str(self.root / "data" / "governor" / "edge_weights.json"),
+            )
+        except Exception as e:
+            print(f"[EDGE_FEEDBACK][WARN] Could not update edge weights after paper run: {e}")
+
+        self.cockpit.close()
         return history
 
     def run_live(self, feed, poll_seconds: float = 5.0, dry_run: bool = True, max_steps: Optional[int] = None) -> None:
         """
-        Live loop using an external feed object (must expose latest_map()).
-        The default adapter is dry-run (no broker orders sent).
+        Live loop using an external feed (e.g. cached CSV, Alpaca, or data stream).
+        Automatically updates StrategyGovernor weights from recent trades after the run.
         """
         live = LiveTradeController(
             alpha_engine=self.alpha,
@@ -554,7 +615,21 @@ class ModeController:
             live_params=LiveParams(poll_seconds=poll_seconds, dry_run=dry_run),
             mode_label="live" if not dry_run else "live(dry_run)",
         )
+
         live.run_loop(feed=feed, max_steps=max_steps)
+        print(f"[LIVE] Complete. Total portfolio snapshots: {len(live.portfolio.history)}")
+
+        # ✅ NEW: Adaptive feedback loop — Governor updates weights
+        try:
+            update_edge_weights_from_latest_trades(
+                trade_log_path=str(self.root / "data" / "trade_logs" / "trades.csv"),
+                snapshot_path=str(self.root / "data" / "trade_logs" / "portfolio_snapshots.csv"),
+                config_path=str(self.root / "config" / "governor_settings.json"),
+                state_path=str(self.root / "data" / "governor" / "edge_weights.json"),
+            )
+        except Exception as e:
+            print(f"[EDGE_FEEDBACK][WARN] Could not update edge weights after live run: {e}")
+        self.cockpit.close()
 
 
 # =============================================================================

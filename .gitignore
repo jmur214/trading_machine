@@ -1,0 +1,15 @@
+# Python & system
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.DS_Store
+.venv/
+
+# Local configs
+.env
+config/alpaca_keys.json
+
+# Logs and data
+data/
+logs/

@@ -53,6 +53,12 @@ from .signal_formatter import SignalFormatter
 from typing import Optional
 from engines.engine_d_research.governor import StrategyGovernor
 
+from debug_config import is_debug_enabled
+
+def is_info_enabled() -> bool:
+    from debug_config import DEBUG_LEVELS
+    return DEBUG_LEVELS.get("ALPHA_INFO", False)
+
 
 # ----------------------------- Data classes ----------------------------- #
 
@@ -126,12 +132,23 @@ class AlphaEngine:
         try:
             test_edge = importlib.import_module("engines.engine_a_alpha.edges.test_edge")
             self.edges["test_edge"] = test_edge
-            print(f"[ALPHA][DEBUG] test_edge imported successfully: {test_edge}")
+            if is_info_enabled() or is_debug_enabled("ALPHA"):
+                print(f"[ALPHA][INFO] test_edge imported successfully: {test_edge}")
         except Exception as e:
             print(f"[ALPHA][DEBUG] Failed to import test_edge: {e}")
 
+        try:
+            news_edge = importlib.import_module("engines.engine_a_alpha.edges.news_sentiment_boost")
+            self.edges["news_sentiment_boost"] = news_edge
+            if is_info_enabled() or is_debug_enabled("ALPHA"):
+                print(f"[ALPHA][INFO] news_sentiment_boost imported successfully: {news_edge}")
+        except Exception as e:
+            if is_info_enabled() or is_debug_enabled("ALPHA"):
+                print(f"[ALPHA][DEBUG] Failed to import news_sentiment_boost: {e}")
+
         # 3️⃣ Print out all loaded edges for confirmation
-        print(f"[ALPHA][DEBUG] Active edges after init: {list(self.edges.keys())}")
+        if is_info_enabled() or is_debug_enabled("ALPHA"):
+            print(f"[ALPHA][INFO] Active edges after init: {list(self.edges.keys())}")
 
         # 4️⃣ Continue with the rest of your existing code
         self._edge_weights_external = dict(edge_weights or {})
@@ -262,15 +279,18 @@ class AlphaEngine:
             return []
 
         if self.cfg.debug:
-            print(f"[ALPHA][DEBUG] Active edges: {list(self.edges.keys())}")
+            if is_debug_enabled("ALPHA"):
+                print(f"[ALPHA][DEBUG] Active edges: {list(self.edges.keys())}")
         
         if self.cfg.debug:
-            print(f"[ALPHA][DEBUG] Collecting signals from edges: {list(self.edges.keys())}")
+            if is_debug_enabled("ALPHA"):
+                print(f"[ALPHA][DEBUG] Collecting signals from edges: {list(self.edges.keys())}")
 
         raw_scores: Dict[str, Dict[str, float]] = self.collector.collect(data_map, now)
 
         if self.cfg.debug:
-            print(f"[ALPHA][DEBUG] Raw scores collected at {now}: {raw_scores}")
+            if is_debug_enabled("ALPHA"):
+                print(f"[ALPHA][DEBUG] Raw scores collected at {now}: {raw_scores}")
 
         # 2) Process: normalize, regime-gate, shrinkage, hygiene checks
         proc = self.processor.process(data_map, now, raw_scores)
@@ -343,21 +363,23 @@ class AlphaEngine:
                 sig["strength"] *= avg_w  # scale by edge-level weights
                 sig["meta"]["governor_weight"] = round(avg_w, 3)
 
-        if self.cfg.debug and signals:
-            print(f"[ALPHA] {now} generated {len(signals)} signals")
+        if (is_info_enabled() or is_debug_enabled("ALPHA")) and signals:
+            print(f"[ALPHA][INFO] {now} generated {len(signals)} signals")
 
         return signals
     
 if __name__ == "__main__":
     import yfinance as yf
     import pandas as pd
-
-    print("[DEBUG] Downloading test data for AAPL...")
+    from debug_config import is_debug_enabled
+    if is_debug_enabled("ALPHA"):
+        print("[DEBUG] Downloading test data for AAPL...")
     df = yf.download("AAPL", period="1y", interval="1d")
 
     ae = AlphaEngine(edges={}, debug=True)
     now = pd.Timestamp(df.index[-1])
     signals = ae.generate_signals({"AAPL": df}, now)
-
-    print("\n[DEBUG] Example output:")
+    from debug_config import is_debug_enabled
+    if is_debug_enabled("ALPHA"):
+        print("\n[DEBUG] Example output:")
     print(signals)

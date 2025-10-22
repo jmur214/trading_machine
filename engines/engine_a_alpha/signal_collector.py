@@ -28,58 +28,82 @@ class SignalCollector:
     # --- introspection helpers --- #
     def _call_edge(self, edge_obj: object, data_map: Dict[str, pd.DataFrame], now: pd.Timestamp) -> Dict[str, float]:
         if self.debug:
-            print(f"[COLLECTOR][DEBUG] Attempting edge object: {edge_obj}")
+            from debug_config import is_debug_enabled
+            if is_debug_enabled("COLLECTOR"):
+                print(f"[COLLECTOR][DEBUG] Attempting edge object: {edge_obj}")
 
         # 1) function compute_signals(...)
         fn = getattr(edge_obj, "compute_signals", None)
         if callable(fn):
             if self.debug:
-                print(f"[COLLECTOR][DEBUG] Calling compute_signals() for {edge_obj}")
+                from debug_config import is_debug_enabled
+                if is_debug_enabled("COLLECTOR"):
+                    print(f"[COLLECTOR][DEBUG] Calling compute_signals() for {edge_obj}")
             result = fn(data_map, now)
             if self.debug:
-                print(f"[COLLECTOR][DEBUG] Result from compute_signals(): {result}")
+                from debug_config import is_debug_enabled
+                if is_debug_enabled("COLLECTOR"):
+                    print(f"[COLLECTOR][DEBUG] Result from compute_signals(): {result}")
             return dict(result or {})
 
         # 2) function generate_signals(...)
         gs = getattr(edge_obj, "generate_signals", None)
         if callable(gs):
             if self.debug:
-                print(f"[COLLECTOR][DEBUG] Calling generate_signals() for {edge_obj}")
+                from debug_config import is_debug_enabled
+                if is_debug_enabled("COLLECTOR"):
+                    print(f"[COLLECTOR][DEBUG] Calling generate_signals() for {edge_obj}")
             result = gs(data_map, now)
             if self.debug:
-                print(f"[COLLECTOR][DEBUG] Result from generate_signals(): {result}")
+                from debug_config import is_debug_enabled
+                if is_debug_enabled("COLLECTOR"):
+                    print(f"[COLLECTOR][DEBUG] Result from generate_signals(): {result}")
             return dict(result or {})
 
         # 3) function generate(...)
         gn = getattr(edge_obj, "generate", None)
         if callable(gn):
             if self.debug:
-                print(f"[COLLECTOR][DEBUG] Calling generate() for {edge_obj}")
+                from debug_config import is_debug_enabled
+                if is_debug_enabled("COLLECTOR"):
+                    print(f"[COLLECTOR][DEBUG] Calling generate() for {edge_obj}")
             result = gn(data_map, now)
             if self.debug:
-                print(f"[COLLECTOR][DEBUG] Result from generate(): {result}")
+                from debug_config import is_debug_enabled
+                if is_debug_enabled("COLLECTOR"):
+                    print(f"[COLLECTOR][DEBUG] Result from generate(): {result}")
             return dict(result or {})
 
         # 4) class Edge(...).compute_signals(...)
         if inspect.isclass(edge_obj):
             try:
                 if self.debug:
-                    print(f"[COLLECTOR][DEBUG] Instantiating edge class {edge_obj}")
+                    from debug_config import is_debug_enabled
+                    if is_debug_enabled("COLLECTOR"):
+                            print(f"[COLLECTOR][DEBUG] Instantiating edge class {edge_obj}")
                 inst = edge_obj()  # no-arg ctor
                 m = getattr(inst, "compute_signals", None)
                 if callable(m):
                     if self.debug:
-                        print(f"[COLLECTOR][DEBUG] Calling class.compute_signals() for {edge_obj}")
+                        from debug_config import is_debug_enabled
+                        if is_debug_enabled("COLLECTOR"):
+                            print(f"[COLLECTOR][DEBUG] Calling class.compute_signals() for {edge_obj}")
                     result = m(data_map, now)
                     if self.debug:
-                        print(f"[COLLECTOR][DEBUG] Result from class.compute_signals(): {result}")
+                        from debug_config import is_debug_enabled
+                        if is_debug_enabled("COLLECTOR"):
+                            print(f"[COLLECTOR][DEBUG] Result from class.compute_signals(): {result}")
                     return dict(result or {})
             except Exception as inst_err:
                 if self.debug:
-                    print(f"[COLLECTOR][DEBUG] Failed to instantiate edge class {edge_obj}: {inst_err}")
+                    from debug_config import is_debug_enabled
+                    if is_debug_enabled("COLLECTOR"):
+                        print(f"[COLLECTOR][DEBUG] Failed to instantiate edge class {edge_obj}: {inst_err}")
 
         if self.debug:
-            print(f"[COLLECTOR][DEBUG] Edge {edge_obj} not supported — no recognized function found.")
+            from debug_config import is_debug_enabled
+            if is_debug_enabled("COLLECTOR"):
+                print(f"[COLLECTOR][DEBUG] Edge {edge_obj} not supported — no recognized function found.")
         return {}
 
     # --- public --- #
@@ -92,18 +116,24 @@ class SignalCollector:
 
         for edge_name, edge_obj in self.edges.items():
             if self.debug:
-                print(f"[COLLECTOR][DEBUG] Executing edge: {edge_name}")
+                from debug_config import is_debug_enabled
+                if is_debug_enabled("COLLECTOR"):
+                    print(f"[COLLECTOR][DEBUG] Executing edge: {edge_name}")
 
             try:
                 m = self._call_edge(edge_obj, data_map, now)  # ticker->score
 
                 if not isinstance(m, dict):
                     if self.debug:
-                        print(f"[COLLECTOR][DEBUG] Edge {edge_name} returned non-dict: {type(m)}")
+                        from debug_config import is_debug_enabled
+                        if is_debug_enabled("COLLECTOR"):                
+                            print(f"[COLLECTOR][DEBUG] Edge {edge_name} returned non-dict: {type(m)}")
                     continue
 
                 if not m and self.debug:
-                    print(f"[COLLECTOR][DEBUG] Edge {edge_name} returned empty result")
+                    from debug_config import is_debug_enabled
+                    if is_debug_enabled("COLLECTOR"):
+                        print(f"[COLLECTOR][DEBUG] Edge {edge_name} returned empty result")
 
                 for tkr, val in m.items():
                     scores.setdefault(tkr, {})
@@ -111,11 +141,15 @@ class SignalCollector:
                         scores[tkr][edge_name] = float(val)
                     except Exception as conv_err:
                         if self.debug:
-                            print(f"[COLLECTOR][DEBUG] Edge {edge_name} bad value for {tkr}: {val} ({conv_err})")
+                            from debug_config import is_debug_enabled
+                            if is_debug_enabled("COLLECTOR"):                
+                                print(f"[COLLECTOR][DEBUG] Edge {edge_name} bad value for {tkr}: {val} ({conv_err})")
                         continue
 
             except Exception as e:
                 if self.debug:
-                    print(f"[COLLECTOR][DEBUG] Edge '{edge_name}' failed: {e}")
+                    from debug_config import is_debug_enabled
+                    if is_debug_enabled("COLLECTOR"):
+                        print(f"[COLLECTOR][DEBUG] Edge '{edge_name}' failed: {e}")
 
         return scores
