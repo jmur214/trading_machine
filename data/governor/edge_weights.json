@@ -1,7 +1,5 @@
 {
   "weights": {
-    "Unknown": 0.9553514240947624,
-    "momentum_trend": 0.27420624492365625,
-    "test_edge": 0.21898231881231667
+    "test_edge": 1.0
   }
 }

@@ -1,0 +1,497 @@
+# trading_machine_system_overview.txt
+
+## PART A: CONCISE DEVELOPER DOCUMENTATION
+
+### 1. Purpose
+
+Trading Machine is a modular Python quantitative trading framework that integrates research, backtesting, analytics, and paper/live execution.
+It emphasizes reproducibility, adaptive learning (via a governor), and seamless transitions between backtest and paper/live trading.
+
+The system is composed of distinct engines, each with a clearly defined interface.
+
+---
+
+### 2. High-Level Flow
+
+DataManager
+    ↓
+AlphaEngine (Signal Generation)
+    ↓
+RiskEngine (Sizing & Constraints)
+    ↓
+ExecutionSimulator (Fills)
+    ↓
+PortfolioEngine (Accounting)
+    ↓
+CockpitLogger (Persistence)
+    ↓
+PerformanceMetrics & EdgeFeedback
+    ↓
+StrategyGovernor (Adaptive Weighting)
+    ↓
+AlphaEngine (weight feedback loop)
+
+Modes: Backtest → Paper → (future) Live
+All share the same internal logic; only data and execution adapters differ.
+
+---
+
+### 3. Core Engines — Interface Contracts
+
+#### Engine A: AlphaEngine
+Purpose: Generate trading signals from historical or live data.
+
+Inputs
+  - slice_map: {ticker: DataFrame} containing history up to t
+  - timestamp: current time t
+  - Optional governor weights and configurations
+
+Outputs
+  - List of signal dicts:
+    {"ticker": "AAPL", "side": "long", "strength": 0.8, "meta": {...}}
+
+Responsibilities
+  - Load and execute edges dynamically
+  - Normalize and filter signals
+  - Apply governor weights if available
+  - Manage flip cooldowns and signal hygiene
+
+---
+
+#### Engine B: RiskEngine
+Purpose: Convert Alpha signals into executable orders under risk constraints.
+
+Inputs
+  - signal: dict from AlphaEngine
+  - equity: float (total portfolio equity)
+  - df_hist: historical price DataFrame
+  - current_qty: existing position size
+  - Optional target weights
+
+Outputs
+  - Order dict:
+    {"ticker": "AAPL", "side": "long", "qty": 10, "stop": 155.0, "take_profit": 165.0}
+
+Responsibilities
+  - Apply per-trade and portfolio-level limits
+  - ATR-based sizing
+  - Cooldown and duplication filters
+  - Generate exits and reversals as needed
+
+---
+
+#### ExecutionSimulator
+Purpose: Realistically simulate fills and stop/target hits.
+
+Inputs
+  - Order dict or position object
+  - Next-bar OHLC(+PrevClose) data
+
+Outputs
+  - Fill dict (for PortfolioEngine)
+    {"ticker": "AAPL", "side": "long", "qty": 10, "price": 172.55, "commission": 0.0}
+
+Responsibilities
+  - Execute orders at next-bar Open (Close fallback)
+  - Apply slippage (bps) and commission
+  - Evaluate stop-loss/take-profit intrabar
+  - Conservative tie-break: stop triggers before target
+
+---
+
+#### Engine C: PortfolioEngine
+Purpose: Maintain full accounting of equity, positions, and cash.
+
+Inputs
+  - Fill dict from ExecutionSimulator
+  - Price map for snapshotting
+
+Outputs
+  - Portfolio snapshot dict
+    {"timestamp": t, "cash": ..., "equity": ..., "positions": n}
+
+Responsibilities
+  - Apply fills (entries, exits, reversals)
+  - Track realized/unrealized PnL
+  - Support snapshotting and policy-driven target weights
+  - Report metrics to CockpitLogger
+
+---
+
+#### CockpitLogger
+Purpose: Persistent structured logging for trades and portfolio state.
+
+Inputs
+  - Trade and snapshot dicts
+  - Optional portfolio reference
+
+Outputs
+  - data/trade_logs/trades.csv
+  - data/trade_logs/portfolio_snapshots.csv
+
+Responsibilities
+  - Schema healing (auto-add columns if missing)
+  - Buffered background flushing
+  - Optional immediate flush on each fill
+  - Realized PnL estimation for exits
+
+---
+
+#### PerformanceMetrics
+Purpose: Compute post-trade performance statistics.
+
+Inputs
+  - Trades CSV, Snapshots CSV
+
+Outputs
+  - Dict of summary metrics:
+    { "Sharpe Ratio": 1.23, "Max Drawdown (%)": -12.5, ... }
+
+Responsibilities
+  - Clean and sanitize data
+  - Compute returns, volatility, Sharpe, MDD, CAGR, Win Rate
+  - Handle missing or zero PnL data
+
+---
+
+#### StrategyGovernor
+Purpose: Adaptively adjust edge weights based on historical performance.
+
+Inputs
+  - Edge metrics from trades and snapshots
+
+Outputs
+  - data/governor/edge_weights.json
+  - data/governor/edge_metrics.json
+
+Responsibilities
+  - Evaluate Sharpe, MDD, and trade count per edge
+  - Apply correlation penalties and smoothing
+  - Update weights for AlphaEngine feedback
+
+---
+
+#### DataManager
+Purpose: Unified data interface for fetching, caching, and normalizing price data.
+
+Inputs
+  - Ticker list, timeframe, start/end, API credentials
+
+Outputs
+  - Dict[str, pd.DataFrame] (each with OHLCV, ATR, PrevClose)
+
+Responsibilities
+  - Load from Alpaca (or local cache)
+  - Normalize structure and index
+  - Compute derived indicators (ATR)
+  - Save cached parquet/CSV
+
+---
+
+### 4. Mode Layers
+
+| Mode | Data Source | Execution | Logging | Status |
+|------|--------------|------------|----------|---------|
+| Backtest | Local historical data | ExecutionSimulator | CockpitLogger | Stable |
+| Paper | Live Alpaca Paper API | AlpacaExecutionAdapter | CockpitLogger | In progress |
+| Live | Alpaca Live API | AlpacaExecutionAdapter | CockpitLogger | Disabled placeholder |
+
+---
+
+### 5. Data & File Conventions
+
+| File | Description |
+|-------|--------------|
+| data/trade_logs/trades.csv | All fills, edges, realized PnL |
+| data/trade_logs/portfolio_snapshots.csv | Time-series of equity & exposure |
+| data/governor/edge_weights.json | Current adaptive edge weights |
+| data/governor/edge_metrics.json | Last computed metrics per edge |
+| data/research/edge_results.parquet | Parameter sweep outputs |
+
+---
+
+### 6. System Strengths
+- Modular and decoupled architecture.
+- Conservative execution simulation avoids lookahead bias.
+- Adaptive research loop (Alpha ↔ Governor).
+- Schema-stable CSV interfaces.
+- Unified data normalization pipeline.
+
+---
+
+### 7. Known Imperfections
+- Logger ordering can zero-out exit PnL.
+- RiskEngine debug toggle mismatch.
+- Duplicate FIFO implementations in dashboard/metrics.
+- Paper Mode only partially implemented.
+- Minor cosmetic redundancies (duplicate imports, print lines).
+
+---
+
+## PART B: DESIGN PHILOSOPHY & SYSTEM DESCRIPTION
+
+Trading Machine is designed to function as both a laboratory and a production system for systematic trading.
+Its philosophy is rooted in modularity, transparency, and repeatability.
+
+Each component—data, signal generation, risk, execution, and portfolio accounting—operates as an independent, testable layer.
+They communicate via standardized dictionaries and lightweight dataframes, making the system easy to extend, test, or replace in parts.
+
+At its core, the system reflects a human-equivalent process loop:
+
+1. Observe the market (DataManager).
+2. Form hypotheses (AlphaEngine, via edges).
+3. Size and risk those ideas (RiskEngine).
+4. Execute realistically (ExecutionSimulator).
+5. Track and learn from outcomes (PortfolioEngine → Logger → Metrics → Governor).
+6. Adapt future decisions based on observed performance (Governor feedback).
+
+Backtesting, paper trading, and live trading all share this logic.
+Only the data and execution adapters change—the mental model and sequencing remain constant.
+This deliberate symmetry ensures that results from research can translate to production without rewriting the system.
+
+The Cockpit (dashboard) closes the human feedback loop.
+It allows visual inspection of the trading system’s state—performance curves, trade histories, and edge-level analytics—mirroring what a quant team dashboard might display internally.
+
+Internally, all computations prioritize robustness over speed:
+- Vectorized equity computation with cached prices reduces redundant lookups.
+- Periodic garbage collection prevents leaks during long backtests.
+- Timeouts guard against blocking I/O when flushing logs.
+
+The architecture is open-ended.
+Edges can be written as simple Python modules.
+Risk management can evolve toward probabilistic sizing or reinforcement learning.
+Paper trading can transition to real execution by substituting one adapter.
+Nothing in the framework is hard-coded to one strategy or market.
+
+In short, Trading Machine is not a single strategy—it’s a framework for developing, testing, and deploying many evolving edges under one adaptive governance system.
+
+This document captures the state of that framework as of now—not as a final product, but as a clear snapshot in its evolution.
+Every file, engine, and layer may change—but the design principle remains constant:
+clarity, adaptability, and research continuity between simulation and execution.
+
+CORE STATEMENT
+The Trading Machine is designed to be an adaptive, intelligent, and research-driven trading ecosystem that unifies strategy development, backtesting, analysis, and live execution under one cohesive architecture. At its core, it’s meant to simulate the workflow of a professional quantitative research desk—capable of generating trading edges, testing them historically with high fidelity, analyzing performance across time and market conditions, and then seamlessly transitioning those same strategies into live or paper trading environments using Alpaca’s APIs. The ultimate vision is a self-evolving trading engine that not only trades but also learns from its performance, refines its models, and provides transparent insights into its own decision-making process. The system is composed of several layers that mirror a modular, research-to-execution pipeline: the engine layer (various engines for alpha generation, signal combination, risk, and portfolio governance), the backtester (to simulate and validate performance and produce trade logs and equity snapshots), the analytics layer (which interprets historical and real-time performance data, calculates advanced metrics, and adjusts strategy weights through the governor), and the cockpit dashboard (a live interactive interface for visualizing everything—performance curves, PnL attribution, drawdowns, edges, risk metrics, and market context). The Trading Machine is not just meant to test strategies, but to function as a continuously learning ecosystem: each run contributes new data to the “research memory” via edge feedback loops, where the system re-evaluates and recalibrates the weights of different strategies (edges) based on historical success, volatility, and correlation. It’s intended to evolve into a self-diagnosing, explainable AI trading partner—one that can autonomously recommend portfolio adjustments, visualize its own logic through the dashboard, and connect seamlessly with both paper and live trading environments. The long-term goal is a full-spectrum, self-updating trading lab that merges algorithmic precision with human-level transparency: backtesting and live execution connected by a single codebase, real-time performance metrics displayed on a modern dashboard, automated edge evaluation through the governor and analytics layers, and integration with external data intelligence (like news sentiment and macro signals) for true context-aware trading. It’s designed not as a single strategy, but as a platform for evolving ones—a living system that can adapt, monitor, and optimize itself across markets, with a focus on reliability, interpretability, and automation.
+
+OTHER BEHAVIOR
+Personality Definition: Jackson Murphy’s Development Partner
+
+You are working directly with Jackson Murphy on his Trading Machine project — a modular Python-based quantitative trading system.
+You are expected to act as an active developer and collaborator, not a passive assistant.
+
+Core Behavioral Traits
+	•	Action-oriented: Execute tasks and implement code without waiting for unnecessary confirmations. When Jackson gives a directive, assume approval and move directly to completion.
+	•	Precision-driven: Prioritize correctness, structure, and stability in every patch. Write clean, production-ready, PEP8-compliant Python.
+	•	Minimal commentary: Avoid long explanations, summaries, or justifications. Provide concise reasoning only when it adds technical value.
+	•	Autonomous executor: If a patch fails or needs retrying, handle it automatically — don’t re-ask unless new file access is required.
+	•	Incremental patching: When editing large files, apply smaller, sequential patches to ensure stability and traceability.
+	•	Direct file work: Perform edits directly using the file tools rather than showing raw code, unless explicitly asked to output it.
+	•	Non-destructive editing: Never remove working systems. Build new versions or modules alongside existing ones unless told otherwise.
+	•	Formatting discipline: Present long outputs in unified, copy-friendly code blocks when appropriate. No emojis, casual tone, or fluff.
+	•	Focus on results: Your responses should move the project forward — create, fix, or improve. Prefer execution over explanation.
+	•	Professional demeanor: Communicate like a senior developer—calm, clear, and efficient.
+
+Workflow Expectations
+	•	If you need file access, clearly state which specific files you require and why. Once access is granted, apply the patch immediately.
+	•	When generating large codebases or modules, produce them fully, not in fragments.
+	•	Analyze complex files before editing if necessary — accuracy is more important than speed.
+	•	Always think within the context of the Trading Machine system — understand how components interact (Dashboard, Governor, Analytics, Backtester).
+
+Objective
+
+Be a hands-on development partner — proactive, reliable, and capable of independently executing Jackson’s vision without redundant approval cycles or unnecessary commentary.
+
+Man page of sorts
+───────────────────────────────────────────────────────────────
+TRADING_MACHINE — COMMAND LINE REFERENCE
+───────────────────────────────────────────────────────────────
+
+This document lists all supported Python module entry points,
+their purpose, arguments, and example invocations.
+
+───────────────────────────────────────────────────────────────
+1. DATA FETCHING
+───────────────────────────────────────────────────────────────
+Module:  scripts.fetch_data
+Purpose: Fetch historical market data (via Alpaca API) and
+          store normalized OHLCV bars under data/raw/.
+
+Usage:
+  python -m scripts.fetch_data --tickers <SYMBOLS...>
+                               --start <YYYY-MM-DD>
+                               --end <YYYY-MM-DD>
+                               --timeframe <1d|1h|15m|5m|1m>
+
+Options:
+  --tickers       One or more tickers (e.g. AAPL MSFT SPY)
+  --start         Start date (inclusive)
+  --end           End date (exclusive)
+  --timeframe     Bar timeframe (default: 1d)
+
+Environment:
+  Requires Alpaca keys in .env
+    APCA_API_KEY_ID
+    APCA_API_SECRET_KEY
+    ALPACA_DATA_URL (optional override)
+
+Example:
+  python -m scripts.fetch_data --tickers AAPL MSFT SPY \
+    --start 2022-01-01 --end 2024-12-31 --timeframe 1d
+
+───────────────────────────────────────────────────────────────
+2. BACKTESTING ENGINE
+───────────────────────────────────────────────────────────────
+Module:  scripts.run_backtest
+Purpose: Run a full backtest using configured edges,
+          risk settings, and data.
+
+Usage:
+  python -m scripts.run_backtest
+
+Notes:
+  • Reads config/backtest_settings.json
+    and config/risk_settings.json
+  • Uses data/raw/*.csv for source prices
+  • Writes results to:
+      data/trade_logs/trades.csv
+      data/trade_logs/portfolio_snapshots.csv
+  • Updates governor weights after run
+
+Example:
+  python -m scripts.run_backtest
+
+───────────────────────────────────────────────────────────────
+3. EDGE HARNESS (GRID / PARAM TESTING)
+───────────────────────────────────────────────────────────────
+Module:  research.edge_harness
+Purpose: Run parameter sweeps and walk-forward tests for
+          individual edges.
+
+Usage:
+  python -m research.edge_harness --edge <EDGE_NAME>
+                                  --param-grid <GRID_PATH>
+                                  --walk-forward <WF_PATH>
+                                  --backtest-config <CONFIG_PATH>
+                                  --risk-config <RISK_PATH>
+
+Options:
+  --edge             Name of edge to evaluate (e.g. xsec_momentum)
+  --param-grid       Path to parameter grid JSON
+  --walk-forward     Path to walk-forward config JSON
+  --backtest-config  Path to backtest settings
+  --risk-config      Path to risk settings
+
+Outputs:
+  data/research/<edge_name>_YYYYMMDD_HHMMSS/
+  data/research/edge_results.json
+  data/research/edge_results.parquet
+
+Example:
+  python -m research.edge_harness \
+    --edge xsec_momentum \
+    --param-grid config/grids/xsec_momentum.json \
+    --walk-forward config/wf/default.json \
+    --backtest-config config/backtest_settings.json \
+    --risk-config config/risk_settings.json
+
+───────────────────────────────────────────────────────────────
+4. EDGE FEEDBACK / GOVERNOR
+───────────────────────────────────────────────────────────────
+Module:  analytics.edge_feedback
+Purpose: Aggregate edge results, update weights, and merge
+          evaluator recommendations (research feedback).
+
+Usage:
+  python -m analytics.edge_feedback [--history]
+
+Options:
+  --history   Show historical weight update log and metrics.
+
+Input Files:
+  data/trade_logs/trades.csv
+  data/governor/edge_metrics.json
+  data/research/edge_recommendations.json (optional)
+
+Output Files:
+  data/governor/edge_weights.json
+  data/governor/edge_feedback_history.json
+
+Example:
+  python -m analytics.edge_feedback
+  python -m analytics.edge_feedback --history
+
+───────────────────────────────────────────────────────────────
+5. COCKPIT DASHBOARD (VISUAL INTERFACE)
+───────────────────────────────────────────────────────────────
+Module:  cockpit.dashboard
+Purpose: Launch the interactive Dash/Plotly web dashboard for
+          monitoring backtests, paper trading, and analytics.
+
+Usage:
+  python -m cockpit.dashboard [--live]
+                              [--snapshots <PATH>]
+                              [--trades <PATH>]
+
+Options:
+  --live          Enable periodic auto-refresh (Paper Mode)
+  --snapshots     Path to portfolio_snapshots.csv
+  --trades        Path to trades.csv
+
+Modes:
+  • Backtest  (default) — loads static backtest results.
+  • Paper     — auto-refreshes from data/trade_logs/paper/.
+  • Live      — placeholder only (real trading not enabled).
+
+Example:
+  python -m cockpit.dashboard
+  python -m cockpit.dashboard --live
+  python -m cockpit.dashboard \
+     --snapshots data/trade_logs/backtest/portfolio_snapshots.csv \
+     --trades data/trade_logs/backtest/trades.csv
+
+───────────────────────────────────────────────────────────────
+6. GOVERNOR (STRATEGY WEIGHT CONTROL)
+───────────────────────────────────────────────────────────────
+Module:  engines.engine_d_research.governor
+Purpose: Manage and update edge weights based on metrics,
+          feedback, and new evaluations.
+
+Usage:
+  python -m engines.engine_d_research.governor [--update]
+                                               [--summary]
+
+Options:
+  --update     Trigger a weight recalculation and save.
+  --summary    Print current governor state to stdout.
+
+Outputs:
+  data/governor/edge_weights.json
+  data/governor/edge_metrics.json
+
+Example:
+  python -m engines.engine_d_research.governor --update
+
+───────────────────────────────────────────────────────────────
+7. MISCELLANEOUS UTILITIES
+───────────────────────────────────────────────────────────────
+• Data inspection:
+    python -m pandas -- data/trade_logs/trades.csv
+
+• Log viewing:
+    tail -f data/logs/latest.log
+    grep ALPHA data/logs/latest.log | tail
+
+• Clean research results:
+    rm -rf data/research/*
+
+───────────────────────────────────────────────────────────────
+ENVIRONMENT VARIABLES (required for Alpaca & logging)
+───────────────────────────────────────────────────────────────
+APCA_API_KEY_ID        = your_alpaca_key
+APCA_API_SECRET_KEY    = your_alpaca_secret
+ALPACA_BASE_URL        = https://paper-api.alpaca.markets
+ALPACA_DATA_URL        = https://data.alpaca.markets
+PYTHONPATH             = . (project root)
+
+───────────────────────────────────────────────────────────────
+END OF DOCUMENT
+───────────────────────────────────────────────────────────────

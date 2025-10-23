@@ -505,4 +505,40 @@ class BacktestController:
             print(f"[DEBUG] Backtest complete. Total bars processed: {total_bars}, Elapsed time: {elapsed:.2f} seconds.")
             print(f"[DEBUG] Total snapshots logged: {len(self.portfolio.history)}")
 
+        # --- Feedback loop: update edge weights from latest trades (safe call) ---
+        try:
+            from analytics.edge_feedback import update_edge_weights_from_latest_trades
+            update_edge_weights_from_latest_trades()
+        except Exception as e:
+            if is_info_enabled("BACKTEST_CONTROLLER"):
+                print(f"[BACKTEST_CONTROLLER][WARN] Could not run edge feedback: {e}")
+
+        # --- NEW: Export performance summary to JSON for research feedback loop ---
+        try:
+            from cockpit.metrics import PerformanceMetrics
+            import json
+            import os
+            # Attempt to locate trade logs and snapshots
+            root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+            snapshots_path = os.path.join(root, "data", "trade_logs", "portfolio_snapshots.csv")
+            trades_path = os.path.join(root, "data", "trade_logs", "trades.csv")
+            if os.path.exists(snapshots_path) and os.path.exists(trades_path):
+                metrics = PerformanceMetrics(
+                    snapshots_path=snapshots_path,
+                    trades_path=trades_path,
+                )
+                if hasattr(metrics, "summary"):
+                    stats = metrics.summary()
+                elif hasattr(metrics, "summary_dict"):
+                    stats = metrics.summary_dict
+                else:
+                    stats = {}
+                perf_path = os.path.join(root, "data", "research", "performance_summary.json")
+                os.makedirs(os.path.dirname(perf_path), exist_ok=True)
+                with open(perf_path, "w") as f:
+                    json.dump(stats, f, indent=2)
+        except Exception as e:
+            # Non-fatal; just skip
+            pass
+
         return self.portfolio.history

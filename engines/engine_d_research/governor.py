@@ -7,6 +7,9 @@ from typing import Dict, Optional, Tuple
 
 import numpy as np
 import pandas as pd
+import logging
+
+log = logging.getLogger("governor")
 
 
 # ----------------------------- Config ----------------------------- #
@@ -66,6 +69,35 @@ class StrategyGovernor:
     >>> live_weights = gov.get_edge_weights()
     >>> gov.save_weights()  # optional
     """
+
+    def _normalize(self, w: Dict[str, float]) -> Dict[str, float]:
+        """Soft normalize weights so their sum does not exceed 1.0."""
+        try:
+            total = float(sum(max(0.0, float(v)) for v in w.values()))
+        except Exception:
+            return dict(w)
+        if total > 1.0 and total > 0:
+            return {k: (max(0.0, float(v)) / total) for k, v in w.items()}
+        # also clamp to [0,1]
+        return {k: float(np.clip(v, 0.0, 1.0)) for k, v in w.items()}
+
+    def normalize_weights(self) -> None:
+        """
+        Safeguard: Ensure internal weights sum to 1.0 (clamped in [0,1]).
+        Call after any weight update to enforce proper normalization.
+        """
+        self._weights = self._normalize(self._weights)
+
+    def _save_metrics(self, metrics: Dict[str, dict]) -> None:
+        """Persist per-edge diagnostics next to weights, for dashboards/analytics."""
+        try:
+            metrics_path = self.state_path.parent / "edge_metrics.json"
+            metrics_path.parent.mkdir(parents=True, exist_ok=True)
+            with metrics_path.open("w") as f:
+                json.dump({"metrics": metrics}, f, indent=2)
+        except Exception as e:
+            # Non-fatal
+            log.debug(f"[Governor] Failed to save edge metrics: {e}")
 
     def __init__(self,
                  config_path: str | Path = "config/governor_settings.json",
@@ -135,6 +167,7 @@ class StrategyGovernor:
             strat_daily_ret = eq_daily.pct_change().dropna()
 
         weights_new: Dict[str, float] = {}
+        edge_metrics: Dict[str, dict] = {}
         for edge, sub in daily_edge.groupby("edge", dropna=False):
             edge_name = "Unknown" if pd.isna(edge) else str(edge)
             sub = sub.sort_values("date")
@@ -183,6 +216,14 @@ class StrategyGovernor:
                         if np.isfinite(c) and c < 0:
                             corr_penalty = min(0.25, abs(c))  # up to 25% penalty for strong negative corr
 
+            # collect diagnostics for this edge
+            edge_metrics[edge_name] = {
+                "trade_count": int(trade_count),
+                "sr": float(sr),
+                "mdd": float(mdd),
+                "corr_penalty": float(corr_penalty),
+            }
+
             # soft map SR→weight in [floor, 1]
             if sr <= self.cfg.disable_sr_threshold or mdd <= self.cfg.disable_mdd_threshold:
                 proposed = 0.0
@@ -206,8 +247,20 @@ class StrategyGovernor:
 
             weights_new[edge_name] = float(np.clip(proposed, 0.0, self.cfg.max_weight))
 
-        # EMA smoothing vs previous weights
-        self._weights = self._ema_merge(self._weights, weights_new, halflife_days=self.cfg.ema_halflife_days)
+        # EMA smoothing vs previous weights, then soft normalization
+        merged = self._ema_merge(self._weights, weights_new, halflife_days=self.cfg.ema_halflife_days)
+        self._weights = self._normalize(merged)
+        self.normalize_weights()
+
+        # persist diagnostics and log
+        try:
+            self._save_metrics(edge_metrics)
+        except Exception:
+            pass
+        try:
+            log.info(f"[Governor] Updated weights: {self._weights}")
+        except Exception:
+            pass
 
     def get_edge_weights(self) -> Dict[str, float]:
         """Return the current smoothed weights for edges."""
@@ -219,6 +272,28 @@ class StrategyGovernor:
         self.state_path.parent.mkdir(parents=True, exist_ok=True)
         with self.state_path.open("w") as f:
             json.dump(out, f, indent=2)
+
+    def merge_evaluator_recommendations(self, rec_path: str | Path = "data/research/edge_recommendations.json") -> None:
+        """
+        Optionally blend in evaluator-produced edge weights (e.g., from research runs).
+        The file format is expected to be a JSON with a top-level key `recommended_weights` mapping
+        edge name -> weight in [0,1]. Missing file is a no-op.
+        """
+        p = Path(rec_path)
+        if not p.exists():
+            return
+        try:
+            blob = json.loads(p.read_text())
+            recs = blob.get("recommended_weights", {})
+            # ensure numeric floats and sensible range
+            recs = {str(k): float(np.clip(v, 0.0, 1.0)) for k, v in recs.items()}
+            merged = self._ema_merge(self._weights, recs, halflife_days=self.cfg.ema_halflife_days)
+            self._weights = self._normalize(merged)
+            self.normalize_weights()
+            self.save_weights()
+            log.info(f"[Governor] Merged evaluator recommendations from {p} -> {self._weights}")
+        except Exception as e:
+            log.debug(f"[Governor] Failed to merge evaluator recommendations: {e}")
 
     # ----------------- private helpers ----------------- #
 

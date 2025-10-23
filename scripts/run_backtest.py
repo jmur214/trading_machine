@@ -122,6 +122,28 @@ def main():
     for k, v in stats.items():
         print(f"{k}: {v}")
 
+    # --- NEW: Export performance summary to JSON for research feedback loop ---
+    try:
+        import json
+        from datetime import datetime
+        perf_path = root / "data" / "research" / "performance_summary.json"
+        perf_path.parent.mkdir(parents=True, exist_ok=True)
+        # Add timestamp before writing stats
+        stats["timestamp"] = datetime.utcnow().isoformat() + "Z"
+        with open(perf_path, "w") as f:
+            json.dump(stats, f, indent=2)
+        print(f"[PERF] Performance summary exported to {perf_path}")
+    except Exception as e:
+        print(f"[PERF][WARN] Could not export performance summary: {e}")
+
+    # --- NEW: Automatic feedback update and saving using governor ---
+    try:
+        governor.update_from_trades(metrics.trades, metrics.snapshots)
+        governor.save_weights()
+        print("[GOVERNOR] Feedback: Edge weights updated and saved after performance summary.")
+    except Exception as e:
+        print(f"[GOVERNOR][WARN] Could not update governor in feedback: {e}")
+
 
 if __name__ == "__main__":
     sys.exit(main())

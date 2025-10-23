@@ -41,3 +41,93 @@ timestamp,ticker,side,qty,fill_price,commission,pnl,edge,edge_group,trigger,meta
 2022-02-17,AAPL,exit,149,170.74908,0.0,25441.61,test_edge,,,
 2022-03-21,MSFT,exit,71,298.646055,0.0,21203.87,test_edge,,,
 2022-03-22,SPY,exit,68,445.554,0.0,30297.67,test_edge,,,
+2022-02-15,AAPL,short,149,170.70911999999998,0.0,,test_edge,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 1000.0, 'stop_dist': 6.699642857142855, 'atr': 4.46642857142857, 'raw_qty': 149.26168772322623, 'max_value': 30000.0, 'max_qty_by_value': 177.57783828578195, 'target_qty': 149.0}"
+2022-02-15,MSFT,short,71,299.73996,0.0,,test_edge,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 1000.0, 'stop_dist': 14.041607142857169, 'atr': 9.361071428571446, 'raw_qty': 71.21691910521015, 'max_value': 30000.0, 'max_qty_by_value': 101.73284953711554, 'target_qty': 71.0}"
+2022-02-15,SPY,short,68,443.37618,0.0,,test_edge,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 1000.0, 'stop_dist': 14.1375, 'atr': 9.424999999999999, 'raw_qty': 70.73386383731211, 'max_value': 30000.0, 'max_qty_by_value': 68.3542573309941, 'target_qty': 68.0}"
+2022-02-17,AAPL,exit,149,170.74908,0.0,25441.61,test_edge,,,
+2022-03-21,MSFT,exit,71,298.646055,0.0,21203.87,test_edge,,,
+2022-03-22,SPY,exit,68,445.554,0.0,30297.67,test_edge,,,
+2022-02-15,AAPL,short,149,170.70911999999998,0.0,,test_edge,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 1000.0, 'stop_dist': 6.699642857142855, 'atr': 4.46642857142857, 'raw_qty': 149.26168772322623, 'max_value': 30000.0, 'max_qty_by_value': 177.57783828578195, 'target_qty': 149.0}"
+2022-02-15,MSFT,short,71,299.73996,0.0,,test_edge,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 1000.0, 'stop_dist': 14.041607142857169, 'atr': 9.361071428571446, 'raw_qty': 71.21691910521015, 'max_value': 30000.0, 'max_qty_by_value': 101.73284953711554, 'target_qty': 71.0}"
+2022-02-15,SPY,short,68,443.37618,0.0,,test_edge,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 1000.0, 'stop_dist': 14.1375, 'atr': 9.424999999999999, 'raw_qty': 70.73386383731211, 'max_value': 30000.0, 'max_qty_by_value': 68.3542573309941, 'target_qty': 68.0}"
+2022-02-17,AAPL,exit,149,170.74908,0.0,25441.61,test_edge,,,
+2022-03-21,MSFT,exit,71,298.646055,0.0,21203.87,test_edge,,,
+2022-03-22,SPY,exit,68,445.554,0.0,30297.67,test_edge,,,
+2022-02-15,AAPL,short,149,170.70911999999998,0.0,,test_edge,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 1000.0, 'stop_dist': 6.699642857142855, 'atr': 4.46642857142857, 'raw_qty': 149.26168772322623, 'max_value': 30000.0, 'max_qty_by_value': 177.57783828578195, 'target_qty': 149.0}"
+2022-02-15,MSFT,short,71,299.73996,0.0,,test_edge,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 1000.0, 'stop_dist': 14.041607142857169, 'atr': 9.361071428571446, 'raw_qty': 71.21691910521015, 'max_value': 30000.0, 'max_qty_by_value': 101.73284953711554, 'target_qty': 71.0}"
+2022-02-15,SPY,short,68,443.37618,0.0,,test_edge,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 1000.0, 'stop_dist': 14.1375, 'atr': 9.424999999999999, 'raw_qty': 70.73386383731211, 'max_value': 30000.0, 'max_qty_by_value': 68.3542573309941, 'target_qty': 68.0}"
+2022-02-17,AAPL,exit,149,170.74908,0.0,25441.61,test_edge,,,
+2022-03-21,MSFT,exit,71,298.646055,0.0,21203.87,test_edge,,,
+2022-03-22,SPY,exit,68,445.554,0.0,30297.67,test_edge,,,
+2022-02-15,AAPL,short,149,170.70911999999998,0.0,,test_edge,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 1000.0, 'stop_dist': 6.699642857142855, 'atr': 4.46642857142857, 'raw_qty': 149.26168772322623, 'max_value': 30000.0, 'max_qty_by_value': 177.57783828578195, 'target_qty': 149.0}"
+2022-02-15,MSFT,short,71,299.73996,0.0,,test_edge,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 1000.0, 'stop_dist': 14.041607142857169, 'atr': 9.361071428571446, 'raw_qty': 71.21691910521015, 'max_value': 30000.0, 'max_qty_by_value': 101.73284953711554, 'target_qty': 71.0}"
+2022-02-15,SPY,short,68,443.37618,0.0,,test_edge,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 1000.0, 'stop_dist': 14.1375, 'atr': 9.424999999999999, 'raw_qty': 70.73386383731211, 'max_value': 30000.0, 'max_qty_by_value': 68.3542573309941, 'target_qty': 68.0}"
+2022-02-17,AAPL,exit,149,170.74908,0.0,25441.61,test_edge,,,
+2022-03-21,MSFT,exit,71,298.646055,0.0,21203.87,test_edge,,,
+2022-03-22,SPY,exit,68,445.554,0.0,30297.67,test_edge,,,
+2022-02-15,AAPL,short,149,170.70911999999998,0.0,,test_edge,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 1000.0, 'stop_dist': 6.699642857142855, 'atr': 4.46642857142857, 'raw_qty': 149.26168772322623, 'max_value': 30000.0, 'max_qty_by_value': 177.57783828578195, 'target_qty': 149.0}"
+2022-02-15,MSFT,short,71,299.73996,0.0,,test_edge,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 1000.0, 'stop_dist': 14.041607142857169, 'atr': 9.361071428571446, 'raw_qty': 71.21691910521015, 'max_value': 30000.0, 'max_qty_by_value': 101.73284953711554, 'target_qty': 71.0}"
+2022-02-15,SPY,short,68,443.37618,0.0,,test_edge,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 1000.0, 'stop_dist': 14.1375, 'atr': 9.424999999999999, 'raw_qty': 70.73386383731211, 'max_value': 30000.0, 'max_qty_by_value': 68.3542573309941, 'target_qty': 68.0}"
+2022-02-17,AAPL,exit,149,170.74908,0.0,25441.61,test_edge,,,
+2022-03-21,MSFT,exit,71,298.646055,0.0,21203.87,test_edge,,,
+2022-03-22,SPY,exit,68,445.554,0.0,30297.67,test_edge,,,
+2022-02-15,AAPL,short,149,170.70911999999998,0.0,,test_edge,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 1000.0, 'stop_dist': 6.699642857142855, 'atr': 4.46642857142857, 'raw_qty': 149.26168772322623, 'max_value': 30000.0, 'max_qty_by_value': 177.57783828578195, 'target_qty': 149.0}"
+2022-02-15,MSFT,short,71,299.73996,0.0,,test_edge,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 1000.0, 'stop_dist': 14.041607142857169, 'atr': 9.361071428571446, 'raw_qty': 71.21691910521015, 'max_value': 30000.0, 'max_qty_by_value': 101.73284953711554, 'target_qty': 71.0}"
+2022-02-15,SPY,short,68,443.37618,0.0,,test_edge,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 1000.0, 'stop_dist': 14.1375, 'atr': 9.424999999999999, 'raw_qty': 70.73386383731211, 'max_value': 30000.0, 'max_qty_by_value': 68.3542573309941, 'target_qty': 68.0}"
+2022-02-17,AAPL,exit,149,170.74908,0.0,25441.61,test_edge,,,
+2022-03-21,MSFT,exit,71,298.646055,0.0,21203.87,test_edge,,,
+2022-03-22,SPY,exit,68,445.554,0.0,30297.67,test_edge,,,
+2022-02-15,AAPL,short,149,170.70911999999998,0.0,,test_edge,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 1000.0, 'stop_dist': 6.699642857142855, 'atr': 4.46642857142857, 'raw_qty': 149.26168772322623, 'max_value': 30000.0, 'max_qty_by_value': 177.57783828578195, 'target_qty': 149.0}"
+2022-02-15,MSFT,short,71,299.73996,0.0,,test_edge,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 1000.0, 'stop_dist': 14.041607142857169, 'atr': 9.361071428571446, 'raw_qty': 71.21691910521015, 'max_value': 30000.0, 'max_qty_by_value': 101.73284953711554, 'target_qty': 71.0}"
+2022-02-15,SPY,short,68,443.37618,0.0,,test_edge,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 1000.0, 'stop_dist': 14.1375, 'atr': 9.424999999999999, 'raw_qty': 70.73386383731211, 'max_value': 30000.0, 'max_qty_by_value': 68.3542573309941, 'target_qty': 68.0}"
+2022-02-17,AAPL,exit,149,170.74908,0.0,25441.61,test_edge,,,
+2022-03-21,MSFT,exit,71,298.646055,0.0,21203.87,test_edge,,,
+2022-03-22,SPY,exit,68,445.554,0.0,30297.67,test_edge,,,
+2022-02-15,AAPL,short,149,170.70911999999998,0.0,,test_edge,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 1000.0, 'stop_dist': 6.699642857142855, 'atr': 4.46642857142857, 'raw_qty': 149.26168772322623, 'max_value': 30000.0, 'max_qty_by_value': 177.57783828578195, 'target_qty': 149.0}"
+2022-02-15,MSFT,short,71,299.73996,0.0,,test_edge,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 1000.0, 'stop_dist': 14.041607142857169, 'atr': 9.361071428571446, 'raw_qty': 71.21691910521015, 'max_value': 30000.0, 'max_qty_by_value': 101.73284953711554, 'target_qty': 71.0}"
+2022-02-15,SPY,short,68,443.37618,0.0,,test_edge,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 1000.0, 'stop_dist': 14.1375, 'atr': 9.424999999999999, 'raw_qty': 70.73386383731211, 'max_value': 30000.0, 'max_qty_by_value': 68.3542573309941, 'target_qty': 68.0}"
+2022-02-17,AAPL,exit,149,170.74908,0.0,25441.61,test_edge,,,
+2022-03-21,MSFT,exit,71,298.646055,0.0,21203.87,test_edge,,,
+2022-03-22,SPY,exit,68,445.554,0.0,30297.67,test_edge,,,
+2022-02-15,AAPL,short,149,170.70911999999998,0.0,,test_edge,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 1000.0, 'stop_dist': 6.699642857142855, 'atr': 4.46642857142857, 'raw_qty': 149.26168772322623, 'max_value': 30000.0, 'max_qty_by_value': 177.57783828578195, 'target_qty': 149.0}"
+2022-02-15,MSFT,short,71,299.73996,0.0,,test_edge,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 1000.0, 'stop_dist': 14.041607142857169, 'atr': 9.361071428571446, 'raw_qty': 71.21691910521015, 'max_value': 30000.0, 'max_qty_by_value': 101.73284953711554, 'target_qty': 71.0}"
+2022-02-15,SPY,short,68,443.37618,0.0,,test_edge,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 1000.0, 'stop_dist': 14.1375, 'atr': 9.424999999999999, 'raw_qty': 70.73386383731211, 'max_value': 30000.0, 'max_qty_by_value': 68.3542573309941, 'target_qty': 68.0}"
+2022-02-17,AAPL,exit,149,170.74908,0.0,25441.61,test_edge,,,
+2022-03-21,MSFT,exit,71,298.646055,0.0,21203.87,test_edge,,,
+2022-03-22,SPY,exit,68,445.554,0.0,30297.67,test_edge,,,
+2022-02-15,AAPL,short,149,170.70911999999998,0.0,,test_edge,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 1000.0, 'stop_dist': 6.699642857142855, 'atr': 4.46642857142857, 'raw_qty': 149.26168772322623, 'max_value': 30000.0, 'max_qty_by_value': 177.57783828578195, 'target_qty': 149.0}"
+2022-02-15,MSFT,short,71,299.73996,0.0,,test_edge,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 1000.0, 'stop_dist': 14.041607142857169, 'atr': 9.361071428571446, 'raw_qty': 71.21691910521015, 'max_value': 30000.0, 'max_qty_by_value': 101.73284953711554, 'target_qty': 71.0}"
+2022-02-15,SPY,short,68,443.37618,0.0,,test_edge,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 1000.0, 'stop_dist': 14.1375, 'atr': 9.424999999999999, 'raw_qty': 70.73386383731211, 'max_value': 30000.0, 'max_qty_by_value': 68.3542573309941, 'target_qty': 68.0}"
+2022-02-17,AAPL,exit,149,170.74908,0.0,25441.61,test_edge,,,
+2022-03-21,MSFT,exit,71,298.646055,0.0,21203.87,test_edge,,,
+2022-03-22,SPY,exit,68,445.554,0.0,30297.67,test_edge,,,
+2022-02-15,AAPL,short,149,170.70911999999998,0.0,,test_edge,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 1000.0, 'stop_dist': 6.699642857142855, 'atr': 4.46642857142857, 'raw_qty': 149.26168772322623, 'max_value': 30000.0, 'max_qty_by_value': 177.57783828578195, 'target_qty': 149.0}"
+2022-02-15,MSFT,short,71,299.73996,0.0,,test_edge,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 1000.0, 'stop_dist': 14.041607142857169, 'atr': 9.361071428571446, 'raw_qty': 71.21691910521015, 'max_value': 30000.0, 'max_qty_by_value': 101.73284953711554, 'target_qty': 71.0}"
+2022-02-15,SPY,short,68,443.37618,0.0,,test_edge,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 1000.0, 'stop_dist': 14.1375, 'atr': 9.424999999999999, 'raw_qty': 70.73386383731211, 'max_value': 30000.0, 'max_qty_by_value': 68.3542573309941, 'target_qty': 68.0}"
+2022-02-17,AAPL,exit,149,170.74908,0.0,25441.61,test_edge,,,
+2022-03-21,MSFT,exit,71,298.646055,0.0,21203.87,test_edge,,,
+2022-03-22,SPY,exit,68,445.554,0.0,30297.67,test_edge,,,
+2022-02-15,AAPL,short,149,170.70911999999998,0.0,,test_edge,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 1000.0, 'stop_dist': 6.699642857142855, 'atr': 4.46642857142857, 'raw_qty': 149.26168772322623, 'max_value': 30000.0, 'max_qty_by_value': 177.57783828578195, 'target_qty': 149.0}"
+2022-02-15,MSFT,short,71,299.73996,0.0,,test_edge,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 1000.0, 'stop_dist': 14.041607142857169, 'atr': 9.361071428571446, 'raw_qty': 71.21691910521015, 'max_value': 30000.0, 'max_qty_by_value': 101.73284953711554, 'target_qty': 71.0}"
+2022-02-15,SPY,short,68,443.37618,0.0,,test_edge,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 1000.0, 'stop_dist': 14.1375, 'atr': 9.424999999999999, 'raw_qty': 70.73386383731211, 'max_value': 30000.0, 'max_qty_by_value': 68.3542573309941, 'target_qty': 68.0}"
+2022-02-17,AAPL,exit,149,170.74908,0.0,25441.61,test_edge,,,
+2022-03-21,MSFT,exit,71,298.646055,0.0,21203.87,test_edge,,,
+2022-03-22,SPY,exit,68,445.554,0.0,30297.67,test_edge,,,
+2022-02-15,AAPL,short,149,170.70911999999998,0.0,,test_edge,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 1000.0, 'stop_dist': 6.699642857142855, 'atr': 4.46642857142857, 'raw_qty': 149.26168772322623, 'max_value': 30000.0, 'max_qty_by_value': 177.57783828578195, 'target_qty': 149.0}"
+2022-02-15,MSFT,short,71,299.73996,0.0,,test_edge,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 1000.0, 'stop_dist': 14.041607142857169, 'atr': 9.361071428571446, 'raw_qty': 71.21691910521015, 'max_value': 30000.0, 'max_qty_by_value': 101.73284953711554, 'target_qty': 71.0}"
+2022-02-15,SPY,short,68,443.37618,0.0,,test_edge,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 1000.0, 'stop_dist': 14.1375, 'atr': 9.424999999999999, 'raw_qty': 70.73386383731211, 'max_value': 30000.0, 'max_qty_by_value': 68.3542573309941, 'target_qty': 68.0}"
+2022-02-17,AAPL,exit,149,170.74908,0.0,25441.61,test_edge,,,
+2022-03-21,MSFT,exit,71,298.646055,0.0,21203.87,test_edge,,,
+2022-03-22,SPY,exit,68,445.554,0.0,30297.67,test_edge,,,
+2022-02-15,AAPL,short,149,170.70911999999998,0.0,,test_edge,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 1000.0, 'stop_dist': 6.699642857142855, 'atr': 4.46642857142857, 'raw_qty': 149.26168772322623, 'max_value': 30000.0, 'max_qty_by_value': 177.57783828578195, 'target_qty': 149.0}"
+2022-02-15,MSFT,short,71,299.73996,0.0,,test_edge,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 1000.0, 'stop_dist': 14.041607142857169, 'atr': 9.361071428571446, 'raw_qty': 71.21691910521015, 'max_value': 30000.0, 'max_qty_by_value': 101.73284953711554, 'target_qty': 71.0}"
+2022-02-15,SPY,short,68,443.37618,0.0,,test_edge,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 1000.0, 'stop_dist': 14.1375, 'atr': 9.424999999999999, 'raw_qty': 70.73386383731211, 'max_value': 30000.0, 'max_qty_by_value': 68.3542573309941, 'target_qty': 68.0}"
+2022-02-17,AAPL,exit,149,170.74908,0.0,25441.61,test_edge,,,
+2022-03-21,MSFT,exit,71,298.646055,0.0,21203.87,test_edge,,,
+2022-03-22,SPY,exit,68,445.554,0.0,30297.67,test_edge,,,
+2022-02-15,AAPL,short,149,170.70911999999998,0.0,,test_edge,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 1000.0, 'stop_dist': 6.699642857142855, 'atr': 4.46642857142857, 'raw_qty': 149.26168772322623, 'max_value': 30000.0, 'max_qty_by_value': 177.57783828578195, 'target_qty': 149.0}"
+2022-02-15,MSFT,short,71,299.73996,0.0,,test_edge,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 1000.0, 'stop_dist': 14.041607142857169, 'atr': 9.361071428571446, 'raw_qty': 71.21691910521015, 'max_value': 30000.0, 'max_qty_by_value': 101.73284953711554, 'target_qty': 71.0}"
+2022-02-15,SPY,short,68,443.37618,0.0,,test_edge,technical,,"{'sizing_mode': 'atr_risk', 'risk_budget': 1000.0, 'stop_dist': 14.1375, 'atr': 9.424999999999999, 'raw_qty': 70.73386383731211, 'max_value': 30000.0, 'max_qty_by_value': 68.3542573309941, 'target_qty': 68.0}"
+2022-02-17,AAPL,exit,149,170.74908,0.0,25441.61,test_edge,,,
+2022-03-21,MSFT,exit,71,298.646055,0.0,21203.87,test_edge,,,
+2022-03-22,SPY,exit,68,445.554,0.0,30297.67,test_edge,,,

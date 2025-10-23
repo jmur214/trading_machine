@@ -1,0 +1,110 @@
+1. Visual & UX Enhancements
+
+Layout / Interaction
+	•	Dynamic theming — light/dark mode toggle, persistent color scheme via dcc.Store.
+	•	Resizable panels — draggable split panes so users can adjust graph layout (Plotly supports this).
+	•	Collapsible sidebar for mode switching, performance summaries, and settings.
+	•	Searchable trade table — integrate dash.DataTable with sorting, filtering, and CSV export.
+	•	Integrated toolbar — quick buttons for refresh, timeframe selection, and screenshot export.
+
+Graph polish
+	•	Smooth transitions when changing timeframe or mode.
+	•	Add tooltips on KPI cards (e.g., hover “Sharpe Ratio” → shows how it’s computed).
+	•	Add small sparkline charts inside KPI cards (mini equity curve or drawdown preview).
+	•	Uniform axis/date handling (force UTC-naive across all).
+
+⸻
+
+2. Performance Analytics Enhancements
+
+Advanced Metrics
+	•	Rolling Sortino, Calmar, and Omega ratios.
+	•	Monthly returns heatmap (calendar-style, like Hedge Fund tear sheets).
+	•	Exposure over time (long/short notional % of equity).
+	•	Turnover, holding period, and position concentration metrics.
+
+PnL & Edge Attribution
+	•	Add edge contribution chart (PnL contribution × exposure weight).
+	•	Introduce PnL decomposition by asset class or sector (requires tagging tickers).
+	•	Add correlation matrix of edges and positions (already partly implemented).
+
+Equity Diagnostics
+	•	Outlier trade detector — mark trades with extreme PnL vs. distribution.
+	•	Trade sequence visualization — show entries/exits as connected events along equity curve.
+	•	Compare multiple backtests side-by-side (different edges or parameter runs).
+
+⸻
+
+3. Real-Time Extensions
+
+Paper / Live Mode
+	•	Add real-time price and position updates via Alpaca WebSocket streams.
+	•	Show latency metrics — how fresh each data point is.
+	•	Allow manual position sync (pull current open positions to local logs).
+	•	Include order blotter — shows pending, filled, and canceled orders.
+	•	Add auto-refresh toggle + refresh interval slider.
+
+Alerts & Notifications
+	•	Add email/Slack/Webhook notifications for large drawdowns, equity milestones, or failed API calls.
+	•	Integrate an Alert Engine that uses strategy KPIs to trigger warnings (“Sharpe below 1.0”, “Equity down 5% today”).
+
+⸻
+
+4. Research / Intelligence Integrations
+
+AI & Analytics Layers
+	•	Edge evolution visualization: show how weights change over time (from governor JSON history).
+	•	Edge stability metrics: rolling SR, correlation drift, volatility contribution.
+	•	Governor diagnostic view: scatter of SR vs weight vs recency.
+
+Market Intelligence
+	•	Integrate news sentiment feed or macro calendar overlay.
+	•	Show correlation between macro variables (e.g., SPY returns vs. CPI releases).
+	•	Allow custom data imports (CSV/Parquet/SQL) into the dashboard for ad-hoc research visualization.
+
+⸻
+
+5. System Diagnostics & Reliability
+
+Monitoring
+	•	Add system health cards — last update time, API latency, missing files, etc.
+	•	Display log tail (last 10 log lines from backtest_controller or governor).
+	•	Exception display for backtests (read from error logs).
+
+Data Integrity
+	•	Timestamp consistency checker (naive vs. aware).
+	•	CSV schema validator with versioning display.
+	•	Add data freshness indicator for paper/live snapshots (“Last updated: 14s ago”).
+
+⸻
+
+6. User Interaction & Control
+	•	Add strategy toggles — enable/disable specific edges live from the UI.
+	•	Interactive weight sliders for governor preview (simulate reweighting and see equity impact instantly).
+	•	Implement “Run backtest from dashboard” — form input → runs scripts/run_backtest.py as a subprocess.
+	•	Add save dashboard state (which tab, timeframe, and filters you last used).
+
+⸻
+
+7. Long-Term Vision Upgrades
+	•	“Explain my trades” mode: use GPT-style summary to describe why certain trades occurred (based on metadata and signals).
+	•	Adaptive recommendations: “Governor suggests decreasing momentum_trend weight by 10% due to correlation rise.”
+	•	Natural language querying: “Show me all trades in April where Sharpe > 2” → returns table.
+	•	Integrate with your Edge Harness results (data/research) to visualize historical parameter sweeps right in the dashboard.
+
+⸻
+
+8. Developer / Engineering Polish
+	•	Convert large callbacks to modular Dash blueprints for maintainability.
+	•	Add caching layers for heavy data (Redis or Dash DiskCache).
+	•	Integrate Plotly Dash bootstrap themes for modern visuals.
+	•	Introduce logging middleware — send events (refreshes, mode switches, API failures) to a rolling file.
+
+⸻
+
+9. Small but High-Impact Fixes
+	•	Add spinner/loading states on heavy graphs.
+	•	Deduplicate KPI formatting (some rounding inconsistencies exist).
+	•	Clean up repeated FIFO logic (centralize it in cockpit/metrics.py).
+	•	Add tooltips explaining each chart in simple language.
+	•	Make timeframe filters persist between tabs
