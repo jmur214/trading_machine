@@ -1,4 +1,4 @@
-# cockpit/logger.py
+# core/logger.py
 from __future__ import annotations
 from pathlib import Path
 import pandas as pd
@@ -45,6 +45,8 @@ class CockpitLogger:
         "edge_group",
         "trigger",
         "meta",
+        "edge_id",
+        "edge_category",
     ]
 
     SNAPSHOT_COLUMNS = [
@@ -145,35 +147,71 @@ class CockpitLogger:
     # -------------------------------------------------------------------- #
     def _calc_realized_pnl(self, fill: dict) -> Optional[float]:
         """
-        Estimate realized PnL for exits when portfolio reference exists.
-        Uses average price and direction of the position.
-        If no portfolio is present, fallback to simple calculation if possible.
+        Improved: Compute realized PnL for exits and covers using portfolio reference.
+        For entry fills, realized PnL is None.
+        If portfolio info is missing, fallback to estimate using prior close or fill meta.
+        The computed PnL is also stored directly into the fill dict for downstream compatibility.
         """
         tkr = fill.get("ticker")
         side = str(fill.get("side", "")).lower()
         qty = float(fill.get("qty", 0))
         px = float(fill.get("price", fill.get("fill_price", 0.0)))
 
+        # Only compute PnL for exit/cover (i.e., closing trades)
         if side not in ("exit", "cover"):
+            fill["pnl"] = None
             return None
 
+        # Try to use portfolio for best accuracy
+        pnl = None
         if self.portfolio:
             pos = self.portfolio.positions.get(tkr)
-            if pos and getattr(pos, "avg_price", None) is not None:
+            # If position exists and has avg_price and side, compute realized PnL
+            if pos and getattr(pos, "avg_price", None) is not None and hasattr(pos, "side"):
                 avg = float(pos.avg_price)
-                sign = 1 if side == "exit" else -1  # exit=long sell, cover=short buy
-                pnl = round((px - avg) * qty * sign, 2)
-                return pnl
-
-        # Fallback: estimate pnl as zero if no portfolio or avg_price info
-        # or try to infer from fill meta if available (not implemented here)
-        return 0.0
+                # Figure out what side the position was (long/short)
+                pos_side = str(getattr(pos, "side", "")).lower()
+                # For exit: closing a long (sell), realized = (fill_px - avg_px) * qty
+                # For cover: closing a short (buy), realized = (avg_px - fill_px) * qty
+                if side == "exit" and pos_side == "long":
+                    pnl = round((px - avg) * qty, 2)
+                elif side == "cover" and pos_side == "short":
+                    pnl = round((avg - px) * qty, 2)
+                else:
+                    # Defensive: fallback to sign logic
+                    sign = 1 if side == "exit" else -1
+                    pnl = round((px - avg) * qty * sign, 2)
+        # Fallback: try to estimate from prior close or fill meta
+        if pnl is None:
+            # Try to use PrevClose if available in fill meta or fill itself
+            prev_close = None
+            meta = fill.get("meta", {})
+            if isinstance(meta, dict):
+                prev_close = meta.get("PrevClose")
+            if prev_close is None:
+                prev_close = fill.get("PrevClose")
+            try:
+                prev_close = float(prev_close)
+            except Exception:
+                prev_close = None
+            # If both fill price and prev_close are available, estimate
+            if prev_close is not None and px:
+                if side == "exit":
+                    pnl = round((px - prev_close) * qty, 2)
+                elif side == "cover":
+                    pnl = round((prev_close - px) * qty, 2)
+            else:
+                # As last resort, set to zero
+                pnl = 0.0
+        fill["pnl"] = pnl
+        return pnl
 
     # -------------------------------------------------------------------- #
     def log_fill(self, fill: Dict[str, Any], timestamp: Any) -> None:
         """
         Logs each fill (entry, exit, or SL/TP trigger) to trades.csv.
         Auto-includes metadata: edge, trigger, meta.
+        Ensures PnL is computed and stored in the fill dict for downstream compatibility.
         """
         if not is_logger_enabled():
             return
@@ -181,7 +219,8 @@ class CockpitLogger:
         if not fill or "ticker" not in fill:
             return
 
-        realized_pnl = self._calc_realized_pnl(fill)
+        # Compute and store realized_pnl into fill for downstream
+        self._calc_realized_pnl(fill)
 
         row = {
             "timestamp": pd.to_datetime(timestamp),
@@ -190,12 +229,14 @@ class CockpitLogger:
             "qty": fill.get("qty"),
             "fill_price": fill.get("price") or fill.get("fill_price"),
             "commission": fill.get("commission", 0.0),
-            "pnl": realized_pnl,
+            "pnl": fill.get("pnl"),
             "edge": fill.get("edge", "Unknown"),
             "edge_group": fill.get("edge_group", None),
             "trigger": fill.get("trigger", None),
             # meta is stringified safely
             "meta": str(fill.get("meta", {})) if fill.get("meta") else None,
+            "edge_id": fill.get("edge_id"),
+            "edge_category": fill.get("edge_category"),
         }
 
         self._append_to_csv(self.trade_path, row)

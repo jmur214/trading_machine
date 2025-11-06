@@ -186,7 +186,15 @@ class RiskEngine:
         if side == "none" and current_qty != 0:
             # Record action bar if we do emit an exit
             self._last_action_bar[ticker] = self._bar_index(df_hist)
-            return {"ticker": ticker, "side": "exit", "qty": abs(int(current_qty))}
+            return {
+                "ticker": ticker,
+                "side": "exit",
+                "qty": abs(int(current_qty)),
+                "edge": signal.get("edge", "Unknown"),
+                "edge_group": signal.get("edge_group"),
+                "edge_id": signal.get("edge_id"),
+                "edge_category": signal.get("category"),
+            }
         if side == "none":
             self._fail(ticker, "neutral_no_position")
             if is_debug_enabled("RISK"):
@@ -199,7 +207,15 @@ class RiskEngine:
             want_long = (side == "long")
             if have_long != want_long:
                 self._last_action_bar[ticker] = self._bar_index(df_hist)
-                return {"ticker": ticker, "side": "exit", "qty": abs(int(current_qty))}
+                return {
+                    "ticker": ticker,
+                    "side": "exit",
+                    "qty": abs(int(current_qty)),
+                    "edge": signal.get("edge", "Unknown"),
+                    "edge_group": signal.get("edge_group"),
+                    "edge_id": signal.get("edge_id"),
+                    "edge_category": signal.get("category"),
+                }
 
         # --- Detect flip in signal direction (close and reverse next bar) ---
         current_pos = None
@@ -220,6 +236,9 @@ class RiskEngine:
                     "qty": abs(int(current_pos.qty)),
                     "reason": "flip_exit",
                     "edge": signal.get("edge", "Unknown"),
+                    "edge_group": signal.get("edge_group"),
+                    "edge_id": signal.get("edge_id"),
+                    "edge_category": signal.get("category"),
                 }
 
         # No-shorts policy
@@ -238,12 +257,17 @@ class RiskEngine:
 
         # Price & ATR
         row = self._last_row(df_hist)
-        if "Close" not in row or not np.isfinite(row["Close"]):
+        close_val = None
+        if isinstance(row.get("Close", None), pd.Series):
+            close_val = row["Close"].iloc[-1]
+        else:
+            close_val = row.get("Close")
+        if close_val is None or not np.isfinite(close_val):
             self._fail(ticker, "close_missing")
             if is_debug_enabled("RISK"):
                 print(f"[RISK][DEBUG] Rejected signal for {ticker} — reason={self.last_skip_by_ticker.get(ticker)}")
             return None
-        price = float(row["Close"])
+        price = float(close_val)
         raw_atr = float(row.get("ATR", 0.0))
         # --- Sanity filter for abnormal prices/ATR ---
         if price <= 0 or not np.isfinite(price):
@@ -426,6 +450,10 @@ class RiskEngine:
             "edge": edge_name,
             "edge_group": edge_group,
         }
+        if "edge_id" in signal:
+            order["edge_id"] = signal.get("edge_id")
+        if "category" in signal:
+            order["edge_category"] = signal.get("category")
 
         if is_debug_enabled("RISK"):
             print(f"[RISK][DEBUG] Approved order for {ticker}: {order}")

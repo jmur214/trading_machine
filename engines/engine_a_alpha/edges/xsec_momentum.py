@@ -1,4 +1,3 @@
-# engines/engine_a_alpha/edges/xsec_momentum.py
 from __future__ import annotations
 import numpy as np
 import pandas as pd
@@ -29,10 +28,10 @@ class XSecMomentumEdge(EdgeBase):
       • neutralize: 'dollar' or 'none' (simple dollar-neutral long/short)
     Returns signals as weights in [-1,1], not just {-1,0,1}.
     """
-    def compute_signals(self, prices: pd.DataFrame, as_of: pd.Timestamp) -> Dict[str, float]:
+    def compute_signals(self, prices: pd.DataFrame, as_of: pd.Timestamp) -> list[dict]:
         p = prices.loc[:as_of].copy()
         if p.empty or p.shape[0] < self.params.get("min_lookback", 60):
-            return {}
+            return []
 
         lookback = int(self.params.get("lookback", 60))
         top_n = int(self.params.get("top_n", 2))
@@ -46,11 +45,11 @@ class XSecMomentumEdge(EdgeBase):
 
         # Momentum score = trailing total return over lookback
         if recent.shape[0] < lookback + 1:
-            return {}
+            return []
         mom = (recent.iloc[-1] / recent.iloc[-1 - lookback] - 1.0).dropna()
 
         if mom.empty:
-            return {}
+            return []
 
         # Rank by momentum
         mom = mom.sort_values(ascending=False)
@@ -104,7 +103,19 @@ class XSecMomentumEdge(EdgeBase):
         if _DBG:
             print(f"[ALPHA][DEBUG] {as_of.date()} XSecMomentumEdge weights: {weights}")
 
-        return weights
+        signals = []
+        for t, w in weights.items():
+            signals.append({
+                "ticker": t,
+                "side": "long" if w > 0 else "short",
+                "confidence": abs(w),
+                "edge": "xsec_momentum",
+                "edge_id": "xsec_momentum",
+                "category": "technical",
+                "meta": {"weight": w}
+            })
+
+        return signals
 
 # convenience constructors used by harness dynamic importer
 def set_params(params: Dict[str, Any]) -> None:
@@ -115,7 +126,7 @@ def set_params(params: Dict[str, Any]) -> None:
         _EDGE_INSTANCE = XSecMomentumEdge()
         _EDGE_INSTANCE.set_params(params)
 
-def compute_signals(prices: pd.DataFrame, as_of: pd.Timestamp) -> Dict[str, float]:
+def compute_signals(prices: pd.DataFrame, as_of: pd.Timestamp) -> list[dict]:
     global _EDGE_INSTANCE
     try:
         return _EDGE_INSTANCE.compute_signals(prices, as_of)

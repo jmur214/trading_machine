@@ -8,6 +8,7 @@ import numpy as np
 import time
 
 from backtester.execution_simulator import ExecutionSimulator, ExecParams
+import math
 from engines.engine_c_portfolio.portfolio_engine import PortfolioEngine
 
 
@@ -111,6 +112,19 @@ class BacktestController:
         self.risk = risk_engine
         self.logger = cockpit_logger
         self.portfolio = PortfolioEngine(initial_capital)
+        # Store initial capital for later use
+        self.initial_capital = float(initial_capital)
+        # Ensure portfolio capital and cash are set to initial_capital if <= 0
+        if float(getattr(self.portfolio, "capital", 0.0)) <= 0.0:
+            self.portfolio.capital = self.initial_capital
+        if hasattr(self.portfolio, "cash") and float(getattr(self.portfolio, "cash", 0.0)) <= 0.0:
+            self.portfolio.cash = self.initial_capital
+        # Ensure CockpitLogger is aware of the portfolio
+        if hasattr(self.logger, "set_portfolio"):
+            try:
+                self.logger.set_portfolio(self.portfolio)
+            except Exception:
+                pass
 
         # Execution simulator with sane defaults (can be overridden via exec_params)
         self.exec = ExecutionSimulator(
@@ -143,29 +157,74 @@ class BacktestController:
         Tries `log_fill(fill, ts)` first (new API),
         then falls back to `log_trade(fill)` (legacy API),
         and finally to `log` with a dict payload if provided.
+        If all else fails, writes directly to trades.csv via _safe_write_trade.
         """
         try:
-            # Newer API: log_fill(fill_dict, timestamp)
             return self.logger.log_fill(fill, ts)
         except AttributeError:
             pass
         except Exception:
-            # If the newer call exists but fails, try legacy below
             pass
 
         try:
-            # Legacy API: log_trade(fill_dict)
             return self.logger.log_trade(fill)
         except AttributeError:
             pass
         except Exception:
             pass
 
-        # Last resort: generic logger.log if present
         try:
             return self.logger.log({"type": "trade_fill", "timestamp": ts, **fill})
         except Exception:
-            return None
+            # Last resort: write the CSV directly to preserve the fill
+            try:
+                self._safe_write_trade(fill, ts)
+                return True
+            except Exception:
+                return None
+
+    def _safe_write_trade(self, fill: dict, ts):
+        """
+        Append a trade fill to data/trade_logs/trades.csv, ensuring directory and header.
+        Includes edge_id and edge_category if present.
+        """
+        import os
+        import csv
+        # Determine file path
+        root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+        logs_dir = os.path.join(root, "data", "trade_logs")
+        os.makedirs(logs_dir, exist_ok=True)
+        trades_path = os.path.join(logs_dir, "trades.csv")
+        # Prepare row with standard fields and extra edge_id/category
+        row = {
+            "timestamp": str(ts),
+            "ticker": fill.get("ticker", ""),
+            "side": fill.get("side", ""),
+            "qty": fill.get("qty", ""),
+            "fill_price": fill.get("fill_price", ""),
+            "commission": fill.get("commission", ""),
+            "pnl": fill.get("pnl", ""),
+            "edge": fill.get("edge", ""),
+            "edge_group": fill.get("edge_group", ""),
+            "trigger": fill.get("trigger", ""),
+            "meta": fill.get("meta", ""),
+            "edge_id": fill.get("edge_id", ""),
+            "edge_category": fill.get("edge_category", ""),
+        }
+        header = [
+            "timestamp", "ticker", "side", "qty", "fill_price", "commission", "pnl",
+            "edge", "edge_group", "trigger", "meta", "edge_id", "edge_category"
+        ]
+        # Check if file exists
+        write_header = not os.path.exists(trades_path)
+        try:
+            with open(trades_path, "a", newline="") as f:
+                writer = csv.DictWriter(f, fieldnames=header)
+                if write_header:
+                    writer.writeheader()
+                writer.writerow(row)
+        except Exception:
+            pass
 
     def get_portfolio_capital(self):
         """
@@ -187,6 +246,10 @@ class BacktestController:
         import gc
         import threading
         import sys
+        import os
+        BACKTEST_DEBUG = bool(int(os.getenv("BACKTEST_DEBUG", "0")))
+        if BACKTEST_DEBUG:
+            print("[BACKTEST_CONTROLLER] Running in debug mode.")
 
         # Non-blocking flush helper for logger
         def flush_logger_with_timeout(logger, timeout=5.0):
@@ -217,6 +280,11 @@ class BacktestController:
         # Initial snapshot at first available bar close
         t0 = ts_vec[0]
         first_prices = {t: float(self.data_map[t].loc[t0]["Close"]) for t in self.data_map if t0 in self.data_map[t].index}
+        # Ensure nonzero equity baseline for portfolio using the configured initial capital
+        if float(getattr(self.portfolio, "capital", 0.0)) <= 0.0:
+            self.portfolio.capital = self.initial_capital
+        if hasattr(self.portfolio, "cash") and float(getattr(self.portfolio, "cash", 0.0)) <= 0.0:
+            self.portfolio.cash = self.initial_capital
         snap0 = self.portfolio.snapshot(t0, first_prices)
         # Human-friendly count of open positions in snapshot
         snap0["positions"] = sum(1 for p in self.portfolio.positions.values() if p.qty != 0)
@@ -277,17 +345,24 @@ class BacktestController:
                     continue
 
                 # ------------- Engine A: signals at time ts -------------
+                signals = []
                 try:
                     # Attempt to create unified price matrix for cross-sectional edges
                     combined_prices = pd.DataFrame({t: df["Close"] for t, df in slice_map.items() if not df.empty})
                     if hasattr(self.alpha, "compute_signals"):
                         signals = self.alpha.compute_signals(combined_prices, ts) or []
+                        # fallback if compute_signals returns nothing
+                        if not signals:
+                            signals = self.alpha.generate_signals(slice_map, ts) or []
                     else:
                         signals = self.alpha.generate_signals(slice_map, ts) or []
                 except Exception as e:
                     signals = []
                     if is_debug_enabled("BACKTEST_CONTROLLER"):
                         print(f"[DEBUG][{ts}] Alpha signal generation error: {e}")
+
+                if BACKTEST_DEBUG and signals:
+                    print(f"[DEBUG_BACKTEST][{ts}] Raw signals: {signals[:3]}")
 
                 if self.cfg.verbose and is_debug_enabled("BACKTEST_CONTROLLER"):
                     print(f"[DEBUG][{ts}] Generated signals: {signals}")
@@ -370,10 +445,33 @@ class BacktestController:
                         # --- Edge attribution ---
                         if tkr in top_edge_by_ticker:
                             order["edge"] = top_edge_by_ticker[tkr]
+                        if "edge_id" in sig:
+                            order["edge_id"] = sig.get("edge_id")
+                        if "category" in sig:
+                            order["edge_category"] = sig.get("category")
 
                         orders.append(order)
                     except Exception:
                         continue
+
+                if BACKTEST_DEBUG and orders:
+                    print(f"[DEBUG_BACKTEST][{ts}] Risk orders: {orders[:3]}")
+                if BACKTEST_DEBUG and not orders and signals:
+                    first_sig = signals[0]
+                    forced_ticker = first_sig.get("ticker", list(slice_map.keys())[0])
+                    forced_order = {
+                        "ticker": forced_ticker,
+                        "side": "long",
+                        "qty": 10,
+                        "fill_price": float(slice_map[forced_ticker]["Close"].iloc[-1]),
+                        "edge": first_sig.get("edge", "debug_forced"),
+                        "edge_group": first_sig.get("edge_group", "debug"),
+                        "edge_id": first_sig.get("edge_id", "debug_v1"),
+                        "edge_category": first_sig.get("edge_category", "debug"),
+                        "meta": {"note": "forced_debug_order"},
+                    }
+                    print(f"[DEBUG_BACKTEST][{ts}] Injecting forced debug order: {forced_order}")
+                    orders.append(forced_order)
 
                 if not orders:
                     if is_debug_enabled("BACKTEST_CONTROLLER"):
@@ -408,13 +506,67 @@ class BacktestController:
                         row_next = next_rows.get(tkr)
                         if row_next is None:
                             continue
+                        # Carry PrevClose into order meta for downstream PnL estimation
+                        try:
+                            prev_close_val = float(row_next.get("PrevClose")) if "PrevClose" in row_next else None
+                        except Exception:
+                            prev_close_val = None
+                        if prev_close_val is not None and math.isfinite(prev_close_val):
+                            order.setdefault("meta", {})
+                            order["meta"]["PrevClose"] = prev_close_val
                         fill = self.exec.fill_at_next_open(order, row_next)
                         if fill:
+                            # --- Ensure required numeric fields ---
+                            try:
+                                fill["qty"] = int(fill.get("qty", 0))
+                            except Exception:
+                                fill["qty"] = 0
+                            try:
+                                fill["fill_price"] = float(fill.get("fill_price", row_next.get("Open", np.nan)))
+                            except Exception:
+                                fill["fill_price"] = float("nan")
+
+                            # --- Fallback realized PnL computation BEFORE portfolio mutation ---
+                            realized = None
+                            try:
+                                if hasattr(self.logger, "_calc_realized_pnl"):
+                                    realized = self.logger._calc_realized_pnl(fill)
+                            except Exception:
+                                realized = None
+
+                            if realized is None:
+                                try:
+                                    pos_before = self.portfolio.positions.get(tkr)
+                                    if pos_before and hasattr(pos_before, "avg_price") and math.isfinite(fill["fill_price"]):
+                                        avg_px = float(getattr(pos_before, "avg_price", float("nan")))
+                                        q = abs(int(fill["qty"]))
+                                        # Determine long/short before applying the fill
+                                        side = str(fill.get("side", "")).lower()
+                                        if pos_before.qty > 0 and side in ("sell", "exit"):
+                                            realized = (fill["fill_price"] - avg_px) * q
+                                        elif pos_before.qty < 0 and side in ("cover", "buy", "exit"):
+                                            realized = (avg_px - fill["fill_price"]) * q
+                                except Exception:
+                                    realized = None
+
+                            if realized is not None and math.isfinite(realized):
+                                try:
+                                    fill["pnl"] = round(float(realized), 2)
+                                except Exception:
+                                    pass
+
                             # --- Propagate edge attribution into the fill ---
                             fill["edge"] = order.get("edge", "Unknown")
                             fill["edge_group"] = order.get("edge_group", None)
+                            fill["edge_id"] = order.get("edge_id") if "edge_id" in order else None
+                            fill["edge_category"] = order.get("edge_category") if "edge_category" in order else None
 
                             self.portfolio.apply_fill(fill)
+                            # Ensure edge attribution keys are present for logger schema
+                            fill.setdefault("edge", order.get("edge", "Unknown"))
+                            fill.setdefault("edge_group", order.get("edge_group"))
+                            fill.setdefault("edge_id", order.get("edge_id"))
+                            fill.setdefault("edge_category", order.get("edge_category"))
                             self._log_fill_compat(fill, nxt)
                     except Exception:
                         continue
@@ -430,6 +582,33 @@ class BacktestController:
                                 continue
                             stop_or_tp = self.exec.check_stops_and_targets(tkr, pos, row_next)
                             if stop_or_tp:
+                                # Realized PnL fallback for SL/TP exits (compute before mutation)
+                                try:
+                                    tside = str(stop_or_tp.get("side", "")).lower()
+                                    tq = abs(int(stop_or_tp.get("qty", 0)))
+                                    tpx = float(stop_or_tp.get("fill_price", row_next.get("Open", np.nan)))
+                                except Exception:
+                                    tside, tq, tpx = "", 0, float("nan")
+                                realized_st = None
+                                try:
+                                    if hasattr(self.logger, "_calc_realized_pnl"):
+                                        realized_st = self.logger._calc_realized_pnl(stop_or_tp)
+                                except Exception:
+                                    realized_st = None
+                                if realized_st is None:
+                                    try:
+                                        pos_before = self.portfolio.positions.get(tkr)
+                                        if pos_before and hasattr(pos_before, "avg_price") and math.isfinite(tpx):
+                                            avg_px = float(getattr(pos_before, "avg_price", float("nan")))
+                                            if pos_before.qty > 0 and tside in ("sell", "exit"):
+                                                realized_st = (tpx - avg_px) * tq
+                                            elif pos_before.qty < 0 and tside in ("cover", "buy", "exit"):
+                                                realized_st = (avg_px - tpx) * tq
+                                    except Exception:
+                                        realized_st = None
+                                if realized_st is not None and math.isfinite(realized_st):
+                                    stop_or_tp["pnl"] = round(float(realized_st), 2)
+
                                 self.portfolio.apply_fill(stop_or_tp)
                                 self._log_fill_compat(stop_or_tp, nxt)
                         except Exception:
@@ -504,6 +683,8 @@ class BacktestController:
         if self.cfg.verbose and is_debug_enabled("BACKTEST_CONTROLLER"):
             print(f"[DEBUG] Backtest complete. Total bars processed: {total_bars}, Elapsed time: {elapsed:.2f} seconds.")
             print(f"[DEBUG] Total snapshots logged: {len(self.portfolio.history)}")
+        if BACKTEST_DEBUG:
+            print("[DEBUG_BACKTEST] Run complete, check trades.csv for forced fills.")
 
         # --- Feedback loop: update edge weights from latest trades (safe call) ---
         try:

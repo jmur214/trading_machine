@@ -495,3 +495,9 @@ PYTHONPATH             = . (project root)
 ───────────────────────────────────────────────────────────────
 END OF DOCUMENT
 ───────────────────────────────────────────────────────────────
+You can start a completely clean run (auto-backed-up logs and all) using:
+python -m scripts.run_backtest --fresh
+	•	Back up current trades.csv and portfolio_snapshots.csv into data/trade_logs/backup/
+	•	Clear the originals
+	•	Then proceed with a new backtest.
+

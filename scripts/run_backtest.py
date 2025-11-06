@@ -13,12 +13,39 @@ from backtester.backtest_controller import BacktestController
 from cockpit.logger import CockpitLogger
 from cockpit.metrics import PerformanceMetrics
 
+# --- Import EdgeRegistry for dynamic edge loading ---
+from engines.engine_a_alpha.edge_registry import EdgeRegistry
+
 # ✅ NEW: import StrategyGovernor
 from engines.engine_d_research.governor import StrategyGovernor
+
+import argparse
 
 
 def main():
     root = Path(__file__).resolve().parents[1]
+
+    parser = argparse.ArgumentParser(description="Run historical backtest.")
+    parser.add_argument("--fresh", action="store_true", help="Clear prior trades/snapshots before running.")
+    parser.add_argument("--alpha-debug", action="store_true", help="Enable verbose alpha/edge debug output.")
+    parser.add_argument("--no-governor", action="store_true", help="Skip governor updates.")
+    args = parser.parse_args()
+    if args.alpha_debug:
+        os.environ["ALPHA_DEBUG"] = "1"
+
+    # --- Optional: Clear previous trade and snapshot logs if --fresh is used ---
+    if args.fresh:
+        log_dir = root / "data" / "trade_logs"
+        backup_dir = log_dir / "backup"
+        backup_dir.mkdir(parents=True, exist_ok=True)
+        import shutil, time
+        for fn in ["trades.csv", "portfolio_snapshots.csv"]:
+            fpath = log_dir / fn
+            if fpath.exists() and fpath.stat().st_size > 0:
+                ts = int(time.time())
+                shutil.copy(fpath, backup_dir / f"{fn}_{ts}.bak")
+                fpath.write_text("")
+        print("[RUN_BACKTEST] Cleared previous logs (fresh run mode).")
 
     # --- Load configuration files ---
     cfg_bt = load_json(str(root / "config" / "backtest_settings.json"))
@@ -39,15 +66,67 @@ def main():
                      base_url=os.getenv("ALPACA_BASE_URL"))
     data_map = dm.ensure_data(tickers, start, end, timeframe=timeframe)
 
-    # --- Load active edges dynamically ---
+    # --- Load active edges dynamically (holistic system) ---
+    from engines.engine_a_alpha.edge_registry import EdgeRegistry, EdgeSpec
+
     edges = {}
     edge_weights = cfg_edges.get("edge_weights", {})
-    active_edges = cfg_edges.get("active_edges", [])
+    edge_params = cfg_edges.get("edge_params", {})
 
+    # --- Step 1: Load active edges from EdgeRegistry ---
+    try:
+        reg = EdgeRegistry()
+        registry_edges = reg.list_active_modules()
+        print(f"[ALPHA] Using EdgeRegistry modules: {registry_edges}")
+    except Exception as e:
+        print(f"[ALPHA][WARN] Could not read EdgeRegistry: {e}")
+        registry_edges = []
+
+    # --- Step 2: Load active edges from config (for backward compatibility) ---
+    config_edges = cfg_edges.get("active_edges", [])
+    if config_edges:
+        print(f"[ALPHA] Including edges from config: {config_edges}")
+
+    # --- Step 3: Merge and deduplicate ---
+    active_edges = sorted(list(set(registry_edges + config_edges)))
+
+    # --- Step 4: Import each edge module dynamically ---
     for edge_name in active_edges:
         try:
             mod = importlib.import_module(f"engines.engine_a_alpha.edges.{edge_name}")
-            edges[edge_name] = mod
+
+            # Check if the module defines a subclassed Edge class with params
+            edge_class = None
+            for attr in dir(mod):
+                if attr.lower().endswith("edge") and attr not in ["BaseEdge"]:
+                    edge_class = getattr(mod, attr)
+                    break
+
+            params = edge_params.get(edge_name, {})
+
+            if edge_class is not None:
+                try:
+                    edges[edge_name] = edge_class(params=params)
+                except TypeError:
+                    # fallback if the class doesn't support params
+                    edges[edge_name] = edge_class()
+            else:
+                edges[edge_name] = mod
+
+            # --- Ensure it’s registered in the EdgeRegistry ---
+            try:
+                if hasattr(mod, "EDGE_ID") and hasattr(mod, "CATEGORY"):
+                    reg.ensure(EdgeSpec(
+                        edge_id=getattr(mod, "EDGE_ID", edge_name),
+                        category=getattr(mod, "CATEGORY", "other"),
+                        module=edge_name,
+                        version="1.0.0",
+                        params=params,
+                        status="active",
+                    ))
+            except Exception as e:
+                print(f"[ALPHA][WARN] Could not update registry for edge '{edge_name}': {e}")
+
         except Exception as e:
             print(f"[ALPHA][ERROR] Could not import edge '{edge_name}': {e}")
 
@@ -97,23 +176,38 @@ def main():
     print("Trade log:", str(root / "data" / "trade_logs" / "trades.csv"))
     print("Portfolio snapshots:", str(root / "data" / "trade_logs" / "portfolio_snapshots.csv"))
 
+    metrics = None
+
     # ✅ NEW BLOCK: Update governor with fresh trade results
     try:
         metrics = PerformanceMetrics(
             snapshots_path=str(root / "data" / "trade_logs" / "portfolio_snapshots.csv"),
             trades_path=str(root / "data" / "trade_logs" / "trades.csv"),
         )
-        governor.update_from_trades(metrics.trades, metrics.snapshots)
-        governor.save_weights()
-        print("[GOVERNOR] Edge weights updated and saved.")
+        if not args.no_governor:
+            governor.update_from_trades(metrics.trades, metrics.snapshots)
+            governor.save_weights()
+            print("[GOVERNOR] Edge weights updated and saved.")
+        else:
+            print("[GOVERNOR] Skipped by --no-governor.")
     except Exception as e:
-        print(f"[GOVERNOR][WARN] Could not update governor: {e}")
+        print(f"[GOVERNOR][WARN] Could not update governor or build metrics: {e}")
+
+    if metrics is None:
+        try:
+            metrics = PerformanceMetrics(
+                snapshots_path=str(root / "data" / "trade_logs" / "portfolio_snapshots.csv"),
+                trades_path=str(root / "data" / "trade_logs" / "trades.csv"),
+            )
+        except Exception as e:
+            print(f"[PERF][WARN] Could not initialize metrics fallback: {e}")
+            metrics = None
 
     # --- Performance Summary ---
     print("\nCalculating performance metrics...")
-    if hasattr(metrics, "summary"):
+    if metrics is not None and hasattr(metrics, "summary"):
         stats = metrics.summary()
-    elif hasattr(metrics, "summary_dict"):
+    elif metrics is not None and hasattr(metrics, "summary_dict"):
         stats = metrics.summary_dict
     else:
         stats = {}
@@ -138,12 +232,20 @@ def main():
 
     # --- NEW: Automatic feedback update and saving using governor ---
     try:
-        governor.update_from_trades(metrics.trades, metrics.snapshots)
-        governor.save_weights()
-        print("[GOVERNOR] Feedback: Edge weights updated and saved after performance summary.")
+        if metrics is not None and not args.no_governor:
+            governor.update_from_trades(metrics.trades, metrics.snapshots)
+            governor.save_weights()
+            print("[GOVERNOR] Feedback: Edge weights updated and saved after performance summary.")
+        elif args.no_governor:
+            print("[GOVERNOR] Feedback skipped by --no-governor.")
+        else:
+            print("[GOVERNOR][WARN] Skipped feedback because metrics are unavailable.")
     except Exception as e:
         print(f"[GOVERNOR][WARN] Could not update governor in feedback: {e}")
 
+    return 0
+
 
 if __name__ == "__main__":
-    sys.exit(main())
+    code = main()
+    sys.exit(0 if code is None else code)

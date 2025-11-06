@@ -1,0 +1,259 @@
+1 Objectives (What v2 achieves)
+	•	Portfolio-first: Shift from “trade runner” to portfolio manager with sleeves, target weights, drift control, and rebalancing.
+	•	Unified OMS: Same order/position/fill model for backtest, paper, (future) live.
+	•	Adaptive allocation: The Governor produces edge weights that actually control capital (not just get logged).
+	•	Robust data: Replace brittle CSVs with DuckDB/Parquet + run IDs and schemas.
+	•	Explainable: Persist reasons/metrics for weight changes; dashboards show “why.”
+
+2 Operating Modes
+	•	Backtest (historical bars → fills → portfolio → logs)
+	•	Paper (Alpaca REST/WS → unified OMS → same logs/UI)
+	•	Live (future) (same OMS, broker adapter swaps)
+
+All modes use the same Order → Fill → Position → Snapshot contracts.
+
+⸻
+
+3 Core Components & Responsibilities
+
+A. Portfolio Engine (new)
+
+Role: Single source of truth for positions, cash, equity, PnL, target weights, and rebalancing.
+
+Key responsibilities
+	•	Maintain positions (avg price, qty, side, unrealized PnL).
+	•	Apply fills to update cash/equity.
+	•	Track sleeves (e.g., core_holdings, tactical_edges, experimental).
+	•	Enforce target allocations by sleeve/edge; compute drift and generate rebalance orders.
+	•	Publish snapshots (equity, exposures, realized/unrealized PnL).
+	•	Provide risk hooks for limits (beta/exposure/turnover/day-loss).
+
+Interface (Python)
+class PortfolioEngine:
+    def __init__(self, starting_cash: float, run_id: str, schema_store, risk_policy):
+        ...
+
+    def apply_fill(self, fill: "Fill") -> None: ...
+    def current_positions(self) -> dict[str, "Position"]: ...
+    def snapshot(self, ts: pd.Timestamp) -> dict: ...
+    def set_targets(self, targets: dict[str, float]) -> None:  # edge_id -> weight (0..1)
+    def compute_rebalance_orders(self, prices: dict[str, float]) -> list["Order"]: ...
+    def pnl_summary(self) -> dict: ...
+
+B. Unified OMS (Order Management System) (new)
+
+Role: Normalize orders → fills across backtest, paper, live.
+
+Key responsibilities
+	•	Standard datamodels: Order, Fill, Position.
+	•	Execution adapters:
+	•	SimExecutionAdapter (wraps current ExecutionSimulator)
+	•	AlpacaExecutionAdapter (wraps AlpacaBroker)
+	•	Route all fills through CockpitLogger (or DB writer).
+
+Datamodels
+@dataclass
+class Order:
+    ts: pd.Timestamp
+    symbol: str
+    side: Literal["buy","sell","short","cover"]
+    qty: float
+    type: Literal["market","limit","stop","stop_limit","trailing"] = "market"
+    limit_price: float | None = None
+    stop_price: float | None = None
+    tif: Literal["day","gtc"] = "gtc"
+    edge_id: str | None = None
+    sleeve: str | None = None
+    meta: dict = field(default_factory=dict)
+
+@dataclass
+class Fill:
+    ts: pd.Timestamp
+    symbol: str
+    side: str
+    qty: float
+    price: float
+    commission: float = 0.0
+    order_id: str | None = None
+    edge_id: str | None = None
+    meta: dict = field(default_factory=dict)
+
+@dataclass
+class Position:
+    symbol: str
+    qty: float
+    avg_price: float
+    unrealized_pnl: float = 0.0
+    meta: dict = field(default_factory=dict)
+
+Adapter interface
+class ExecutionAdapter:
+    def submit_orders(self, orders: list[Order]) -> list[Fill]: ...
+    def close_position(self, symbol: str) -> list[Fill]: ...
+
+C. Governor (evolved)
+
+Role: Turn performance into target allocation by edge (and sleeves); save explainable rationales.
+
+Key responsibilities
+	•	Read per-edge metrics (Sharpe, MDD, trade count, corr).
+	•	Compute weights using policy (e.g., SR-weighted softmax with caps & decay).
+	•	Persist edge_weights, weight_history, metrics, rationales.
+	•	Optional diversification penalty if edges are highly correlated.
+	•	Optional sleeve policy: e.g., core_holdings min 40%, tactical_edges 50%, experimental 10%.
+
+Policy example
+w_i = softmax(k * SR_i) with bounds: min_w <= w_i <= max_w
+Apply decorrelation: w_i = w_i * (1 - λ * avg_corr_i)
+Renormalize within sleeve, then across sleeves.
+
+D. Risk Engine 2.0 (upgraded)
+
+Role: Enforce portfolio-level risk limits and turn signals into orders respecting caps.
+
+Controls
+	•	Vol-targeting (scale orders so ex-ante vol ≈ target).
+	•	Exposure caps (gross, net, per-sector, per-asset).
+	•	Turnover limits.
+	•	Drawdown brakes (pause trading beyond threshold).
+	•	Beta caps (vs benchmark).
+
+Interface
+class RiskEngine:
+    def size_orders(self, signals: list[dict], portfolio: PortfolioEngine, prices: dict) -> list[Order]: ...
+    def enforce_limits(self, orders: list[Order], portfolio: PortfolioEngine) -> list[Order]: ...
+
+E. Data Layer (DuckDB/Parquet + Run IDs)
+
+Role: Replace CSV-only with structured storage. Keep CSV writes for compatibility during migration.
+
+Artifacts
+	•	runs (run_id, mode, started_at, ended_at, config_hash)
+	•	trades (run_id, ts, symbol, side, qty, price, commission, edge_id, sleeve, realized_pnl, meta)
+	•	snapshots (run_id, ts, equity, cash, mv, realized, unrealized, exposure, positions_json)
+	•	weights (run_id, ts, edge_id, weight, sleeve, rationale_json)
+	•	metrics (run_id, scope={portfolio|edge_id}, sharpe, mdd, vol, cagr, winrate, period)
+
+Data access
+class DataStore:
+    def __init__(self, db_path="data/trading.duckdb"): ...
+    def begin_run(self, mode:str, config:dict) -> str: ...
+    def write_trades(self, run_id:str, fills:list[Fill]) -> None: ...
+    def write_snapshot(self, run_id:str, snap:dict) -> None: ...
+    def write_weights(self, run_id:str, weights:dict, rationale:dict) -> None: ...
+    def close_run(self, run_id:str) -> None: ...
+Migration: keep current CSV logging for a few sprints; mirror writes into DuckDB; update DataManager to prefer DB when present.
+
+4 Control Flows
+
+Backtest cycle
+	1.	Load bars & config → run_id = datastore.begin_run("backtest", config).
+	2.	Alpha → Signals (with edge_id).
+	3.	Risk → Orders (respect limits).
+	4.	OMS (SimAdapter) → Fills at next open (slippage/commission).
+	5.	Portfolio → apply fills; snapshot each bar.
+	6.	Metrics → per-edge & portfolio.
+	7.	Governor → compute weights & rationale; persist.
+	8.	Dashboard reads from DB (fallback CSV).
+	9.	datastore.close_run(run_id).
+
+Paper cycle
+	1.	run_id = datastore.begin_run("paper", config).
+	2.	Stream prices/orders from Alpaca (WS/REST).
+	3.	OMS (AlpacaAdapter) → submit orders, receive fills.
+	4.	Portfolio + snapshots as above; persist to DB.
+	5.	Metrics/Governor nightly; dashboard live.
+	6.	Close run when session ends.
+
+⸻
+
+5 Configuration Model
+# config/system.yaml
+portfolio:
+  starting_cash: 100000
+  sleeves:
+    core_holdings: {min: 0.40, max: 0.60}
+    tactical_edges: {min: 0.30, max: 0.50}
+    experimental: {min: 0.00, max: 0.20}
+risk:
+  vol_target: 0.10
+  max_gross: 1.5
+  max_net: 1.0
+  day_dd_halt: 0.05
+  sector_caps: {"TECH": 0.4}
+governor:
+  policy: softmax_sr
+  k: 2.0
+  min_w: 0.02
+  max_w: 0.40
+  decorrelation_lambda: 0.25
+data:
+  store: duckdb
+  path: data/trading.duckdb
+mode:
+  default: backtest
+
+6 Dashboard Implications
+	•	Mode-agnostic: DataManager reads from DB (snapshots/trades/weights/metrics) using run_id filters; CSV fallback.
+	•	Governor tab: show rationales for weight changes + sleeve totals + diversification score.
+	•	Analytics tab: per-edge Sharpe/MDD; portfolio vs benchmark; rolling stats from DB views.
+	•	Performance tab: edge correlation over trailing windows; weight evolution (from weights table).
+
+⸻
+
+7 Testing & Observability
+	•	Unit tests: OMS simul fill correctness; FIFO realized PnL; risk limits; governor policy math.
+	•	Golden runs: deterministic fixtures (3 symbols × 2 years) to verify no regression.
+	•	Structured logging: JSON logs with run_id, component, event, payload.
+	•	Run registry: compare runs in dashboard (select two run_ids → diff metrics).
+
+⸻
+
+8 Security & Secrets
+	•	Keep .env for Alpaca keys (paper/live).
+	•	Never persist secrets in DB or logs.
+	•	Add rate-limit handling and retries in broker adapters.
+
+⸻
+
+9 Migration Plan (Phased)
+
+Phase 0 (Stabilize)
+	•	Keep CSVs; fix schema/type issues; centralize FIFO metrics usage.
+
+Phase 1 (DB foundation)
+	•	Introduce DataStore(DuckDB); mirror writes from logger/metrics/governor; add run_id.
+
+Phase 2 (Portfolio + OMS)
+	•	Implement PortfolioEngine; integrate SimExecutionAdapter; refactor backtest loop to portfolio-first.
+	•	Add BrokerInterface + AlpacaExecutionAdapter.
+
+Phase 3 (Governor → Allocator)
+	•	Compute per-edge metrics; implement policy; set Portfolio targets; rebalance in-loop.
+
+Phase 4 (Risk 2.0 + Dashboard parity)
+	•	Exposure/vol/turnover limits enforced; DB-backed dashboards; new governor visuals (rationales/diversification).
+
+Phase 5 (Paper readiness)
+	•	End-to-end paper trading with unified OMS; nightly governor; production checklist (alerts, retries, health checks).
+
+⸻
+
+10 Concrete To-Dos (Actionable)
+	1.	Create portfolio_engine.py with interfaces above; wire into backtest loop.
+	2.	Create oms/:
+	•	models.py (Order/Fill/Position)
+	•	sim_adapter.py (wrap ExecutionSimulator)
+	•	alpaca_adapter.py (wrap AlpacaBroker)
+	3.	Refactor backtester to:
+	•	request signals → Risk → OMS → Portfolio → Snapshot
+	•	stop direct CSV writes; route through CockpitLogger/DataStore
+	4.	Introduce data_store.py (DuckDB) and mirror CSV writes for now.
+	5.	Evolve Governor: per-edge metrics ingestion; compute_weights() → rationale.
+	6.	RiskEngine: add simple vol-targeting + gross exposure cap in loop.
+	7.	Dashboard:
+	•	DataManager prefers DB (detect and switch); CSV fallback
+	•	Add rationale + sleeve totals + diversification score to Governor tab.
+	8.	Tests: fixtures + unit tests for OMS/Portfolio/Risk/Governor math.
+	9.	Docs: README System Overview v2 + developer guide for run_ids and DB.
+

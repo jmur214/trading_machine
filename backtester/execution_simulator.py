@@ -168,7 +168,7 @@ class ExecutionSimulator:
             "ticker": ticker,
             "side": side,
             "qty": qty,
-            "price": float(traded),
+            "fill_price": float(traded),
             "commission": float(self.params.commission),
         }
         # preserve attribution/meta if passed
@@ -176,6 +176,18 @@ class ExecutionSimulator:
             fill["edge"] = order["edge"]
         if "meta" in order:
             fill["meta"] = order["meta"]
+        if "edge_id" in order:
+            fill["edge_id"] = order["edge_id"]
+        if "edge_category" in order:
+            fill["edge_category"] = order["edge_category"]
+        if "edge_group" in order:
+            fill["edge_group"] = order["edge_group"]
+        # Set trigger default if not present
+        if "trigger" not in order:
+            if side in {"long", "short"}:
+                fill["trigger"] = "entry"
+            elif side in {"exit", "cover"}:
+                fill["trigger"] = "exit"
 
         self._log_info(f"[EXEC] Filled {side} {ticker} x{qty} @ {traded:.4f}")
         return fill
@@ -253,10 +265,19 @@ class ExecutionSimulator:
             "ticker": ticker,
             "side": exec_side,
             "qty": qty,
-            "price": float(px),
+            "fill_price": float(px),
             "commission": float(self.params.commission),
             "trigger": trigger,
         }
+        # Preserve attribution keys from position if present
+        if getattr(position, "edge", None) is not None:
+            fill["edge"] = position.edge
+        if getattr(position, "edge_group", None) is not None:
+            fill["edge_group"] = position.edge_group
+        if getattr(position, "edge_id", None) is not None:
+            fill["edge_id"] = position.edge_id
+        if getattr(position, "edge_category", None) is not None:
+            fill["edge_category"] = position.edge_category
         self._log_info(f"[EXEC] {exec_side.upper()} via {trigger} {ticker} x{qty} @ {px:.4f}")
         return fill
 

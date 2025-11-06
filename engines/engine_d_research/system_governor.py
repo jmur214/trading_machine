@@ -152,14 +152,15 @@ def _append_weights_history(ts_iso: str, weights: Dict[str, float],
         header_needed = not EDGE_WEIGHTS_HISTORY.exists() or EDGE_WEIGHTS_HISTORY.stat().st_size == 0
         with EDGE_WEIGHTS_HISTORY.open("a") as f:
             if header_needed:
-                f.write("timestamp,edge,weight,sharpe,mdd,corr_penalty\n")
+                f.write("timestamp,edge,weight,category,sharpe,mdd,trade_count\n")
             for edge, w in weights.items():
-                sr = mdd = cp = ""
+                cat = sr = mdd = tc = ""
                 if metrics and isinstance(metrics.get(edge), dict):
+                    cat = metrics[edge].get("category", "")
                     sr = metrics[edge].get("sr", "")
                     mdd = metrics[edge].get("mdd", "")
-                    cp = metrics[edge].get("corr_penalty", "")
-                f.write(f"{ts_iso},{edge},{w},{sr},{mdd},{cp}\n")
+                    tc = metrics[edge].get("trade_count", "")
+                f.write(f"{ts_iso},{edge},{w},{cat},{sr},{mdd},{tc}\n")
     except Exception as e:
         logger.warning(f"Failed to append weights history: {e}")
 
@@ -357,6 +358,7 @@ class SystemGovernor:
             "summary": eq_summary,
             "metrics": metrics.get("metrics", {}),
             "weights": weights.get("weights", {}),
+            "categories": {k: v.get("category") for k, v in metrics.get("metrics", {}).items()},
             "recommendations": recommendations or {},
         }
         _safe_write_json(SYSTEM_STATE_PATH, state)
@@ -374,7 +376,7 @@ class SystemGovernor:
                 sr = m.get("sr", "-")
                 mdd = m.get("mdd", "-")
                 tc = m.get("trade_count", "-")
-                logger.info(f"  • {edge:<20} | weight={val:.3f} | SR={sr} | MDD={mdd} | trades={tc}")
+                logger.info(f"  • {edge:<22} | cat={m.get('category','-'):<10} | weight={val:.3f} | SR={sr} | MDD={mdd} | trades={tc}")
             logger.info("----------------------------------------")
         except Exception as e:
             logger.warning(f"Could not log summary: {e}")
@@ -404,8 +406,19 @@ def _fallback_compute_metrics(src: SourceFiles) -> Dict[str, Dict[str, float]]:
     if "edge" not in trades.columns:
         trades["edge"] = "Unknown"
 
-    # Compute basic SR & MDD proxies per edge
-    for edge, tdf in trades.groupby("edge", dropna=False):
+    # Compute basic SR & MDD proxies per edge (prefer edge_id when present)
+    edge_col = "edge_id" if "edge_id" in trades.columns else "edge"
+    cat_col = "edge_category" if "edge_category" in trades.columns else None
+
+    for edge, tdf in trades.groupby(edge_col, dropna=False):
+        # derive category (last non-null) if available
+        category = None
+        if cat_col and cat_col in tdf.columns:
+            non_null = tdf[cat_col].dropna()
+            if not non_null.empty:
+                category = str(non_null.iloc[-1])
+            else:
+                category = "unknown"
         tdf = tdf.sort_values("timestamp")
         realized = tdf.dropna(subset=["pnl"])["pnl"]
         trade_count = int(len(tdf))
@@ -427,6 +440,7 @@ def _fallback_compute_metrics(src: SourceFiles) -> Dict[str, Dict[str, float]]:
         # naive correlation penalty: none (0) in fallback
         results[str(edge)] = {
             "trade_count": trade_count,
+            "category": category if category else "unknown",
             "win_rate": None if np.isnan(win_rate) else round(win_rate, 2),
             "total_realized_pnl": round(pnl_sum, 2),
             "sr": None if _isnan(sr) else round(sr, 3),
@@ -547,7 +561,11 @@ def _fallback_compute_weights(metrics_map: Dict[str, Dict[str, float]]) -> Dict[
             base = max(sr, 0.0)
             bonus = 1.0 + max(wr, 0.0) * 0.01
             penalty = 1.0 - (abs(min(mdd, 0.0)) * 0.01) - max(cp, 0.0)
-            score = max(base * bonus * penalty, 0.0)
+            # small diversity bonus for known categories
+            cat_bonus = 1.0
+            if isinstance(m, dict) and m.get("category") and m.get("category") != "unknown":
+                cat_bonus = 1.05
+            score = max(base * bonus * penalty * cat_bonus, 0.0)
         except Exception:
             score = 0.0
         scores[str(edge)] = score

@@ -43,6 +43,7 @@ from typing import Dict, List, Optional
 
 import json
 import math
+from statistics import fmean
 import numpy as np
 import pandas as pd
 
@@ -67,8 +68,8 @@ class AlphaConfig:
     """Configuration container for AlphaEngine."""
 
     # thresholds to create a discrete side from aggregate score
-    enter_threshold: float = 0.2
-    exit_threshold: float = 0.05
+    enter_threshold: float = 0.1
+    exit_threshold: float = 0.03
 
     # regime gates
     regime: RegimeSettings = field(default_factory=RegimeSettings)
@@ -127,24 +128,26 @@ class AlphaEngine:
         # 1️⃣ Initialize base edges
         self.edges = dict(edges or {})
 
-        # 2️⃣ Try to import our test edge dynamically
-        import importlib
-        try:
-            test_edge = importlib.import_module("engines.engine_a_alpha.edges.test_edge")
-            self.edges["test_edge"] = test_edge
-            if is_info_enabled() or is_debug_enabled("ALPHA"):
-                print(f"[ALPHA][INFO] test_edge imported successfully: {test_edge}")
-        except Exception as e:
-            print(f"[ALPHA][DEBUG] Failed to import test_edge: {e}")
-
-        try:
-            news_edge = importlib.import_module("engines.engine_a_alpha.edges.news_sentiment_boost")
-            self.edges["news_sentiment_boost"] = news_edge
-            if is_info_enabled() or is_debug_enabled("ALPHA"):
-                print(f"[ALPHA][INFO] news_sentiment_boost imported successfully: {news_edge}")
-        except Exception as e:
-            if is_info_enabled() or is_debug_enabled("ALPHA"):
-                print(f"[ALPHA][DEBUG] Failed to import news_sentiment_boost: {e}")
+        # 2️⃣ Optionally import experimental edges (guarded)
+        import os, importlib
+        include_extras = os.getenv("ALPHA_INCLUDE_EXTRAS", "0").lower() in {"1","true","yes","on"}
+        if include_extras:
+            try:
+                test_edge = importlib.import_module("engines.engine_a_alpha.edges.test_edge")
+                self.edges.setdefault("test_edge", test_edge)
+                if is_info_enabled() or is_debug_enabled("ALPHA"):
+                    print(f"[ALPHA][INFO] test_edge imported successfully: {test_edge}")
+            except Exception as e:
+                if is_info_enabled() or is_debug_enabled("ALPHA"):
+                    print(f"[ALPHA][DEBUG] Failed to import test_edge: {e}")
+            try:
+                news_edge = importlib.import_module("engines.engine_a_alpha.edges.news_sentiment_boost")
+                self.edges.setdefault("news_sentiment_boost", news_edge)
+                if is_info_enabled() or is_debug_enabled("ALPHA"):
+                    print(f"[ALPHA][INFO] news_sentiment_boost imported successfully: {news_edge}")
+            except Exception as e:
+                if is_info_enabled() or is_debug_enabled("ALPHA"):
+                    print(f"[ALPHA][DEBUG] Failed to import news_sentiment_boost: {e}")
 
         # 3️⃣ Print out all loaded edges for confirmation
         if is_info_enabled() or is_debug_enabled("ALPHA"):
@@ -216,6 +219,22 @@ class AlphaEngine:
         # State for cooldown & last known side per ticker
         self._last_side: Dict[str, Optional[str]] = {}
         self._last_flip_ts: Dict[str, Optional[pd.Timestamp]] = {}
+
+    def _edge_meta_from_detail(self, edge_detail: dict) -> dict:
+        """Normalize edge descriptor from SignalProcessor edges_detail item.
+        Expected keys in edge_detail: 'edge' (name), optional 'group', 'category', 'version'.
+        Fallbacks ensure JSON-safe primitives.
+        """
+        name = str(edge_detail.get("edge", "Unknown"))
+        group = str(edge_detail.get("group", edge_detail.get("category", "technical") or "technical"))
+        version = edge_detail.get("version")
+        try:
+            ver_str = (str(version).strip() if version is not None else "1")
+        except Exception:
+            ver_str = "1"
+        edge_id = f"{name}_v{ver_str}"
+        category = str(edge_detail.get("category", group))
+        return {"name": name, "group": group, "category": category, "id": edge_id}
 
     # ------------------------------------------------------------------ #
 
@@ -294,6 +313,48 @@ class AlphaEngine:
 
         # 2) Process: normalize, regime-gate, shrinkage, hygiene checks
         proc = self.processor.process(data_map, now, raw_scores)
+        # --- Fallback: if processor yields nothing but we have raw_scores, build a minimal proc ---
+        if (not proc) and raw_scores:
+            proc = {}
+            # normalize via tanh and simple weighted mean
+            ew = self.cfg.edge_weights or {}
+            for ticker, edge_map in raw_scores.items():
+                details = []
+                contribs = []
+                weights = []
+                for edge_name, raw in edge_map.items():
+                    try:
+                        r = float(raw)
+                    except Exception:
+                        r = 0.0
+                    # clamp then normalize with tanh for safety
+                    r = max(-self.cfg.hygiene.clamp, min(self.cfg.hygiene.clamp, r))
+                    norm = math.tanh(r)
+                    w = float(ew.get(edge_name, 1.0))
+                    details.append({
+                        "edge": edge_name,
+                        "group": "technical",
+                        "category": "technical",
+                        "version": "1",
+                        "raw": r,
+                        "norm": norm,
+                        "weight": w,
+                    })
+                    contribs.append(norm * w)
+                    weights.append(abs(w))
+                agg = 0.0
+                if contribs:
+                    try:
+                        agg = sum(contribs) / (sum(weights) if sum(weights) != 0 else len(contribs))
+                    except Exception:
+                        agg = fmean(contribs)
+                proc[ticker] = {
+                    "aggregate_score": float(max(-1.0, min(1.0, agg))),
+                    "regimes": {"trend": True, "vol_ok": True},
+                    "edges_detail": details,
+                }
+            if is_info_enabled() or is_debug_enabled("ALPHA"):
+                print(f"[ALPHA][INFO] Fallback processor used at {now}; built proc for {len(proc)} tickers")
 
         # 3) Aggregate per ticker and turn into discrete side if above thresholds
         signals: List[dict] = []
@@ -309,40 +370,55 @@ class AlphaEngine:
                 side = None
                 strength = 0.0
 
-            if side is None:
+            # Ensure we skip signals with non-positive strength (prevents empty backtest output)
+            if side is None or strength <= 0:
                 continue
 
             self._update_flip_state(ticker, side, now)
 
-            # Package signal
-            # Determine the primary contributing edge
+            # Package signal with robust edge attribution
+            if not isinstance(edges_detail, list):
+                edges_detail = []
             if edges_detail:
-                # Choose the edge with the largest absolute normalized contribution
-                top_edge = max(edges_detail, key=lambda ed: abs(ed["norm"] * ed["weight"]))
-                edge_name = top_edge.get("edge", "Unknown")
-                edge_group = top_edge.get("group", "technical")  # group is optional per-edge attribute
+                top_edge = max(edges_detail, key=lambda ed: abs(float(ed.get("norm", 0.0)) * float(ed.get("weight", 0.0))))
+                top_meta = self._edge_meta_from_detail(top_edge)
+                # Fallback logic for edge_id and edge_category
+                if not top_meta.get("id"):
+                    top_meta["id"] = f"{top_meta['name']}_v1"
+                if not top_meta.get("category"):
+                    top_meta["category"] = top_meta.get("group", "technical")
             else:
-                edge_name = "Unknown"
-                edge_group = "technical"
+                top_meta = {"name": "Unknown", "group": "technical", "category": "technical", "id": "Unknown_v1"}
 
-            # Package signal with explicit edge attribution
+            # JSON-safe, compact meta (avoid leaking large dicts into CSV columns later)
+            edges_triggered = []
+            for ed in edges_detail:
+                if not isinstance(ed, dict):
+                    continue
+                contrib = abs(float(ed.get("norm", 0.0)) * float(ed.get("weight", 0.0)))
+                if contrib >= self.cfg.min_edge_contribution:
+                    em = self._edge_meta_from_detail(ed)
+                    edges_triggered.append({
+                        "edge": em["name"],
+                        "edge_id": em["id"],
+                        "edge_category": em["category"],
+                        "raw": float(ed.get("raw", 0.0)),
+                        "norm": float(ed.get("norm", 0.0)),
+                        "weight": float(ed.get("weight", 0.0)),
+                    })
+
             signals.append({
                 "ticker": ticker,
                 "side": side,
                 "strength": float(max(0.0, min(1.0, strength))),
-                "edge": edge_name,
-                "edge_group": edge_group,
+                # top-level attribution (consumed by Risk/Logger)
+                "edge": top_meta["name"],
+                "edge_group": top_meta["group"],
+                "edge_id": top_meta["id"],
+                "edge_category": top_meta["category"],
+                # compact meta only
                 "meta": {
-                    "edges_triggered": [
-                        {
-                            "edge": ed["edge"],
-                            "raw": float(ed["raw"]),
-                            "norm": float(ed["norm"]),
-                            "weight": float(ed["weight"]),
-                        }
-                        for ed in edges_detail
-                        if abs(ed["norm"] * ed["weight"]) >= self.cfg.min_edge_contribution
-                    ],
+                    "edges_triggered": edges_triggered,
                     "regimes": regimes,
                 },
             })
@@ -363,8 +439,11 @@ class AlphaEngine:
                 sig["strength"] *= avg_w  # scale by edge-level weights
                 sig["meta"]["governor_weight"] = round(avg_w, 3)
 
-        if (is_info_enabled() or is_debug_enabled("ALPHA")) and signals:
-            print(f"[ALPHA][INFO] {now} generated {len(signals)} signals")
+        if (is_info_enabled() or is_debug_enabled("ALPHA")):
+            print(f"[ALPHA][INFO] {now} generated {len(signals)} signals from edges={list(self.edges.keys())}")
+            if signals[:3]:
+                preview = [{k: s[k] for k in ("ticker","side","strength","edge","edge_id","edge_category")} for s in signals[:3]]
+                print(f"[ALPHA][INFO] Sample signals: {preview}")
 
         return signals
     
@@ -379,7 +458,6 @@ if __name__ == "__main__":
     ae = AlphaEngine(edges={}, debug=True)
     now = pd.Timestamp(df.index[-1])
     signals = ae.generate_signals({"AAPL": df}, now)
-    from debug_config import is_debug_enabled
     if is_debug_enabled("ALPHA"):
         print("\n[DEBUG] Example output:")
     print(signals)
