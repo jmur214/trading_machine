@@ -47,6 +47,7 @@ class CockpitLogger:
         "meta",
         "edge_id",
         "edge_category",
+        "run_id",
     ]
 
     SNAPSHOT_COLUMNS = [
@@ -57,14 +58,20 @@ class CockpitLogger:
         "unrealized_pnl",
         "equity",
         "positions",
+        "run_id",
     ]
 
     def __init__(self, out_dir: str = "data/trade_logs", portfolio: Optional[Any] = None, verbose: bool = True, flush_interval: float = 3.0, flush_each_fill: bool = False):
-        self.out_dir = Path("data/trade_logs")
+        from uuid import uuid4
+        self.out_dir = Path(out_dir)
         self.out_dir.mkdir(parents=True, exist_ok=True)
 
-        self.trade_path = self.out_dir / "trades.csv"
-        self.snap_path = self.out_dir / "portfolio_snapshots.csv"
+        self.run_id = str(uuid4())
+        run_subdir = self.out_dir / self.run_id
+        run_subdir.mkdir(parents=True, exist_ok=True)
+        self.trade_path = run_subdir / "trades.csv"
+        self.snap_path = run_subdir / "portfolio_snapshots.csv"
+
         self.portfolio = portfolio
         self.verbose = verbose
 
@@ -81,6 +88,9 @@ class CockpitLogger:
 
         self._ensure_csv_headers()
         self._flush_thread.start()
+
+        if is_info_enabled() or is_debug_enabled("LOGGER"):
+            print(f"[LOGGER][INIT] CockpitLogger initialized for run_id={self.run_id} at {self.out_dir}")
 
     # -------------------------------------------------------------------- #
     def _ensure_csv_headers(self) -> None:
@@ -120,6 +130,7 @@ class CockpitLogger:
             if not buffer:
                 return
             df = pd.DataFrame(buffer)
+            df["run_id"] = self.run_id
             df.to_csv(path, mode="a", header=False, index=False)
             buffer.clear()
             if is_info_enabled() or is_debug_enabled("LOGGER"):
@@ -129,18 +140,21 @@ class CockpitLogger:
     def _append_to_csv(self, path: Path, row_dict: dict) -> None:
         """Append a single dict row to the appropriate buffer and flush if needed."""
         if path == self.trade_path:
+            row_dict["run_id"] = self.run_id
             self._trade_buffer.append(row_dict)
             if len(self._trade_buffer) >= self._buffer_limit:
                 self._flush_buffer(self.trade_path, self._trade_buffer)
             if self.flush_each_fill:
                 self.flush()
         elif path == self.snap_path:
+            row_dict["run_id"] = self.run_id
             self._snap_buffer.append(row_dict)
             if len(self._snap_buffer) >= self._buffer_limit:
                 self._flush_buffer(self.snap_path, self._snap_buffer)
         else:
             # Fallback: write immediately if unknown path
             df = pd.DataFrame([row_dict])
+            df["run_id"] = self.run_id
             with self._lock:
                 df.to_csv(path, mode="a", header=False, index=False)
 
@@ -276,6 +290,7 @@ class CockpitLogger:
 
         snap = dict(snap)
         snap["timestamp"] = pd.to_datetime(snap["timestamp"])
+        snap["run_id"] = self.run_id
         self._append_to_csv(self.snap_path, snap)
 
         if is_info_enabled() or is_debug_enabled("LOGGER"):
@@ -292,6 +307,7 @@ class CockpitLogger:
             # Flush trades
             if self._trade_buffer:
                 df_t = pd.DataFrame(self._trade_buffer)
+                df_t["run_id"] = self.run_id
                 df_t.to_csv(self.trade_path, mode="a", header=False, index=False)
                 flushed_t = len(df_t)
                 self._trade_buffer.clear()
@@ -301,6 +317,7 @@ class CockpitLogger:
             # Flush snapshots
             if self._snap_buffer:
                 df_s = pd.DataFrame(self._snap_buffer)
+                df_s["run_id"] = self.run_id
                 df_s.to_csv(self.snap_path, mode="a", header=False, index=False)
                 flushed_s = len(df_s)
                 self._snap_buffer.clear()
@@ -343,3 +360,4 @@ class CockpitLogger:
         self._stop_event.set()
         self._flush_thread.join(timeout=5)
         self.flush()
+        print(f"[LOGGER][INFO] Closed logger for run_id={self.run_id}")

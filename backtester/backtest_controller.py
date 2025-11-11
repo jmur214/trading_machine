@@ -94,6 +94,9 @@ class BacktestController:
         bt_params: Optional[BacktestParams] = None,
         batch_flush_interval: int = 500,
     ):
+        # Add run_id for logging and tracing
+        from uuid import uuid4
+        self.run_id = str(uuid4())
         # Normalize data
         self.data_map: Dict[str, pd.DataFrame] = {}
         for t, df in data_map.items():
@@ -111,6 +114,9 @@ class BacktestController:
         self.alpha = alpha_engine
         self.risk = risk_engine
         self.logger = cockpit_logger
+        # If the logger supports a run_id attribute, set it
+        if hasattr(self.logger, "run_id"):
+            self.logger.run_id = self.run_id
         self.portfolio = PortfolioEngine(initial_capital)
         # Store initial capital for later use
         self.initial_capital = float(initial_capital)
@@ -145,6 +151,9 @@ class BacktestController:
         # Build unified timestamp vector
         all_sets = [set(df.index) for df in self.data_map.values() if not df.empty]
         self.timestamps: List[pd.Timestamp] = sorted(set().union(*all_sets)) if all_sets else []
+        # Robustness: check if data_map is empty or invalid after constructing self.timestamps
+        if not self.data_map or not self.timestamps:
+            raise ValueError("[BACKTEST] Initialization error: data_map is empty or contains no valid bars after normalization. Check data sources, API keys, or data integrity.")
 
         self.cfg = bt_params or BacktestParams()
         self.batch_flush_interval = batch_flush_interval
@@ -185,16 +194,24 @@ class BacktestController:
 
     def _safe_write_trade(self, fill: dict, ts):
         """
-        Append a trade fill to data/trade_logs/trades.csv, ensuring directory and header.
+        Append a trade fill to trades.csv, ensuring directory and header.
         Includes edge_id and edge_category if present.
         """
         import os
         import csv
-        # Determine file path
-        root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-        logs_dir = os.path.join(root, "data", "trade_logs")
-        os.makedirs(logs_dir, exist_ok=True)
-        trades_path = os.path.join(logs_dir, "trades.csv")
+        # Prefer cockpit logger's resolved paths if available
+        logger_trade_path = getattr(self.logger, "trade_path", None)
+        logger_out_dir = getattr(self.logger, "out_dir", None)
+        if logger_trade_path:
+            trades_path = str(logger_trade_path)
+        else:
+            # Fallback to legacy flat path
+            root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+            logs_dir = os.path.join(root, "data", "trade_logs")
+            os.makedirs(logs_dir, exist_ok=True)
+            trades_path = os.path.join(logs_dir, "trades.csv")
+        # Ensure directory exists if we didn't already
+        os.makedirs(os.path.dirname(trades_path), exist_ok=True)
         # Prepare row with standard fields and extra edge_id/category
         row = {
             "timestamp": str(ts),
@@ -270,25 +287,66 @@ class BacktestController:
 
         start_dt = pd.to_datetime(start).tz_localize(None)
         end_dt = pd.to_datetime(end).tz_localize(None)
+        # Check for empty data_map or all empty DataFrames
+        if not self.data_map or all(df.empty for df in self.data_map.values()):
+            print("[BACKTEST_CONTROLLER][DEBUG] Entered run() with empty data_map or all empty DataFrames.")
+            raise ValueError("[BACKTEST] No data available for backtest — data_map is empty or failed to load. Check data sources or API keys.")
         ts_vec = [ts for ts in self.timestamps if (start_dt <= ts <= end_dt)]
 
-        if len(ts_vec) < 2:
-            if is_info_enabled("BACKTEST_CONTROLLER"):
-                print("[BACKTEST] Not enough timestamps to run.")
-            return self.portfolio.history
+        if not ts_vec:
+            print("[BACKTEST_CONTROLLER][DEBUG] Entered run() but no valid timestamps found in range.")
+            raise ValueError("[BACKTEST] No valid timestamps found within range. Check data alignment or date filters.")
 
-        # Initial snapshot at first available bar close
+        # Always write an initial snapshot even if there's only one bar
         t0 = ts_vec[0]
-        first_prices = {t: float(self.data_map[t].loc[t0]["Close"]) for t in self.data_map if t0 in self.data_map[t].index}
-        # Ensure nonzero equity baseline for portfolio using the configured initial capital
+        first_prices = {t: float(self.data_map[t].iloc[0]["Close"]) for t in self.data_map if not self.data_map[t].empty}
+        # Ensure portfolio capital and cash are set to initial_capital if <= 0 before first snapshot
         if float(getattr(self.portfolio, "capital", 0.0)) <= 0.0:
             self.portfolio.capital = self.initial_capital
         if hasattr(self.portfolio, "cash") and float(getattr(self.portfolio, "cash", 0.0)) <= 0.0:
             self.portfolio.cash = self.initial_capital
         snap0 = self.portfolio.snapshot(t0, first_prices)
-        # Human-friendly count of open positions in snapshot
         snap0["positions"] = sum(1 for p in self.portfolio.positions.values() if p.qty != 0)
-        self.logger.log_snapshot(snap0)
+        snap0["run_id"] = self.run_id
+        try:
+            self.logger.log_snapshot(snap0)
+        except Exception as e:
+            print(f"[BACKTEST_CONTROLLER][DEBUG] Exception logging initial snapshot: {e}")
+        self.portfolio.history = [snap0]
+
+        # Force at least one initial record into portfolio_snapshots.csv if portfolio.history is empty or snapshot could not be written
+        try:
+            # Try to write to portfolio_snapshots.csv directly if needed
+            if not self.portfolio.history or len(self.portfolio.history) == 0:
+                print("[BACKTEST_CONTROLLER][DEBUG] portfolio.history is empty after initial snapshot, forcing record to portfolio_snapshots.csv.")
+                snap_path = None
+                # Prefer logger's snapshot path
+                snap_path_obj = getattr(self.logger, "snap_path", None)
+                if snap_path_obj:
+                    snap_path = str(snap_path_obj)
+                else:
+                    # Fallback to legacy flat path
+                    import os
+                    root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+                    logs_dir = os.path.join(root, "data", "trade_logs")
+                    os.makedirs(logs_dir, exist_ok=True)
+                    snap_path = os.path.join(logs_dir, "portfolio_snapshots.csv")
+                # Ensure directory exists
+                import os, csv
+                os.makedirs(os.path.dirname(snap_path), exist_ok=True)
+                header = list(snap0.keys())
+                write_header = not os.path.exists(snap_path)
+                with open(snap_path, "a", newline="") as f:
+                    writer = csv.DictWriter(f, fieldnames=header)
+                    if write_header:
+                        writer.writeheader()
+                    writer.writerow(snap0)
+        except Exception as e:
+            print(f"[BACKTEST_CONTROLLER][DEBUG] Could not write forced initial snapshot: {e}")
+
+        if len(ts_vec) < 2:
+            print("[BACKTEST_CONTROLLER][DEBUG] Only one bar of data available; recorded initial snapshot only and finishing early.")
+            return self.portfolio.history
 
         if self.cfg.verbose and is_debug_enabled("BACKTEST_CONTROLLER"):
             print(f"[DEBUG] Starting backtest from {t0} to {ts_vec[-1]} ({len(ts_vec)} bars)")
@@ -699,10 +757,17 @@ class BacktestController:
             from cockpit.metrics import PerformanceMetrics
             import json
             import os
-            # Attempt to locate trade logs and snapshots
-            root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-            snapshots_path = os.path.join(root, "data", "trade_logs", "portfolio_snapshots.csv")
-            trades_path = os.path.join(root, "data", "trade_logs", "trades.csv")
+            # Prefer cockpit logger's resolved files (run-scoped) if available
+            snapshots_path_obj = getattr(self.logger, "snap_path", None)
+            trades_path_obj = getattr(self.logger, "trade_path", None)
+            if snapshots_path_obj and trades_path_obj:
+                snapshots_path = str(snapshots_path_obj)
+                trades_path = str(trades_path_obj)
+            else:
+                root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+                snapshots_path = os.path.join(root, "data", "trade_logs", "portfolio_snapshots.csv")
+                trades_path = os.path.join(root, "data", "trade_logs", "trades.csv")
+
             if os.path.exists(snapshots_path) and os.path.exists(trades_path):
                 metrics = PerformanceMetrics(
                     snapshots_path=snapshots_path,
@@ -714,12 +779,27 @@ class BacktestController:
                     stats = metrics.summary_dict
                 else:
                     stats = {}
-                perf_path = os.path.join(root, "data", "research", "performance_summary.json")
-                os.makedirs(os.path.dirname(perf_path), exist_ok=True)
+                # Save the summary next to the snapshots by default
+                perf_dir = os.path.dirname(snapshots_path)
+                perf_path = os.path.join(perf_dir, "performance_summary.json")
+                os.makedirs(perf_dir, exist_ok=True)
                 with open(perf_path, "w") as f:
                     json.dump(stats, f, indent=2)
         except Exception as e:
             # Non-fatal; just skip
             pass
 
+        if hasattr(self.logger, "run_id"):
+            print(f"[BACKTEST][INFO] Completed run for run_id={self.logger.run_id}")
+        try:
+            out_dir = getattr(self.logger, "out_dir", None)
+            snap_path = getattr(self.logger, "snap_path", None)
+            trade_path = getattr(self.logger, "trade_path", None)
+            if out_dir:
+                print(f"[BACKTEST][PATHS] out_dir={out_dir}")
+            if snap_path and trade_path:
+                print(f"[BACKTEST][PATHS] snapshots={snap_path}")
+                print(f"[BACKTEST][PATHS] trades={trade_path}")
+        except Exception:
+            pass
         return self.portfolio.history

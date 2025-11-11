@@ -1,9 +1,13 @@
 {
-    "tickers": ["AAPL", "MSFT", "SPY"],
-    "timeframe": "1d",
-    "start_date": "2022-01-01",
-    "end_date": "2024-12-31",
-    "initial_capital": 100000.0,
-    "slippage_bps": 10,
-    "commission": 0.0
-  }
+  "tickers": [
+    "AAPL",
+    "MSFT",
+    "SPY"
+  ],
+  "timeframe": "1d",
+  "start_date": "2022-01-01",
+  "end_date": "2024-12-31",
+  "initial_capital": 100000.0,
+  "slippage_bps": 10,
+  "commission": 0.0
+}

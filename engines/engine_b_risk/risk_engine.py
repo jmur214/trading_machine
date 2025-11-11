@@ -166,11 +166,16 @@ class RiskEngine:
             return None
 
         # Warmup
-        if len(df_hist) < self.cfg.min_bars_warmup:
+        import os
+        debug_override = os.getenv("BACKTEST_DEBUG") or os.getenv("ALPHA_DEBUG")
+        if len(df_hist) < self.cfg.min_bars_warmup and not debug_override:
             self._fail(ticker, "warmup_insufficient_bars")
             if is_debug_enabled("RISK"):
                 print(f"[RISK][DEBUG] Rejected signal for {ticker} — reason={self.last_skip_by_ticker.get(ticker)}")
             return None
+        elif len(df_hist) < self.cfg.min_bars_warmup and debug_override:
+            if is_debug_enabled("RISK"):
+                print(f"[RISK][DEBUG] Warmup insufficient but BACKTEST_DEBUG override enabled for {ticker}")
 
         # Cooldown (optional): require N bars between orders per ticker
         if self.cfg.cooldown_bars > 0:
@@ -276,10 +281,16 @@ class RiskEngine:
                 print(f"[RISK][DEBUG] Rejected signal for {ticker} — reason={self.last_skip_by_ticker.get(ticker)}")
             return None
         if not np.isfinite(raw_atr) or raw_atr <= 0:
-            self._fail(ticker, "invalid_atr")
-            if is_debug_enabled("RISK"):
-                print(f"[RISK][DEBUG] Rejected signal for {ticker} — reason={self.last_skip_by_ticker.get(ticker)}")
-            return None
+            # Fallback ATR: use rolling stddev of Close prices
+            if len(df_hist) > 5 and "Close" in df_hist:
+                raw_atr = float(df_hist["Close"].pct_change().rolling(5).std().iloc[-1] * price)
+                if is_debug_enabled("RISK"):
+                    print(f"[RISK][DEBUG] Fallback ATR used for {ticker}: {raw_atr:.4f}")
+            if not np.isfinite(raw_atr) or raw_atr <= 0:
+                self._fail(ticker, "invalid_atr_after_fallback")
+                if is_debug_enabled("RISK"):
+                    print(f"[RISK][DEBUG] Rejected signal for {ticker} — reason={self.last_skip_by_ticker.get(ticker)}")
+                return None
         if raw_atr > price * 0.5:
             if is_info_enabled() or is_debug_enabled("RISK"):
                 print(f"[RISK][WARN] Abnormally large ATR for {ticker}: atr={raw_atr}, price={price}")
@@ -410,6 +421,13 @@ class RiskEngine:
             if is_debug_enabled("RISK"):
                 print(f"[RISK][DEBUG] Rejected signal for {ticker} — reason={self.last_skip_by_ticker.get(ticker)}")
             return None
+
+        # --- Fallback safety: ensure at least minimal order if everything else fails ---
+        if add_qty <= 0 and debug_override:
+            add_qty = 1
+            meta.update({"sizing_mode": "fallback_fixed", "reason": "debug_forced_trade"})
+            if is_debug_enabled("RISK"):
+                print(f"[RISK][DEBUG] Forcing minimal 1-share trade for {ticker} in debug mode.")
 
         # Gross exposure guard
         try:

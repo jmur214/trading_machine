@@ -44,3 +44,9 @@ def is_info_enabled(section: str) -> bool:
     Example: if is_info_enabled("ALPHA"): print("info message")
     """
     return DEBUG_LEVELS.get(f"{section.upper()}_INFO", False)
+
+def enable_debug_level(level: str):
+    """Enable a specific debug level dynamically."""
+    global DEBUG_LEVELS
+    DEBUG_LEVELS[level] = True
+    print(f"[DEBUG_CONFIG] Enabled debug level: {level}")

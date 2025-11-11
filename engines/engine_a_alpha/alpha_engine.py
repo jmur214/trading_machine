@@ -46,6 +46,7 @@ import math
 from statistics import fmean
 import numpy as np
 import pandas as pd
+import os
 
 from .signal_collector import SignalCollector
 from .signal_processor import SignalProcessor, RegimeSettings, HygieneSettings, EnsembleSettings
@@ -94,11 +95,64 @@ class AlphaConfig:
 
 
 def _load_json(path: Path) -> dict:
+    """Load alpha settings safely, applying defaults and validation."""
+    defaults = {
+        "enter_threshold": 0.2,
+        "exit_threshold": 0.05,
+        "hygiene": {"min_history": 60, "dedupe_last_n": 1, "clamp": 6.0},
+        "ensemble": {"enable_shrink": True, "shrink_lambda": 0.35},
+        "min_edge_contribution": 0.05,
+        "flip_cooldown_bars": 5,
+    }
+
+    def _validate_num(value, default, min_val=1e-6):
+        try:
+            v = float(value)
+            if not math.isfinite(v) or v <= 0:
+                return default
+            return v
+        except Exception:
+            return default
+
     try:
         with open(path, "r") as f:
-            return json.load(f)
+            cfg = json.load(f)
     except Exception:
-        return {}
+        if is_debug_enabled("ALPHA"):
+            print(f"[ALPHA][WARN] Could not load config {path}, using defaults.")
+        return defaults
+
+    # Merge defaults and sanitize
+    for k, v in defaults.items():
+        if k not in cfg:
+            cfg[k] = v
+
+    cfg["enter_threshold"] = _validate_num(cfg.get("enter_threshold"), defaults["enter_threshold"])
+    cfg["exit_threshold"] = _validate_num(cfg.get("exit_threshold"), defaults["exit_threshold"])
+    cfg["min_edge_contribution"] = _validate_num(cfg.get("min_edge_contribution"), defaults["min_edge_contribution"])
+    cfg["flip_cooldown_bars"] = int(cfg.get("flip_cooldown_bars", defaults["flip_cooldown_bars"]))
+    
+    # Sanitize hygiene section
+    hygiene = cfg.get("hygiene", {})
+    hygiene["min_history"] = int(hygiene.get("min_history", defaults["hygiene"]["min_history"]))
+    if hygiene["min_history"] <= 0:
+        hygiene["min_history"] = defaults["hygiene"]["min_history"]
+    hygiene["dedupe_last_n"] = int(hygiene.get("dedupe_last_n", defaults["hygiene"]["dedupe_last_n"]))
+    hygiene["clamp"] = _validate_num(hygiene.get("clamp", defaults["hygiene"]["clamp"]), defaults["hygiene"]["clamp"])
+    cfg["hygiene"] = hygiene
+
+    # Sanitize ensemble section
+    ensemble = cfg.get("ensemble", {})
+    ensemble["enable_shrink"] = bool(ensemble.get("enable_shrink", defaults["ensemble"]["enable_shrink"]))
+    ensemble["shrink_lambda"] = _validate_num(ensemble.get("shrink_lambda", defaults["ensemble"]["shrink_lambda"]),
+                                              defaults["ensemble"]["shrink_lambda"])
+    cfg["ensemble"] = ensemble
+
+    if is_debug_enabled("ALPHA"):
+        print(f"[ALPHA][DEBUG] Validated alpha config from {path}: enter={cfg['enter_threshold']} exit={cfg['exit_threshold']} "
+              f"min_hist={cfg['hygiene']['min_history']} shrink_lambda={cfg['ensemble']['shrink_lambda']}")
+
+    return cfg
 
 
 def _coerce_float(x, default: float = 0.0) -> float:
@@ -117,6 +171,69 @@ class AlphaEngine:
     """
     Main class orchestrating Edge collection -> processing -> aggregation -> signals.
     """
+    def _normalize_dataframe(self, df):
+        """Standardize incoming market data from Alpaca, yfinance, or CSV to OHLCV format."""
+        import pandas as pd
+        if df is None or len(df) == 0:
+            return df
+
+        if isinstance(df, (list, dict)) and not isinstance(df, pd.DataFrame):
+            df = pd.DataFrame(df)
+
+        # --- Flatten multi-index columns (e.g., ('Close','AAPL')) ---
+        if isinstance(df.columns, pd.MultiIndex):
+            df.columns = ["_".join(map(str, c)).strip() for c in df.columns]
+
+        # --- Ensure column normalization (case-insensitive) ---
+        rename_map = {
+            "o": "Open", "h": "High", "l": "Low", "c": "Close", "v": "Volume",
+            "open": "Open", "high": "High", "low": "Low", "close": "Close", "volume": "Volume",
+            "adj close": "Adj Close", "adjusted close": "Adj Close"
+        }
+        # Lowercase columns for matching, but preserve original casing
+        col_map = {c.lower(): c for c in df.columns}
+        # Build rename dict for columns present (case-insensitive)
+        rename_actual = {}
+        for k, v in rename_map.items():
+            if k in col_map:
+                rename_actual[col_map[k]] = v
+        df = df.rename(columns=rename_actual)
+
+        # --- Handle missing Close (fallbacks) ---
+        if "Close" not in df.columns:
+            if "Adj Close" in df.columns:
+                df["Close"] = df["Adj Close"]
+            elif len(df.columns) > 0:
+                df["Close"] = pd.to_numeric(df.iloc[:, -1], errors="coerce")
+
+        # --- Handle timestamp-based index if missing ---
+        if not isinstance(df.index, pd.DatetimeIndex):
+            ts_col = next((c for c in df.columns if "time" in c.lower() or "date" in c.lower()), None)
+            if ts_col:
+                df[ts_col] = pd.to_datetime(df[ts_col], errors="coerce")
+                df = df.set_index(ts_col)
+        df.index = pd.to_datetime(df.index, errors="coerce")
+        df = df.sort_index()
+        # Safely strip timezone (compatible with pandas ≥2.2)
+        try:
+            df.index = df.index.tz_localize(None)
+        except TypeError:
+            # Older pandas versions support `errors=`
+            df.index = df.index.tz_localize(None, errors="ignore")
+
+        # --- Drop invalid Close values safely ---
+        if "Close" in df.columns:
+            df = df.dropna(subset=["Close"])
+        else:
+            if is_debug_enabled("ALPHA"):
+                print("[ALPHA][WARN] No 'Close' column found even after normalization; skipping dropna.")
+
+        # --- Ensure numeric floats ---
+        for col in ["Open", "High", "Low", "Close", "Volume"]:
+            if col in df.columns:
+                df[col] = pd.to_numeric(df[col], errors="coerce").astype(float)
+
+        return df
     def __init__(
         self,
         edges: Dict[str, object],
@@ -124,12 +241,36 @@ class AlphaEngine:
         config_path: Optional[str] = None,
         debug: bool = True,
         governor: Optional["StrategyGovernor"] = None,  # NEW
+        config: Optional[dict] = None,
     ):
         # 1️⃣ Initialize base edges
         self.edges = dict(edges or {})
+        # --- Dynamically import edge modules if only names are given ---
+        from importlib import import_module
+        if not self.edges:
+            default_edges = ["rsi_mean_reversion", "xsec_momentum"]
+            for e in default_edges:
+                try:
+                    mod = import_module(f"engines.engine_a_alpha.edges.{e}")
+                    if hasattr(mod, "compute_signals"):
+                        self.edges[e] = mod
+                        print(f"[ALPHA][INFO] Registered edge: {e}")
+                    else:
+                        print(f"[ALPHA][WARN] Edge {e} missing compute_signals()")
+                except Exception as err:
+                    print(f"[ALPHA][ERROR] Could not import edge {e}: {err}")
+
+        # Environment overrides for key thresholds/hygiene
+        self._env_enter = os.getenv("ALPHA_ENTER_THRESH")
+        self._env_exit = os.getenv("ALPHA_EXIT_THRESH")
+        self._env_min_hist = os.getenv("ALPHA_MIN_HISTORY")
+        self._env_min_contrib = os.getenv("ALPHA_MIN_EDGE_CONTRIB")
+        self._force_signals = os.getenv("ALPHA_FORCE_SIGNALS", "0").lower() in {"1","true","yes","on"}
+        self._debug_env = os.getenv("ALPHA_DEBUG", "0").lower() in {"1","true","yes","on"}
+        self._cfg_source = None
 
         # 2️⃣ Optionally import experimental edges (guarded)
-        import os, importlib
+        import importlib
         include_extras = os.getenv("ALPHA_INCLUDE_EXTRAS", "0").lower() in {"1","true","yes","on"}
         if include_extras:
             try:
@@ -158,9 +299,23 @@ class AlphaEngine:
         self.debug = bool(debug)
         self.governor = governor  # optional reference
 
-        # Load config (file overrides defaults; CLI overrides file)
-        cfg_file = Path(config_path) if config_path else Path("config/alpha_settings.json")
-        cfg_raw = _load_json(cfg_file)
+        # Load config: support direct config injection, otherwise use file, then env overrides.
+        if config is not None:
+            # Merge with file defaults to ensure missing keys are filled.
+            cfg_file = Path(config_path) if config_path else Path("config/alpha_settings.json")
+            file_defaults = _load_json(cfg_file)
+            # Merge file_defaults and config, with config taking precedence
+            cfg_raw = dict(file_defaults)
+            cfg_raw.update(config)
+            self._cfg_source = "provided_config"
+            if is_debug_enabled("ALPHA"):
+                print(f"[ALPHA][CONFIG] Loaded from provided config (env override active)")
+        else:
+            cfg_file = Path(config_path) if config_path else Path("config/alpha_settings.json")
+            cfg_raw = _load_json(cfg_file)
+            self._cfg_source = str(cfg_file)
+            if is_debug_enabled("ALPHA"):
+                print(f"[ALPHA][CONFIG] Loaded from file: {cfg_file}")
 
         # Build AlphaConfig from JSON (with sensible defaults)
         regime = RegimeSettings(
@@ -173,10 +328,13 @@ class AlphaEngine:
             shrink_off=_coerce_float(cfg_raw.get("regime", {}).get("shrink_off", 0.3)),
         )
 
+        # Apply env override for min_history if provided
+        min_history_val = int(self._env_min_hist) if (self._env_min_hist and self._env_min_hist.isdigit()) else int(cfg_raw.get("hygiene", {}).get("min_history", 60))
+
         hygiene = HygieneSettings(
-            min_history=int(cfg_raw.get("hygiene", {}).get("min_history", 60)),
+            min_history=min_history_val,
             dedupe_last_n=int(cfg_raw.get("hygiene", {}).get("dedupe_last_n", 1)),
-            clamp=_coerce_float(cfg_raw.get("hygiene", {}).get("clamp", 6.0)),  # raw clamp before norm
+            clamp=_coerce_float(cfg_raw.get("hygiene", {}).get("clamp", 6.0)),
         )
 
         ensemble = EnsembleSettings(
@@ -186,14 +344,14 @@ class AlphaEngine:
         )
 
         self.cfg = AlphaConfig(
-            enter_threshold=_coerce_float(cfg_raw.get("enter_threshold", 0.2)),
-            exit_threshold=_coerce_float(cfg_raw.get("exit_threshold", 0.05)),
+            enter_threshold=_coerce_float(self._env_enter if self._env_enter is not None else cfg_raw.get("enter_threshold", 0.2)),
+            exit_threshold=_coerce_float(self._env_exit if self._env_exit is not None else cfg_raw.get("exit_threshold", 0.05)),
             regime=regime,
             hygiene=hygiene,
             ensemble=ensemble,
             edge_weights=cfg_raw.get("edge_weights", {}),
             flip_cooldown_bars=int(cfg_raw.get("flip_cooldown_bars", 5)),
-            min_edge_contribution=_coerce_float(cfg_raw.get("min_edge_contribution", 0.05)),
+            min_edge_contribution=_coerce_float(self._env_min_contrib if self._env_min_contrib is not None else cfg_raw.get("min_edge_contribution", 0.05)),
             debug=bool(cfg_raw.get("debug", debug)),
         )
 
@@ -215,6 +373,23 @@ class AlphaEngine:
             exit_threshold=self.cfg.exit_threshold,
             min_edge_contribution=self.cfg.min_edge_contribution,
         )
+
+        # 5️⃣ Ensure at least the default edges are available if none were supplied
+        if not self.edges:
+            try:
+                re = importlib.import_module("engines.engine_a_alpha.edges.rsi_mean_reversion")
+                self.edges["rsi_mean_reversion"] = re
+            except Exception as e:
+                if is_info_enabled() or is_debug_enabled("ALPHA"):
+                    print(f"[ALPHA][WARN] Could not import default edge rsi_mean_reversion: {e}")
+            try:
+                xm = importlib.import_module("engines.engine_a_alpha.edges.xsec_momentum")
+                self.edges["xsec_momentum"] = xm
+            except Exception as e:
+                if is_info_enabled() or is_debug_enabled("ALPHA"):
+                    print(f"[ALPHA][WARN] Could not import default edge xsec_momentum: {e}")
+            if is_info_enabled() or is_debug_enabled("ALPHA"):
+                print(f"[ALPHA][INFO] Default edges in use: {list(self.edges.keys())}")
 
         # State for cooldown & last known side per ticker
         self._last_side: Dict[str, Optional[str]] = {}
@@ -297,6 +472,15 @@ class AlphaEngine:
         if not data_map:
             return []
 
+        if is_debug_enabled("ALPHA"):
+            print(f"[ALPHA][TRACE] Entered generate_signals() with tickers={list(data_map.keys())} at {now}")
+        
+        # Normalize incoming data from any source (Alpaca, yfinance, CSV)
+        data_map = {t: self._normalize_dataframe(df) for t, df in data_map.items()}
+
+        if self.cfg.debug and (self._debug_env or is_debug_enabled("ALPHA")):
+            print(f"[ALPHA][DEBUG] cfg_source={self._cfg_source} enter={self.cfg.enter_threshold} exit={self.cfg.exit_threshold} min_hist={self.cfg.hygiene.min_history} min_edge_contrib={self.cfg.min_edge_contribution} force_signals={self._force_signals}")
+
         if self.cfg.debug:
             if is_debug_enabled("ALPHA"):
                 print(f"[ALPHA][DEBUG] Active edges: {list(self.edges.keys())}")
@@ -305,14 +489,24 @@ class AlphaEngine:
             if is_debug_enabled("ALPHA"):
                 print(f"[ALPHA][DEBUG] Collecting signals from edges: {list(self.edges.keys())}")
 
+        if is_debug_enabled("ALPHA"):
+            print(f"[ALPHA][TRACE] Starting signal collection at {now}")
+
         raw_scores: Dict[str, Dict[str, float]] = self.collector.collect(data_map, now)
+
+        if is_debug_enabled("ALPHA"):
+            print(f"[ALPHA][TRACE] Collected raw_scores keys={list(raw_scores.keys())}")
 
         if self.cfg.debug:
             if is_debug_enabled("ALPHA"):
                 print(f"[ALPHA][DEBUG] Raw scores collected at {now}: {raw_scores}")
 
         # 2) Process: normalize, regime-gate, shrinkage, hygiene checks
+        if is_debug_enabled("ALPHA"):
+            print(f"[ALPHA][TRACE] Beginning signal processing for {len(raw_scores)} tickers")
         proc = self.processor.process(data_map, now, raw_scores)
+        if is_debug_enabled("ALPHA"):
+            print(f"[ALPHA][TRACE] Processor output size={len(proc) if proc else 0}")
         # --- Fallback: if processor yields nothing but we have raw_scores, build a minimal proc ---
         if (not proc) and raw_scores:
             proc = {}
@@ -353,17 +547,32 @@ class AlphaEngine:
                     "regimes": {"trend": True, "vol_ok": True},
                     "edges_detail": details,
                 }
+            if is_debug_enabled("ALPHA"):
+                print(f"[ALPHA][TRACE] Fallback processor built with {len(proc)} entries")
             if is_info_enabled() or is_debug_enabled("ALPHA"):
                 print(f"[ALPHA][INFO] Fallback processor used at {now}; built proc for {len(proc)} tickers")
 
         # 3) Aggregate per ticker and turn into discrete side if above thresholds
+        if is_debug_enabled("ALPHA"):
+            print(f"[ALPHA][TRACE] Aggregating to discrete signals for {len(proc)} tickers")
         signals: List[dict] = []
         for ticker, info in proc.items():
+            if is_debug_enabled("ALPHA"):
+                print(f"[ALPHA][TRACE] {ticker}: aggregate_score={info.get('aggregate_score')}")
             agg = info["aggregate_score"]  # in [-1, +1] after normalization/shrinkage
             regimes = info["regimes"]
             edges_detail = info["edges_detail"]  # list of dicts per edge
 
             side, strength = self.formatter.to_side_and_strength(agg)
+            if (side is None or strength <= 0) and self._force_signals:
+                # Force a weak signal in debug/diagnostic mode based purely on sign of agg
+                if agg > 0:
+                    side = "long"
+                elif agg < 0:
+                    side = "short"
+                else:
+                    side = None
+                strength = abs(float(agg))
 
             # Cooldown (optional, light-touch): block flip immediately after a flip within same day
             if self._cooldown_blocks(ticker, side, now):
@@ -372,6 +581,8 @@ class AlphaEngine:
 
             # Ensure we skip signals with non-positive strength (prevents empty backtest output)
             if side is None or strength <= 0:
+                if self.cfg.debug and (self._debug_env or is_debug_enabled("ALPHA")):
+                    print(f"[ALPHA][DEBUG] Dropping {ticker} at {now} agg={agg:.4f} (below enter_threshold={self.cfg.enter_threshold})")
                 continue
 
             self._update_flip_state(ticker, side, now)
@@ -423,6 +634,9 @@ class AlphaEngine:
                 },
             })
 
+        if is_debug_enabled("ALPHA"):
+            print(f"[ALPHA][TRACE] Built {len(signals)} pre-governor signals at {now}")
+
         # Governor adjustment (if present)
         if self.governor and signals:
             weights = self.governor.get_edge_weights()
@@ -438,6 +652,12 @@ class AlphaEngine:
                 avg_w = float(np.mean(contrib_weights)) if contrib_weights else 1.0
                 sig["strength"] *= avg_w  # scale by edge-level weights
                 sig["meta"]["governor_weight"] = round(avg_w, 3)
+
+        if is_debug_enabled("ALPHA"):
+            print(f"[ALPHA][TRACE] Returning {len(signals)} signals for {now}")
+
+        if not signals and (self._debug_env or is_debug_enabled("ALPHA")):
+            print(f"[ALPHA][DEBUG] No signals generated at {now}. Check thresholds/hygiene or enable ALPHA_FORCE_SIGNALS=1 for diagnostics.")
 
         if (is_info_enabled() or is_debug_enabled("ALPHA")):
             print(f"[ALPHA][INFO] {now} generated {len(signals)} signals from edges={list(self.edges.keys())}")

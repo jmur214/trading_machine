@@ -6,6 +6,8 @@ from typing import Optional, Dict, Any
 import math
 import pandas as pd
 from debug_config import is_debug_enabled, is_info_enabled
+import os
+import numpy as np
 
 
 # ------------------------------- Config -------------------------------- #
@@ -91,14 +93,22 @@ class ExecutionSimulator:
         Obtain Open/High/Low/Close/PrevClose from Series/DataFrame row-like.
         Raises if O/H/L are missing since we need them for stop/target logic.
         """
+        def extract_val(val):
+            if isinstance(val, pd.Series) or (hasattr(np, 'ndarray') and isinstance(val, np.ndarray)):
+                if hasattr(val, 'iloc'):
+                    return float(val.iloc[0])
+                else:
+                    return float(val[0])
+            return float(val)
+
         try:
-            o = float(bar_like["Open"])
-            h = float(bar_like["High"])
-            l = float(bar_like["Low"])
+            o = extract_val(bar_like["Open"])
+            h = extract_val(bar_like["High"])
+            l = extract_val(bar_like["Low"])
         except Exception:
             raise KeyError("Bar data must include numeric 'Open', 'High', and 'Low' fields.")
-        c = float(bar_like["Close"]) if "Close" in bar_like else float("nan")
-        pc = float(bar_like["PrevClose"]) if "PrevClose" in bar_like else float("nan")
+        c = extract_val(bar_like["Close"]) if "Close" in bar_like else float("nan")
+        pc = extract_val(bar_like["PrevClose"]) if "PrevClose" in bar_like else float("nan")
         return {"Open": o, "High": h, "Low": l, "Close": c, "PrevClose": pc}
 
     def _next_price_for_entry_exit(self, bar: Dict[str, float]) -> float:
@@ -124,14 +134,22 @@ class ExecutionSimulator:
         order: {'ticker','side','qty', 'edge'?, 'meta'?}
         next_bar_like: row-like w/ Open, High, Low, Close, PrevClose?
         """
+        def extract_val(val):
+            if isinstance(val, pd.Series) or (hasattr(np, 'ndarray') and isinstance(val, np.ndarray)):
+                if hasattr(val, 'iloc'):
+                    return float(val.iloc[0])
+                else:
+                    return float(val[0])
+            return float(val)
+
         # --- Safe price selection & gap sanity check -------------------
         try:
-            fill_px = float(next_bar_like.get("Open", next_bar_like.get("Close")))
+            fill_px = extract_val(next_bar_like.get("Open", next_bar_like.get("Close")))
         except Exception:
             fill_px = float("nan")
 
         try:
-            prev_close = float(next_bar_like.get("PrevClose", next_bar_like.get("Close", fill_px)))
+            prev_close = extract_val(next_bar_like.get("PrevClose", next_bar_like.get("Close", fill_px)))
         except Exception:
             prev_close = fill_px
 
@@ -188,6 +206,11 @@ class ExecutionSimulator:
                 fill["trigger"] = "entry"
             elif side in {"exit", "cover"}:
                 fill["trigger"] = "exit"
+        else:
+            fill["trigger"] = order["trigger"]
+
+        if os.getenv("BACKTEST_DEBUG") == "1":
+            print("[SIM][DEBUG] Filled order:", fill)
 
         self._log_info(f"[EXEC] Filled {side} {ticker} x{qty} @ {traded:.4f}")
         return fill
@@ -207,6 +230,14 @@ class ExecutionSimulator:
         if position is None or position.qty == 0:
             return None
 
+        def extract_val(val):
+            if isinstance(val, pd.Series) or (hasattr(np, 'ndarray') and isinstance(val, np.ndarray)):
+                if hasattr(val, 'iloc'):
+                    return float(val.iloc[0])
+                else:
+                    return float(val[0])
+            return float(val)
+
         bar = self._extract_bar_prices(bar_like)
         high, low = bar["High"], bar["Low"]
 
@@ -215,6 +246,11 @@ class ExecutionSimulator:
         stop = position.stop
         tp = position.take_profit
 
+        if stop is not None:
+            stop = extract_val(stop)
+        if tp is not None:
+            tp = extract_val(tp)
+
         if stop is None and tp is None:
             return None
 
@@ -222,14 +258,14 @@ class ExecutionSimulator:
         hit_stop = False
         hit_tp = False
         if is_long:
-            if stop is not None and low <= float(stop):
+            if stop is not None and low <= stop:
                 hit_stop = True
-            if tp is not None and high >= float(tp):
+            if tp is not None and high >= tp:
                 hit_tp = True
         else:
-            if stop is not None and high >= float(stop):
+            if stop is not None and high >= stop:
                 hit_stop = True
-            if tp is not None and low <= float(tp):
+            if tp is not None and low <= tp:
                 hit_tp = True
 
         if not hit_stop and not hit_tp:
@@ -244,16 +280,16 @@ class ExecutionSimulator:
             prefer_stop = self.params.conservative_intrabar
             if prefer_stop:
                 trigger = "stop"
-                level = float(stop)  # type: ignore[arg-type]
+                level = stop  # type: ignore[arg-type]
             else:
                 trigger = "take_profit"
-                level = float(tp)    # type: ignore[arg-type]
+                level = tp    # type: ignore[arg-type]
         elif hit_stop:
             trigger = "stop"
-            level = float(stop)      # type: ignore[arg-type]
+            level = stop      # type: ignore[arg-type]
         else:
             trigger = "take_profit"
-            level = float(tp)        # type: ignore[arg-type]
+            level = tp        # type: ignore[arg-type]
 
         exec_side = "exit" if is_long else "cover"
 
@@ -278,6 +314,10 @@ class ExecutionSimulator:
             fill["edge_id"] = position.edge_id
         if getattr(position, "edge_category", None) is not None:
             fill["edge_category"] = position.edge_category
+
+        if os.getenv("BACKTEST_DEBUG") == "1":
+            print("[SIM][DEBUG] Stop/Target hit:", fill)
+
         self._log_info(f"[EXEC] {exec_side.upper()} via {trigger} {ticker} x{qty} @ {px:.4f}")
         return fill
 

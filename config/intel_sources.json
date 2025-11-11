@@ -1,9 +1,51 @@
 [
-    { "name": "Reuters - Business News", "url": "https://feeds.reuters.com/reuters/businessNews", "type": "rss", "weight": 1.2, "enabled": true },
-    { "name": "Reuters - Markets", "url": "https://feeds.reuters.com/reuters/USMarketsNews", "type": "rss", "weight": 1.2, "enabled": true },
-    { "name": "CNBC - Top News", "url": "https://www.cnbc.com/id/100003114/device/rss/rss.html", "type": "rss", "weight": 1.0, "enabled": true },
-    { "name": "MarketWatch - Top Stories", "url": "https://www.marketwatch.com/rss/topstories", "type": "rss", "weight": 1.0, "enabled": true },
-    { "name": "Yahoo Finance - Top Stories", "url": "https://feeds.finance.yahoo.com/rss/2.0/headline?s=^GSPC&region=US&lang=en-US", "type": "rss", "weight": 0.9, "enabled": true },
-    { "name": "Bloomberg (Homepage)", "url": "https://www.bloomberg.com", "type": "html", "weight": 1.3, "enabled": false },
-    { "name": "WSJ (Homepage)", "url": "https://www.wsj.com", "type": "html", "weight": 1.3, "enabled": false }
-  ]
+  {
+    "name": "Reuters - Business News",
+    "url": "https://feeds.reuters.com/reuters/businessNews",
+    "type": "rss",
+    "weight": 1.2,
+    "enabled": true
+  },
+  {
+    "name": "Reuters - Markets",
+    "url": "https://feeds.reuters.com/reuters/USMarketsNews",
+    "type": "rss",
+    "weight": 1.2,
+    "enabled": true
+  },
+  {
+    "name": "CNBC - Top News",
+    "url": "https://www.cnbc.com/id/100003114/device/rss/rss.html",
+    "type": "rss",
+    "weight": 1.0,
+    "enabled": true
+  },
+  {
+    "name": "MarketWatch - Top Stories",
+    "url": "https://www.marketwatch.com/rss/topstories",
+    "type": "rss",
+    "weight": 1.0,
+    "enabled": true
+  },
+  {
+    "name": "Yahoo Finance - Top Stories",
+    "url": "https://feeds.finance.yahoo.com/rss/2.0/headline?s=^GSPC&region=US&lang=en-US",
+    "type": "rss",
+    "weight": 0.9,
+    "enabled": true
+  },
+  {
+    "name": "Bloomberg (Homepage)",
+    "url": "https://www.bloomberg.com",
+    "type": "html",
+    "weight": 1.3,
+    "enabled": false
+  },
+  {
+    "name": "WSJ (Homepage)",
+    "url": "https://www.wsj.com",
+    "type": "html",
+    "weight": 1.3,
+    "enabled": false
+  }
+]

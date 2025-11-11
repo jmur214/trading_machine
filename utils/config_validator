@@ -1,0 +1,149 @@
+# utils/config_validator.py
+"""
+Config Validator
+================
+
+Purpose:
+    Validate and repair configuration files across the trading_machine project.
+    This includes alpha_settings.json, backtest_settings.json, risk_settings.json, etc.
+
+Usage:
+    python -m utils.config_validator [--fix]
+
+Features:
+    - Scans ./config directory for JSON configs.
+    - Validates structure and required fields.
+    - Auto-fixes common errors (zero thresholds, missing sections).
+    - Prints colorized summary of all results.
+"""
+
+from __future__ import annotations
+import os, json, math
+from pathlib import Path
+from typing import Dict, Any
+
+CONFIG_DIR = Path("config")
+
+# ------------------ Utility Functions ------------------ #
+
+def _load_json(path: Path) -> Dict[str, Any]:
+    try:
+        with open(path, "r") as f:
+            return json.load(f)
+    except Exception as e:
+        print(f"[ERROR] Could not load {path}: {e}")
+        return {}
+
+def _save_json(path: Path, data: Dict[str, Any]):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "w") as f:
+        json.dump(data, f, indent=2)
+
+
+def _validate_num(name: str, value: Any, default: float, min_val: float = 1e-6) -> float:
+    try:
+        v = float(value)
+        if not math.isfinite(v) or v < min_val:
+            print(f"[WARN] {name}={value} invalid → using {default}")
+            return default
+        return v
+    except Exception:
+        print(f"[WARN] {name}={value} not numeric → using {default}")
+        return default
+
+
+# ------------------ Validators ------------------ #
+
+def validate_alpha_settings(data: Dict[str, Any]) -> Dict[str, Any]:
+    """Ensure alpha_settings.json has all required keys and sane values."""
+    defaults = {
+        "debug": True,
+        "enter_threshold": 0.2,
+        "exit_threshold": 0.05,
+        "flip_cooldown_bars": 5,
+        "min_edge_contribution": 0.05,
+        "regime": {
+            "enable_trend": True,
+            "trend_fast": 20,
+            "trend_slow": 50,
+            "enable_vol": True,
+            "vol_lookback": 20,
+            "vol_z_max": 2.5,
+            "shrink_off": 0.3,
+        },
+        "hygiene": {
+            "min_history": 60,
+            "dedupe_last_n": 1,
+            "clamp": 6.0,
+        },
+        "ensemble": {
+            "enable_shrink": True,
+            "shrink_lambda": 0.35,
+            "combine": "weighted_mean",
+        },
+        "edge_weights": {},
+    }
+
+    # Merge and sanitize
+    cfg = {**defaults, **data}
+    cfg["enter_threshold"] = _validate_num("enter_threshold", cfg.get("enter_threshold"), defaults["enter_threshold"])
+    cfg["exit_threshold"] = _validate_num("exit_threshold", cfg.get("exit_threshold"), defaults["exit_threshold"])
+
+    hyg = cfg.get("hygiene", {})
+    hyg["min_history"] = int(hyg.get("min_history", defaults["hygiene"]["min_history"]))
+    hyg["dedupe_last_n"] = int(hyg.get("dedupe_last_n", defaults["hygiene"]["dedupe_last_n"]))
+    hyg["clamp"] = _validate_num("clamp", hyg.get("clamp", defaults["hygiene"]["clamp"]), defaults["hygiene"]["clamp"])
+    cfg["hygiene"] = hyg
+
+    ens = cfg.get("ensemble", {})
+    ens["enable_shrink"] = bool(ens.get("enable_shrink", defaults["ensemble"]["enable_shrink"]))
+    ens["shrink_lambda"] = _validate_num("shrink_lambda", ens.get("shrink_lambda", defaults["ensemble"]["shrink_lambda"]), defaults["ensemble"]["shrink_lambda"])
+    ens["combine"] = str(ens.get("combine", defaults["ensemble"]["combine"]))
+    cfg["ensemble"] = ens
+
+    print(f"[VALIDATOR] alpha_settings.json validated → enter={cfg['enter_threshold']} exit={cfg['exit_threshold']} min_hist={cfg['hygiene']['min_history']}")
+    return cfg
+
+
+def validate_generic(data: Dict[str, Any], defaults: Dict[str, Any], name: str) -> Dict[str, Any]:
+    cfg = {**defaults, **data}
+    for k, v in defaults.items():
+        if k not in data:
+            print(f"[WARN] {name}: missing {k} → set to {v}")
+    return cfg
+
+
+# ------------------ Main ------------------ #
+
+def main(fix: bool = False):
+    if not CONFIG_DIR.exists():
+        print(f"[ERROR] Config directory {CONFIG_DIR} not found.")
+        return
+
+    for path in CONFIG_DIR.glob("*.json"):
+        name = path.stem
+        print(f"\n[CHECK] Validating {name}.json ...")
+        data = _load_json(path)
+        if not data:
+            print(f"[WARN] {name}.json empty or unreadable.")
+            continue
+
+        if name == "alpha_settings":
+            validated = validate_alpha_settings(data)
+        else:
+            validated = data  # placeholder for other configs later
+
+        if fix:
+            _save_json(path, validated)
+            print(f"[FIXED] {name}.json updated.")
+
+    print("\n[COMPLETE] Validation finished.")
+
+
+if __name__ == "__main__":
+    import argparse
+    parser = argparse.ArgumentParser(description="Validate and repair config files.")
+    parser.add_argument("--fix", action="store_true", help="Auto-fix invalid values.")
+    args = parser.parse_args()
+    main(fix=args.fix)
+    

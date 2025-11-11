@@ -2,7 +2,7 @@
 from __future__ import annotations
 import numpy as np
 import pandas as pd
-from typing import Dict, Any
+from typing import Dict, Any, Union
 from engines.engine_a_alpha.edge_base import EdgeBase
 
 try:
@@ -32,7 +32,23 @@ class XSecMeanReversionEdge(EdgeBase):
       • z_clip: clamp absolute z-scores to this bound (e.g., 3.0)
     Returns weights in [-1, 1].
     """
-    def compute_signals(self, prices: pd.DataFrame, as_of: pd.Timestamp) -> Dict[str, float]:
+    def compute_signals(self, prices: Union[pd.DataFrame, Dict[str, pd.DataFrame]], as_of: pd.Timestamp) -> Dict[str, float]:
+        if isinstance(prices, dict):
+            combined_weights: Dict[str, float] = {}
+            for ticker, df in prices.items():
+                if _DBG:
+                    print(f"[ALPHA][DEBUG] Processing ticker '{ticker}'")
+                weights = self._compute_signals_single(df, as_of)
+                # Prefix keys with ticker to avoid collisions if needed
+                for k, v in weights.items():
+                    combined_weights[k] = v
+                if _DBG:
+                    print(f"[ALPHA][DEBUG] Ticker '{ticker}' weights: {weights}")
+            return combined_weights
+        else:
+            return self._compute_signals_single(prices, as_of)
+
+    def _compute_signals_single(self, prices: pd.DataFrame, as_of: pd.Timestamp) -> Dict[str, float]:
         p = prices.loc[:as_of]
         lookback = int(self.params.get("lookback", 20))
         rets_window = int(self.params.get("rets_window", 5))

@@ -29,7 +29,10 @@ def main():
     parser.add_argument("--fresh", action="store_true", help="Clear prior trades/snapshots before running.")
     parser.add_argument("--alpha-debug", action="store_true", help="Enable verbose alpha/edge debug output.")
     parser.add_argument("--no-governor", action="store_true", help="Skip governor updates.")
+    parser.add_argument("--env", choices=["dev", "prod"], default="prod",
+                        help="Use dev or prod configuration set")
     args = parser.parse_args()
+    env = args.env
     if args.alpha_debug:
         os.environ["ALPHA_DEBUG"] = "1"
 
@@ -49,7 +52,7 @@ def main():
 
     # --- Load configuration files ---
     cfg_bt = load_json(str(root / "config" / "backtest_settings.json"))
-    cfg_risk = load_json(str(root / "config" / "risk_settings.json"))
+    cfg_risk = load_json(str(root / f"config/risk_settings.{env}.json"))
     cfg_edges = load_json(str(root / "config" / "edge_config.json"))
 
     tickers = cfg_bt["tickers"]
@@ -138,10 +141,13 @@ def main():
         state_path=str(root / "data" / "governor" / "edge_weights.json"),
     )
 
+    cfg_alpha = load_json(str(root / f"config/alpha_settings.{env}.json"))
+
     # --- Initialize engines ---
     alpha = AlphaEngine(
         edges=edges,
         edge_weights=edge_weights,
+        config=cfg_alpha,
         debug=True,
         governor=governor,  # ✅ pass it in
     )

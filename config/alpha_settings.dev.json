@@ -1,0 +1,30 @@
+{
+  "debug": true,
+  "enter_threshold": 0.1,
+  "exit_threshold": 0.03,
+  "regime": {
+    "enable_trend": true,
+    "trend_fast": 10,
+    "trend_slow": 30,
+    "enable_vol": true,
+    "vol_lookback": 20,
+    "vol_z_max": 2.5,
+    "shrink_off": 0.1
+  },
+  "hygiene": {
+    "min_history": 30,
+    "dedupe_last_n": 1,
+    "clamp": 6.0
+  },
+  "ensemble": {
+    "enable_shrink": true,
+    "shrink_lambda": 0.25,
+    "combine": "weighted_mean"
+  },
+  "flip_cooldown_bars": 2,
+  "min_edge_contribution": 0.05,
+  "edge_weights": {
+    "rsi_mean_reversion": 0.6,
+    "xsec_meanrev": 0.4
+  }
+}

@@ -1,13 +1,13 @@
 {
-    "rolling_window_days": 90,
-    "disable_sr_threshold": 0.0,
-    "disable_mdd_threshold": -0.25,
-    "max_weight": 1.0,
-    "ema_halflife_days": 15,
-    "warmup_days": 45,
-    "sr_weight_floor": 0.25,
-    "sr_weight_ceil": 1.0,
-    "min_trades_in_window": 10,
-    "max_turnover_per_month": 100.0,
-    "penalize_negative_correlation": false
-  }
+  "rolling_window_days": 90,
+  "disable_sr_threshold": 0.0,
+  "disable_mdd_threshold": -0.25,
+  "max_weight": 1.0,
+  "ema_halflife_days": 15,
+  "warmup_days": 45,
+  "sr_weight_floor": 0.25,
+  "sr_weight_ceil": 1.0,
+  "min_trades_in_window": 10,
+  "max_turnover_per_month": 100.0,
+  "penalize_negative_correlation": false
+}

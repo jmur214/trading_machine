@@ -1,0 +1,12 @@
+{
+  "debug": true,
+  "atr_lookback": 14,
+  "risk_per_trade": 0.01,
+  "max_position_value": 30000,
+  "atr_stop_mult": 1.5,
+  "atr_tp_mult": 2.0,
+  "position_sizing": "atr_risk",
+  "max_positions": 5,
+  "slippage_bps": 10,
+  "commission_per_trade": 0.0
+}
