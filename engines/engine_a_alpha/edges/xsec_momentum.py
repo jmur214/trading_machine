@@ -28,10 +28,40 @@ class XSecMomentumEdge(EdgeBase):
       • neutralize: 'dollar' or 'none' (simple dollar-neutral long/short)
     Returns signals as weights in [-1,1], not just {-1,0,1}.
     """
-    def compute_signals(self, prices: pd.DataFrame, as_of: pd.Timestamp) -> list[dict]:
-        p = prices.loc[:as_of].copy()
+    def compute_signals(self, prices: pd.DataFrame, as_of: pd.Timestamp) -> dict[str, float]:
+        # Detect if prices is a dict (from collector) and combine
+        if isinstance(prices, dict):
+            try:
+                import pandas as _pd  # local alias
+                close_frames = []
+                for ticker, df in prices.items():
+                    if not isinstance(df, _pd.DataFrame):
+                        print(f"[xsec_momentum][WARN] {ticker} not a DataFrame: {type(df)}")
+                        continue
+                    # Flatten MultiIndex or tuple columns
+                    if isinstance(df.columns, pd.MultiIndex) or any(isinstance(c, tuple) for c in df.columns):
+                        df.columns = ["_".join(map(str, c)) if isinstance(c, tuple) else str(c) for c in df.columns]
+                        print(f"[xsec_momentum][INFO] Flattened MultiIndex columns for {ticker}: {list(df.columns)[:5]}")
+                    cols = [c for c in df.columns if "close" in c.lower()]
+                    if not cols:
+                        print(f"[xsec_momentum][WARN] {ticker} missing Close column, available={list(df.columns)}")
+                        continue
+                    close_series = df[cols[0]].rename(ticker)
+                    close_frames.append(close_series)
+                if not close_frames:
+                    print("[xsec_momentum][WARN] No valid close series found in prices dict")
+                    return {}
+                p = _pd.concat(close_frames, axis=1)
+            except Exception as e:
+                import warnings
+                warnings.warn(f"[xsec_momentum] failed to combine prices dict ({type(e).__name__}): {e}")
+                return {}
+        else:
+            p = prices.copy()
+
+        p = p.loc[:as_of].copy()
         if p.empty or p.shape[0] < self.params.get("min_lookback", 60):
-            return []
+            return {}
 
         lookback = int(self.params.get("lookback", 60))
         top_n = int(self.params.get("top_n", 2))
@@ -45,11 +75,11 @@ class XSecMomentumEdge(EdgeBase):
 
         # Momentum score = trailing total return over lookback
         if recent.shape[0] < lookback + 1:
-            return []
+            return {}
         mom = (recent.iloc[-1] / recent.iloc[-1 - lookback] - 1.0).dropna()
 
         if mom.empty:
-            return []
+            return {}
 
         # Rank by momentum
         mom = mom.sort_values(ascending=False)
@@ -103,18 +133,40 @@ class XSecMomentumEdge(EdgeBase):
         if _DBG:
             print(f"[ALPHA][DEBUG] {as_of.date()} XSecMomentumEdge weights: {weights}")
 
-        signals = []
-        for t, w in weights.items():
-            signals.append({
-                "ticker": t,
-                "side": "long" if w > 0 else "short",
-                "confidence": abs(w),
-                "edge": "xsec_momentum",
-                "edge_id": "xsec_momentum",
-                "category": "technical",
-                "meta": {"weight": w}
-            })
+        # Return numeric dict {ticker: weight}
+        return weights
 
+    def generate_signals(self, prices, as_of):
+        """
+        Returns a list of rich signal dicts with keys:
+        "ticker", "side", "confidence", "edge", "edge_group", "edge_id", "edge_category", "meta"
+        """
+        weights = self.compute_signals(prices, as_of)
+        signals = []
+        if not weights:
+            return signals
+        # Sort by abs(weight) descending for rank
+        sorted_items = sorted(weights.items(), key=lambda x: -abs(x[1]))
+        for rank, (ticker, weight) in enumerate(sorted_items, 1):
+            side = "long" if weight > 0 else "short" if weight < 0 else "flat"
+            confidence = abs(weight)
+            signal = {
+                "ticker": ticker,
+                "side": side,
+                "confidence": confidence,
+                "edge": "xsec_momentum_v1",
+                "edge_group": "momentum",
+                "edge_id": "xsec_momentum_v1",
+                "edge_category": "momentum",
+                "meta": {
+                    "explain": f"Cross-sectional momentum rank {rank}, weight={weight:.4f}",
+                    "momentum_weight": weight,
+                    "rank_position": rank,
+                }
+            }
+            signals.append(signal)
+        if _DBG:
+            print(f"[EDGE][DEBUG][xsec_momentum_v1] Generated {len(signals)} rich signals at {as_of}")
         return signals
 
 # convenience constructors used by harness dynamic importer

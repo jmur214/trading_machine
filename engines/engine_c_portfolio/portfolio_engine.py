@@ -65,6 +65,7 @@ class PortfolioEngine:
         return self.positions.get(ticker, Position())
 
     def apply_fill(self, fill: dict) -> None:
+        print(f"[DEBUG_PORTFOLIO_APPLY_FILL] Received fill: {fill}")
         """
         Apply a simulated or real fill.
         fill keys:
@@ -74,14 +75,16 @@ class PortfolioEngine:
         ticker = str(fill.get("ticker"))
         side = str(fill.get("side", "")).lower()
         qty_raw = int(fill.get("qty", 0))
-        price = fill.get("price", None)
+        price = fill.get("fill_price", None)
         if price is None:
-            price = fill.get("fill_price", None)
+            price = fill.get("price", None)
         if price is None and "bar" in fill:
             # allow passing current bar dict/Series
             bar = fill["bar"]
             price = float(bar["Open"]) if isinstance(bar, dict) else float(getattr(bar, "Open", getattr(bar, "open", np.nan)))
-        price = float(price)
+        price = float(price) if price is not None else None
+        if price is None:
+            return
         commission = float(fill.get("commission", 0.0))
 
         meta_edge = fill.get("edge")
@@ -91,6 +94,9 @@ class PortfolioEngine:
 
         if not ticker or qty_raw <= 0:
             return
+
+        if not hasattr(self, 'realized_pnl') or self.realized_pnl is None:
+            self.realized_pnl = 0.0
 
         self._log_info(f"Applying fill: ticker={ticker}, side={side}, qty={qty_raw}, price={price}")
 
@@ -107,6 +113,7 @@ class PortfolioEngine:
             was_long = pos.qty > 0
             sign = 1 if was_long else -1
 
+            # Cash and realized pnl update for closing
             if was_long:
                 self.cash += exit_qty * price
             else:
@@ -121,10 +128,10 @@ class PortfolioEngine:
             if remaining > 0:
                 pos.qty = remaining * sign
             else:
-                # fully closed; reset position container
                 pos = Position()
             self.positions[ticker] = pos
             self._log_info(f"Updated position for {ticker}: qty={pos.qty}, avg_price={pos.avg_price}")
+            print(f"[DEBUG_PORTFOLIO_STATE] After fill: cash={self.cash}, positions={{t: p.qty for t, p in self.positions.items()}}, realized_pnl={self.realized_pnl}")
             return
 
         # ---- OPEN / ADD ----
@@ -132,26 +139,28 @@ class PortfolioEngine:
             return
 
         signed_qty = qty_raw if side == "long" else -qty_raw
+
+        # Adjust cash for opening or adding
         if signed_qty > 0:
             self.cash -= signed_qty * price
         else:
             self.cash += abs(signed_qty) * price
         self.cash -= commission
 
-        # Same-direction add (or opening new)
+        # Same-direction add or opening new position
         if pos.qty == 0 or (pos.qty > 0 and signed_qty > 0) or (pos.qty < 0 and signed_qty < 0):
             new_abs = abs(pos.qty) + abs(signed_qty)
             total_cost = (abs(pos.qty) * pos.avg_price) + (abs(signed_qty) * price)
             pos.qty += signed_qty
             pos.avg_price = (total_cost / new_abs) if new_abs > 0 else 0.0
-            # capture/refresh metadata on open or add if none present
-            if meta_edge is not None:
+            # Extend metadata only if missing
+            if meta_edge is not None and pos.edge is None:
                 pos.edge = meta_edge
-            if meta_edge_group is not None:
+            if meta_edge_group is not None and pos.edge_group is None:
                 pos.edge_group = meta_edge_group
-            if meta_edge_id is not None:
+            if meta_edge_id is not None and pos.edge_id is None:
                 pos.edge_id = meta_edge_id
-            if meta_edge_category is not None:
+            if meta_edge_category is not None and pos.edge_category is None:
                 pos.edge_category = meta_edge_category
         else:
             # Opposite-direction order: first close against existing, realize PnL
@@ -187,15 +196,21 @@ class PortfolioEngine:
             pos.take_profit = float(fill["take_profit"])
         self.positions[ticker] = pos
         self._log_info(f"Updated position for {ticker}: qty={pos.qty}, avg_price={pos.avg_price}")
+        print(f"[DEBUG_PORTFOLIO_STATE] After fill: cash={self.cash}, positions={{t: p.qty for t, p in self.positions.items()}}, realized_pnl={self.realized_pnl}")
         return
 
     # ------------------------------------------------------------------ #
     def snapshot(self, timestamp, price_map: Dict[str, float]) -> dict:
+        if not hasattr(self, 'realized_pnl') or self.realized_pnl is None:
+            self.realized_pnl = 0.0
+
         market_value = 0.0
         unrealized = 0.0
+        open_positions_count = 0
         for t, pos in self.positions.items():
             if pos.qty == 0:
                 continue
+            open_positions_count += 1
             px = float(price_map.get(t, pos.avg_price if pos.avg_price else 0.0))
             market_value += pos.qty * px
             unrealized += (px - pos.avg_price) * pos.qty
@@ -203,12 +218,12 @@ class PortfolioEngine:
         equity = self.cash + market_value
         snap = {
             "timestamp": pd.to_datetime(timestamp),
-            "cash": round(self.cash, 2),
-            "market_value": round(market_value, 2),
-            "realized_pnl": round(self.realized_pnl, 2),
-            "unrealized_pnl": round(unrealized, 2),
-            "equity": round(equity, 2),
-            "positions": sum(1 for p in self.positions.values() if p.qty != 0),
+            "cash": self.cash,
+            "market_value": market_value,
+            "realized_pnl": self.realized_pnl,
+            "unrealized_pnl": unrealized,
+            "equity": equity,
+            "positions": open_positions_count,
         }
         # optional quick-look attribution (counts of open positions by edge)
         try:

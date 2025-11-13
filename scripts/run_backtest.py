@@ -31,8 +31,11 @@ def main():
     parser.add_argument("--no-governor", action="store_true", help="Skip governor updates.")
     parser.add_argument("--env", choices=["dev", "prod"], default="prod",
                         help="Use dev or prod configuration set")
+    parser.add_argument("--mode", choices=["sandbox", "prod"], default="prod",
+                        help="Run mode to separate data paths")
     args = parser.parse_args()
     env = args.env
+    mode = args.mode
     if args.alpha_debug:
         os.environ["ALPHA_DEBUG"] = "1"
 
@@ -136,9 +139,14 @@ def main():
     print(f"[ALPHA] Loaded {len(edges)} edges: {list(edges.keys())}")
 
     # ✅ NEW: Instantiate the StrategyGovernor
+    governor_state_path = root / "data" / "governor"
+    if mode == "sandbox":
+        governor_state_path = governor_state_path / "sandbox"
+    governor_state_path.mkdir(parents=True, exist_ok=True)
+
     governor = StrategyGovernor(
         config_path=str(root / "config" / "governor_settings.json"),
-        state_path=str(root / "data" / "governor" / "edge_weights.json"),
+        state_path=str(governor_state_path / "edge_weights.json"),
     )
 
     cfg_alpha = load_json(str(root / f"config/alpha_settings.{env}.json"))
@@ -172,6 +180,24 @@ def main():
 
     # --- Run backtest ---
     history = controller.run(start, end)
+
+    # --- Promote to governor if configured ---
+    promote_to_governor = cfg_bt.get("promote_to_governor", True)
+    if promote_to_governor:
+        import shutil
+        trades_src = root / "data" / "trade_logs" / "trades.csv"
+        snapshots_src = root / "data" / "trade_logs" / "portfolio_snapshots.csv"
+        trades_dst = root / "data" / "trade_logs" / "trades.csv"
+        snapshots_dst = root / "data" / "trade_logs" / "portfolio_snapshots.csv"
+        try:
+            # Copy latest trades and snapshots to trade_logs directory
+            shutil.copy2(trades_src, trades_dst)
+            shutil.copy2(snapshots_src, snapshots_dst)
+            print("[PROMOTE] Trades and portfolio snapshots promoted to governor.")
+        except Exception as e:
+            print(f"[PROMOTE][WARN] Could not promote trades/snapshots: {e}")
+    else:
+        print("[PROMOTE] Promotion to governor skipped by configuration.")
 
     # --- Ensure all logs are flushed and closed ---
     controller.logger.flush()
@@ -248,6 +274,32 @@ def main():
             print("[GOVERNOR][WARN] Skipped feedback because metrics are unavailable.")
     except Exception as e:
         print(f"[GOVERNOR][WARN] Could not update governor in feedback: {e}")
+
+    # --- NEW: Automatically promote latest backtest run results from the most recent UUID folder ---
+    try:
+        import shutil
+
+        trade_logs_dir = root / "data" / "trade_logs"
+        # List all directories that look like UUIDs (assuming UUID format or any directory)
+        candidate_dirs = [d for d in trade_logs_dir.iterdir() if d.is_dir()]
+        if not candidate_dirs:
+            print("[PROMOTE][WARN] No subdirectories found in data/trade_logs for promotion.")
+        else:
+            # Sort directories by modification time descending
+            candidate_dirs.sort(key=lambda d: d.stat().st_mtime, reverse=True)
+            latest_dir = candidate_dirs[0]
+            trades_src = latest_dir / "trades.csv"
+            snapshots_src = latest_dir / "portfolio_snapshots.csv"
+            trades_dst = trade_logs_dir / "trades.csv"
+            snapshots_dst = trade_logs_dir / "portfolio_snapshots.csv"
+            if trades_src.exists() and snapshots_src.exists():
+                shutil.copy2(trades_src, trades_dst)
+                shutil.copy2(snapshots_src, snapshots_dst)
+                print(f"[PROMOTE] Automatically promoted trades and portfolio snapshots from latest run folder '{latest_dir.name}' to top-level trade_logs directory.")
+            else:
+                print(f"[PROMOTE][WARN] Missing trades.csv or portfolio_snapshots.csv in latest run folder '{latest_dir.name}'. Promotion skipped.")
+    except Exception as e:
+        print(f"[PROMOTE][WARN] Automatic promotion of latest backtest results failed: {e}")
 
     return 0
 

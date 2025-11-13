@@ -1,4 +1,3 @@
-# analytics/edge_feedback.py
 """
 Edge Feedback Loop
 ==================
@@ -28,9 +27,20 @@ import sys
 import json
 import logging
 import pandas as pd
+import numpy as np
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timezone
 from engines.engine_d_research.governor import StrategyGovernor
+
+
+def ensure_utc(dt: datetime) -> datetime:
+    """
+    Ensure a datetime object is timezone-aware and in UTC.
+    """
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    else:
+        return dt.astimezone(timezone.utc)
 
 
 # --------------------------------------------------------------------- #
@@ -89,6 +99,31 @@ def update_edge_weights_from_latest_trades(
     old_weights = gov.get_edge_weights() if hasattr(gov, "get_edge_weights") else None
 
     gov.update_from_trades(trades, snapshots)
+
+    # Implement recency decay for weighting updates
+    decay = 1.0
+    if 'timestamp' in trades.columns:
+        try:
+            # Parse timestamps, handle if already datetime or string
+            if not pd.api.types.is_datetime64_any_dtype(trades['timestamp']):
+                trades['timestamp'] = pd.to_datetime(trades['timestamp'], errors='coerce', utc=True)
+            last_trade_time = trades['timestamp'].max()
+            if pd.notna(last_trade_time):
+                if isinstance(last_trade_time, pd.Timestamp):
+                    last_trade_time = last_trade_time.to_pydatetime()
+                last_trade_time = ensure_utc(last_trade_time)
+                now = datetime.now(timezone.utc)
+                days_since_last_trade = (now - last_trade_time).days
+                decay = np.exp(-days_since_last_trade / 180)
+                logging.info(f"[EDGE_FEEDBACK] Applying recency decay factor {decay:.4f} based on {days_since_last_trade} days since last trade.")
+                # Scale updated weights by decay
+                updated_weights = gov.get_edge_weights()
+                if updated_weights:
+                    scaled_weights = {edge: w * decay for edge, w in updated_weights.items()}
+                    gov.set_edge_weights(scaled_weights)
+        except Exception as e:
+            logging.info(f"[EDGE_FEEDBACK][WARN] Could not apply recency decay: {e}")
+
     gov.save_weights()
 
     # Automatically merge evaluator recommendations after updating weights
@@ -168,7 +203,7 @@ def write_feedback_history(
         Path to the feedback history log file.
     """
     history_log_path = Path(history_log_path)
-    timestamp = datetime.utcnow().isoformat() + "Z"
+    timestamp = datetime.now(timezone.utc).isoformat() + "Z"
 
     entry = {
         "timestamp": timestamp,
@@ -195,9 +230,20 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description="Update edge weights from latest trades or show feedback history.")
     parser.add_argument("--history", action="store_true", help="Print the full feedback history log and exit.")
+    parser.add_argument("--mode", choices=["sandbox", "prod"], default="prod", help="Run mode: sandbox or prod (default: prod)")
+    parser.add_argument("--debug", action="store_true", help="Enable debug logging output.")
     args = parser.parse_args()
 
-    history_log_path = Path("data/governor/feedback_history.log")
+    if args.debug:
+        logging.basicConfig(level=logging.DEBUG, format="%(message)s")
+
+    base_dir = Path("data/governor")
+    if args.mode == "sandbox":
+        base_dir = base_dir / "sandbox"
+
+    history_log_path = base_dir / "feedback_history.log"
+    config_path = Path("config/governor_settings.json")
+    state_path = base_dir / "edge_weights.json"
 
     if args.history:
         if not history_log_path.exists():
@@ -244,4 +290,7 @@ if __name__ == "__main__":
             print(f"Error reading feedback history log: {e}")
         sys.exit(0)
 
-    update_edge_weights_from_latest_trades()
+    update_edge_weights_from_latest_trades(
+        config_path=config_path,
+        state_path=state_path,
+    )

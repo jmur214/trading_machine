@@ -1,53 +1,68 @@
 import numpy as np
 import pandas as pd
-
-EDGE_NAME = "momentum_edge"
-EDGE_GROUP = "technical"
+from ..edge_base import EdgeBase
 
 
-def generate_signals(df_map, now, cfg=None):
-    """
-    Momentum edge:
-    - Long when short-term MA crosses above long-term MA.
-    - Short when short-term MA crosses below long-term MA.
-    - Signal strength based on normalized difference between MAs.
-    """
+class MomentumEdge(EdgeBase):
+    EDGE_ID = "momentum_edge_v1"
+    CATEGORY = "technical"
+    DESCRIPTION = "Momentum edge detecting moving-average crossovers with normalized strength."
 
-    signals = []
-    short_window = 10
-    long_window = 40
+    def compute_signals(self, data_map, now):
+        scores = {}
+        short_window = 10
+        long_window = 40
 
-    for ticker, df in df_map.items():
-        if len(df) < long_window + 2 or "Close" not in df.columns:
-            continue
+        for ticker, df in data_map.items():
+            if len(df) < long_window + 2 or "Close" not in df.columns:
+                continue
 
-        close = df["Close"].astype(float)
+            close = df["Close"].astype(float)
 
-        # Compute moving averages
-        ma_short = close.rolling(short_window).mean()
-        ma_long = close.rolling(long_window).mean()
+            ma_short = close.rolling(short_window).mean()
+            ma_long = close.rolling(long_window).mean()
 
-        # Compute momentum delta
-        delta = ma_short - ma_long
-        prev_delta = delta.shift(1)
+            delta = ma_short.iloc[-1].item() - ma_long.iloc[-1].item()
+            norm_score = float(np.tanh(delta / (close.iloc[-1].item() * 0.02)))
 
-        # Check for crossover event
-        if delta.iloc[-1] > 0 and prev_delta.iloc[-1] <= 0:
-            side = "long"
-        elif delta.iloc[-1] < 0 and prev_delta.iloc[-1] >= 0:
-            side = "short"
-        else:
-            side = None
+            scores[ticker] = norm_score
 
-        if side:
-            # Strength = normalized distance between MAs
-            rel_strength = np.tanh((delta.iloc[-1] / (close.iloc[-1] * 0.02)))
+        return scores
+
+    def generate_signals(self, data_map, now):
+        scores = self.compute_signals(data_map, now)
+        signals = []
+
+        for ticker, score in scores.items():
+            if score > 0:
+                side = "long"
+            elif score < 0:
+                side = "short"
+            else:
+                continue
+
+            meta = {
+                "explanation": "MA crossover detected with normalized strength {:.4f}".format(score)
+            }
+
             signals.append({
                 "ticker": ticker,
                 "side": side,
-                "strength": float(abs(rel_strength)),
-                "edge": EDGE_NAME,
-                "edge_group": EDGE_GROUP
+                "confidence": abs(score),
+                "edge_id": self.EDGE_ID,
+                "edge_group": self.CATEGORY,
+                "edge_category": self.CATEGORY,
+                "meta": meta
             })
 
-    return signals
+        return signals
+
+
+from engines.engine_a_alpha.edge_registry import EdgeRegistry, EdgeSpec
+try:
+    reg = EdgeRegistry()
+    reg.ensure(EdgeSpec(edge_id=MomentumEdge.EDGE_ID, category=MomentumEdge.CATEGORY,
+                        module=__name__, version="1.0.0",
+                        params={}, status="active"))
+except Exception:
+    pass

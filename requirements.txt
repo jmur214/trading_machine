@@ -17,3 +17,4 @@ alpaca-trade-api
 python-dotenv # for .env file for secret keys
 alpaca-py
 psutil
+pytest # for testing

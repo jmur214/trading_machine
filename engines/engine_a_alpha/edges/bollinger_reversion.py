@@ -1,21 +1,21 @@
-# engines/engine_a_alpha/edges/atr_breakout.py
+# engines/engine_a_alpha/edges/bollinger_reversion.py
 import pandas as pd, numpy as np
 from engines.engine_a_alpha.edge_base import EdgeBase
 
-class ATRBreakoutEdge(EdgeBase):
-    EDGE_ID = "atr_breakout_v1"
+class BollingerReversionEdge(EdgeBase):
+    EDGE_ID = "bollinger_reversion_v1"
     EDGE_GROUP = "volatility"
-    EDGE_CATEGORY = "momentum"
+    EDGE_CATEGORY = "mean_reversion"
 
     def compute_signals(self, data_map, as_of):
         scores = {}
         for t, df in data_map.items():
             if len(df) < 20: continue
-            high, low, close = df["High"], df["Low"], df["Close"]
-            tr = np.maximum(high - low, np.abs(high - close.shift()), np.abs(low - close.shift()))
-            atr = tr.rolling(14).mean()
-            breakout = (close - close.rolling(20).mean()) / (atr + 1e-9)
-            scores[t] = float(np.tanh(breakout.iloc[-1] / 3))
+            close = df["Close"]
+            ma = close.rolling(20).mean()
+            std = close.rolling(20).std()
+            zscore = (close.iloc[-1] - ma.iloc[-1]) / (std.iloc[-1] + 1e-9)
+            scores[t] = float(np.tanh(-zscore / 2))  # revert toward mean
         return scores
 
     def generate_signals(self, data_map, as_of):
@@ -31,7 +31,7 @@ class ATRBreakoutEdge(EdgeBase):
                 "edge_group": self.EDGE_GROUP,
                 "edge_category": self.EDGE_CATEGORY,
                 "meta": {
-                    "explain": f"ATR breakout detected (normalized score {score:.3f})"
+                    "explain": f"Bollinger mean reversion detected (z-score normalized {score:.3f})"
                 }
             })
         return signals

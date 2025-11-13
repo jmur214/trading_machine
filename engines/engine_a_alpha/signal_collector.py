@@ -1,19 +1,3 @@
-# engines/engine_a_alpha/signal_collector.py
-"""
-SignalCollector
----------------
-
-Calls each active edge module to obtain raw (unnormalized) scores per ticker.
-
-Edge module conventions supported (first match wins):
-- function compute_signals(data_map: Dict[str, DataFrame], now: Timestamp) -> Dict[str, float]
-- function generate_signals(data_map: Dict[str, DataFrame], now: Timestamp) -> Dict[str, float]
-- function generate(data_map: Dict[str, DataFrame], now: Timestamp) -> Dict[str, float]
-- class Edge with method compute_signals(self, data_map, now)
-
-Returned values may be any real number; downstream will normalize/clamp.
-"""
-
 from __future__ import annotations
 from typing import Dict
 import inspect
@@ -118,6 +102,69 @@ class SignalCollector:
                 print(f"[COLLECTOR][DEBUG] Edge {edge_obj} not supported — no recognized function found.")
         return {}
 
+    # --- helper for converting various signal formats to ticker->score dict --- #
+    def _convert_signals_to_dict(self, signals):
+        import pandas as pd
+
+        def extract_score_from_dict(d):
+            # Try keys in order: score, signal, or derive from side/confidence
+            if not isinstance(d, dict):
+                return None
+            if "score" in d:
+                return d["score"]
+            if "signal" in d:
+                return d["signal"]
+            side = d.get("side")
+            confidence = d.get("confidence")
+            if side is not None and confidence is not None:
+                try:
+                    conf = float(confidence)
+                    if side in [1, "long", "Long", "LONG"]:
+                        return conf
+                    elif side in [-1, "short", "Short", "SHORT"]:
+                        return -conf
+                except Exception:
+                    pass
+            return None
+
+        # If signals is list of dicts, map to {ticker: score}
+        if isinstance(signals, list):
+            result = {}
+            for item in signals:
+                if not isinstance(item, dict):
+                    continue
+                ticker = item.get("ticker") or item.get("symbol") or item.get("asset")
+                if ticker is None:
+                    continue
+                score = extract_score_from_dict(item)
+                if score is not None:
+                    result[str(ticker).upper()] = float(score)
+            return result
+
+        # If signals is dict, check if values are dicts or primitives
+        if isinstance(signals, dict):
+            # Check if values are dicts with nested info
+            if signals and all(isinstance(v, dict) for v in signals.values()):
+                result = {}
+                for k, v in signals.items():
+                    score = extract_score_from_dict(v)
+                    if score is not None:
+                        result[str(k).upper()] = float(score)
+                return result
+            else:
+                # Assume dict of ticker->score directly
+                try:
+                    # Try to convert all values to float
+                    result = {str(k).upper(): float(v) for k, v in signals.items()}
+                    return result
+                except Exception:
+                    pass
+
+        # Unsupported type
+        if self.debug or os.environ.get("ALPHA_DEBUG"):
+            print(f"[ALPHA][TRACE][Collector][WARN] Unsupported signals type: {type(signals)}")
+        return None
+
     # --- public --- #
     def collect(self, data_map: Dict[str, pd.DataFrame], now: pd.Timestamp) -> Dict[str, Dict[str, float]]:
         """
@@ -136,19 +183,46 @@ class SignalCollector:
                 if is_debug_enabled("COLLECTOR"):
                     print(f"[COLLECTOR][DEBUG] Executing edge: {edge_name}")
 
-            # --- DEBUG: Print all raw signals (keys/values/types) if ALPHA_DEBUG is set ---
             signals = None
             try:
-                signals = self._call_edge(edge_obj, data_map, now)  # ticker->score
+                try:
+                    signals = self._call_edge(edge_obj, data_map, now)  # ticker->score or other format
+                except Exception as exc:
+                    # Retry with combined DataFrame if error contains "'dict' object has no attribute 'loc'"
+                    if "'dict' object has no attribute 'loc'" in str(exc):
+                        combined_df = pd.concat(data_map.values(), axis=1)
+                        try:
+                            signals = self._call_edge(edge_obj, combined_df, now)
+                        except Exception as exc2:
+                            if self.debug:
+                                from debug_config import is_debug_enabled
+                                if is_debug_enabled("COLLECTOR"):
+                                    print(f"[COLLECTOR][DEBUG] Edge '{edge_name}' failed after retry: {exc2}")
+                            signals = None
+                    else:
+                        raise
+
                 if os.getenv("ALPHA_DEBUG") == "1":
                     print(f"[ALPHA][DEBUG][Collector] Raw signals for edge '{edge_name}':")
-                    if isinstance(signals, dict):
-                        for k, v in signals.items():
-                            print(f"    key={repr(k)} ({type(k).__name__}), value={repr(v)} ({type(v).__name__})")
+                    if isinstance(signals, (dict, list)):
+                        if isinstance(signals, dict):
+                            for k, v in signals.items():
+                                print(f"    key={repr(k)} ({type(k).__name__}), value={repr(v)} ({type(v).__name__})")
+                        else:
+                            for i, item in enumerate(signals[:3]):
+                                print(f"    item[{i}]: {repr(item)}")
                     else:
-                        print(f"    [WARN] signals is not a dict: {type(signals)}")
+                        print(f"    [WARN] signals is not a dict or list: {type(signals)}")
 
-                m = signals
+                # Convert signals to normalized dict ticker->score
+                m = self._convert_signals_to_dict(signals)
+                if m is None:
+                    if self.debug:
+                        from debug_config import is_debug_enabled
+                        if is_debug_enabled("COLLECTOR"):
+                            print(f"[COLLECTOR][DEBUG] Edge {edge_name} returned unsupported signals type, skipping.")
+                    continue
+
                 if self.debug or os.getenv("ALPHA_DEBUG"):
                     sample_items = list(m.items())[:3] if isinstance(m, dict) else []
                     print(f"[ALPHA][TRACE][Collector][RAW_RESULT] Edge '{edge_name}' type={type(m).__name__}, len={len(m) if hasattr(m, '__len__') else 'N/A'} sample={sample_items}")
@@ -157,7 +231,7 @@ class SignalCollector:
                     if self.debug:
                         from debug_config import is_debug_enabled
                         if is_debug_enabled("COLLECTOR"):
-                            print(f"[COLLECTOR][DEBUG] Edge {edge_name} returned non-dict: {type(m)}")
+                            print(f"[COLLECTOR][DEBUG] Edge {edge_name} returned non-dict after conversion: {type(m)}")
                     continue
 
                 # --- Insert debug block to print raw keys in m if debug or ALPHA_DEBUG ---

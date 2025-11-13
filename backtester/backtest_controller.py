@@ -94,9 +94,6 @@ class BacktestController:
         bt_params: Optional[BacktestParams] = None,
         batch_flush_interval: int = 500,
     ):
-        # Add run_id for logging and tracing
-        from uuid import uuid4
-        self.run_id = str(uuid4())
         # Normalize data
         self.data_map: Dict[str, pd.DataFrame] = {}
         for t, df in data_map.items():
@@ -114,9 +111,7 @@ class BacktestController:
         self.alpha = alpha_engine
         self.risk = risk_engine
         self.logger = cockpit_logger
-        # If the logger supports a run_id attribute, set it
-        if hasattr(self.logger, "run_id"):
-            self.logger.run_id = self.run_id
+        self.run_id = getattr(self.logger, "run_id", None)
         self.portfolio = PortfolioEngine(initial_capital)
         # Store initial capital for later use
         self.initial_capital = float(initial_capital)
@@ -125,9 +120,10 @@ class BacktestController:
             self.portfolio.capital = self.initial_capital
         if hasattr(self.portfolio, "cash") and float(getattr(self.portfolio, "cash", 0.0)) <= 0.0:
             self.portfolio.cash = self.initial_capital
-        # Ensure CockpitLogger is aware of the portfolio
+        # Defensive attach of portfolio to logger (reset first to avoid stale refs)
         if hasattr(self.logger, "set_portfolio"):
             try:
+                self.logger.set_portfolio(None)  # reset first to avoid stale refs
                 self.logger.set_portfolio(self.portfolio)
             except Exception:
                 pass
@@ -212,14 +208,15 @@ class BacktestController:
             trades_path = os.path.join(logs_dir, "trades.csv")
         # Ensure directory exists if we didn't already
         os.makedirs(os.path.dirname(trades_path), exist_ok=True)
-        # Prepare row with standard fields and extra edge_id/category
+        # normalize price keys for downstream consumers
+        price_val = fill.get("fill_price", fill.get("price", ""))
         row = {
             "timestamp": str(ts),
             "ticker": fill.get("ticker", ""),
             "side": fill.get("side", ""),
             "qty": fill.get("qty", ""),
-            "fill_price": fill.get("fill_price", ""),
-            "commission": fill.get("commission", ""),
+            "fill_price": price_val,
+            "commission": fill.get("commission", 0.0),
             "pnl": fill.get("pnl", ""),
             "edge": fill.get("edge", ""),
             "edge_group": fill.get("edge_group", ""),
@@ -227,10 +224,11 @@ class BacktestController:
             "meta": fill.get("meta", ""),
             "edge_id": fill.get("edge_id", ""),
             "edge_category": fill.get("edge_category", ""),
+            "run_id": getattr(self, "run_id", None) or getattr(self.logger, "run_id", None) or "",
         }
         header = [
             "timestamp", "ticker", "side", "qty", "fill_price", "commission", "pnl",
-            "edge", "edge_group", "trigger", "meta", "edge_id", "edge_category"
+            "edge", "edge_group", "trigger", "meta", "edge_id", "edge_category", "run_id"
         ]
         # Check if file exists
         write_header = not os.path.exists(trades_path)
@@ -308,6 +306,8 @@ class BacktestController:
         snap0 = self.portfolio.snapshot(t0, first_prices)
         snap0["positions"] = sum(1 for p in self.portfolio.positions.values() if p.qty != 0)
         snap0["run_id"] = self.run_id
+        # DEBUG: see exactly what initial snapshot looks like before logger touches it
+        print(f"[DEBUG_INITIAL_SNAPSHOT_PAYLOAD] {snap0}")
         try:
             self.logger.log_snapshot(snap0)
         except Exception as e:
@@ -316,31 +316,7 @@ class BacktestController:
 
         # Force at least one initial record into portfolio_snapshots.csv if portfolio.history is empty or snapshot could not be written
         try:
-            # Try to write to portfolio_snapshots.csv directly if needed
-            if not self.portfolio.history or len(self.portfolio.history) == 0:
-                print("[BACKTEST_CONTROLLER][DEBUG] portfolio.history is empty after initial snapshot, forcing record to portfolio_snapshots.csv.")
-                snap_path = None
-                # Prefer logger's snapshot path
-                snap_path_obj = getattr(self.logger, "snap_path", None)
-                if snap_path_obj:
-                    snap_path = str(snap_path_obj)
-                else:
-                    # Fallback to legacy flat path
-                    import os
-                    root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-                    logs_dir = os.path.join(root, "data", "trade_logs")
-                    os.makedirs(logs_dir, exist_ok=True)
-                    snap_path = os.path.join(logs_dir, "portfolio_snapshots.csv")
-                # Ensure directory exists
-                import os, csv
-                os.makedirs(os.path.dirname(snap_path), exist_ok=True)
-                header = list(snap0.keys())
-                write_header = not os.path.exists(snap_path)
-                with open(snap_path, "a", newline="") as f:
-                    writer = csv.DictWriter(f, fieldnames=header)
-                    if write_header:
-                        writer.writeheader()
-                    writer.writerow(snap0)
+            pass
         except Exception as e:
             print(f"[BACKTEST_CONTROLLER][DEBUG] Could not write forced initial snapshot: {e}")
 
@@ -573,6 +549,28 @@ class BacktestController:
                             order.setdefault("meta", {})
                             order["meta"]["PrevClose"] = prev_close_val
                         fill = self.exec.fill_at_next_open(order, row_next)
+                        # --- Normalize side/price/commission for engine & logger compatibility ---
+                        side_map = {
+                            "buy": "long",
+                            "sell": "exit",
+                            "sell_short": "short",
+                            "short": "short",
+                            "buy_to_cover": "cover",
+                            "cover": "cover",
+                        }
+                        if fill:
+                            try:
+                                s = str(fill.get("side", "")).lower()
+                                fill["side"] = side_map.get(s, s)
+                            except Exception:
+                                pass
+                            # ensure both keys exist for downstream consumers
+                            if "fill_price" not in fill and "price" in fill:
+                                fill["fill_price"] = fill["price"]
+                            if "price" not in fill and "fill_price" in fill:
+                                fill["price"] = fill["fill_price"]
+                            # default commission
+                            fill.setdefault("commission", float(getattr(self.exec, "commission", 0.0)))
                         if fill:
                             # --- Ensure required numeric fields ---
                             try:
@@ -619,7 +617,10 @@ class BacktestController:
                             fill["edge_id"] = order.get("edge_id") if "edge_id" in order else None
                             fill["edge_category"] = order.get("edge_category") if "edge_category" in order else None
 
+                            print(f"[DEBUG_BACKTEST_FILL_CREATED] {fill}")
                             self.portfolio.apply_fill(fill)
+                            if hasattr(self.logger, "set_portfolio"):
+                                self.logger.set_portfolio(self.portfolio)
                             # Ensure edge attribution keys are present for logger schema
                             fill.setdefault("edge", order.get("edge", "Unknown"))
                             fill.setdefault("edge_group", order.get("edge_group"))
@@ -639,6 +640,15 @@ class BacktestController:
                             if row_next is None:
                                 continue
                             stop_or_tp = self.exec.check_stops_and_targets(tkr, pos, row_next)
+                            # Normalize SL/TP fill for engine & logger
+                            if stop_or_tp:
+                                s2 = str(stop_or_tp.get("side", "")).lower()
+                                stop_or_tp["side"] = side_map.get(s2, s2) if 'side_map' in locals() else s2
+                                if "fill_price" not in stop_or_tp and "price" in stop_or_tp:
+                                    stop_or_tp["fill_price"] = stop_or_tp["price"]
+                                if "price" not in stop_or_tp and "fill_price" in stop_or_tp:
+                                    stop_or_tp["price"] = stop_or_tp["fill_price"]
+                                stop_or_tp.setdefault("commission", float(getattr(self.exec, "commission", 0.0)))
                             if stop_or_tp:
                                 # Realized PnL fallback for SL/TP exits (compute before mutation)
                                 try:
@@ -668,6 +678,8 @@ class BacktestController:
                                     stop_or_tp["pnl"] = round(float(realized_st), 2)
 
                                 self.portfolio.apply_fill(stop_or_tp)
+                                if hasattr(self.logger, "set_portfolio"):
+                                    self.logger.set_portfolio(self.portfolio)
                                 self._log_fill_compat(stop_or_tp, nxt)
                         except Exception:
                             continue
@@ -676,8 +688,38 @@ class BacktestController:
                 try:
                     close_map_next = {t: _scalar_close(row) for t, row in next_rows.items()}
                     snap = self.portfolio.snapshot(nxt, close_map_next)
+
+                    # DEBUG: full snapshot dict before we touch it further
+                    print(f"[DEBUG_SNAPSHOT_PAYLOAD_PRE_LOG] t={nxt}, snap={snap}")
+
+                    print(f"[DEBUG_SNAPSHOT_CHECK] Snapshot at {nxt}: cash={self.portfolio.cash}, positions={{t: p.qty for t,p in self.portfolio.positions.items()}}, realized_pnl={self.portfolio.realized_pnl}")
+                    # Ensure snapshot reflects live portfolio state using close prices for this bar
                     snap["positions"] = sum(1 for p in self.portfolio.positions.values() if p.qty != 0)
+                    try:
+                        live_cash = float(getattr(self.portfolio, "cash", snap.get("cash", 0.0)))
+                        live_mv = 0.0
+                        for _tkr, _pos in getattr(self.portfolio, "positions", {}).items():
+                            if hasattr(_pos, "qty") and _pos.qty != 0:
+                                px = close_map_next.get(_tkr)
+                                if px is None:
+                                    px = getattr(_pos, "last_price", getattr(_pos, "avg_price", 0.0))
+                                if px is None:
+                                    continue
+                                live_mv += float(_pos.qty) * float(px)
+                        snap["cash"] = live_cash
+                        snap["market_value"] = live_mv
+                        snap["equity"] = live_cash + live_mv
+                    except Exception as e:
+                        from debug_config import is_debug_enabled
+                        if is_debug_enabled("BACKTEST_CONTROLLER"):
+                            print(f"[BACKTEST_CONTROLLER][DEBUG] Failed to sync live portfolio state for snapshot: {e}")
+                    # Tag snapshot with current run_id and persist into portfolio history
+                    snap["run_id"] = self.run_id
                     self.logger.log_snapshot(snap)
+                    try:
+                        self.portfolio.history.append(snap)
+                    except Exception:
+                        pass
                 except Exception:
                     pass
 
@@ -757,6 +799,8 @@ class BacktestController:
             from cockpit.metrics import PerformanceMetrics
             import json
             import os
+            import pandas as _pd
+
             # Prefer cockpit logger's resolved files (run-scoped) if available
             snapshots_path_obj = getattr(self.logger, "snap_path", None)
             trades_path_obj = getattr(self.logger, "trade_path", None)
@@ -768,10 +812,59 @@ class BacktestController:
                 snapshots_path = os.path.join(root, "data", "trade_logs", "portfolio_snapshots.csv")
                 trades_path = os.path.join(root, "data", "trade_logs", "trades.csv")
 
-            if os.path.exists(snapshots_path) and os.path.exists(trades_path):
+            # Only proceed if both files exist and are non-empty
+            if os.path.exists(snapshots_path) and os.path.getsize(snapshots_path) > 0 \
+               and os.path.exists(trades_path) and os.path.getsize(trades_path) > 0:
+
+                # By default, feed the raw paths into PerformanceMetrics
+                snapshots_path_for_metrics = snapshots_path
+                trades_path_for_metrics = trades_path
+
+                # If run_id is present as a column, filter down to the current run only
+                run_id = getattr(self.logger, "run_id", None)
+                try:
+                    if run_id is not None:
+                        df_snap = _pd.read_csv(snapshots_path)
+                        df_tr = _pd.read_csv(trades_path)
+                        if "run_id" in df_snap.columns:
+                            df_snap = df_snap[df_snap["run_id"] == run_id]
+                        if "run_id" in df_tr.columns:
+                            df_tr = df_tr[df_tr["run_id"] == run_id]
+                        # --- NEW: Equity consistency check ---
+                        try:
+                            if "equity" in df_snap.columns:
+                                start_eq = float(df_snap["equity"].iloc[0])
+                                end_eq = float(df_snap["equity"].iloc[-1])
+                                if abs(start_eq - self.initial_capital) > 1e-6:
+                                    print(f"[PERF][WARN] start equity mismatch: snapshots={start_eq} expected={self.initial_capital}")
+                                # Check end equity vs portfolio final
+                                try:
+                                    port_final = float(self.portfolio.cash) + sum(
+                                        float(pos.qty) * float(getattr(pos, "last_price", pos.avg_price))
+                                        for pos in self.portfolio.positions.values()
+                                    )
+                                    if abs(end_eq - port_final) > 1e-3:
+                                        print(f"[PERF][WARN] end equity mismatch: snapshots={end_eq} vs portfolio={port_final}")
+                                except Exception:
+                                    pass
+                        except Exception:
+                            pass
+                        # If we have any rows after filtering, write them to run-scoped temp files
+                        if not df_snap.empty and not df_tr.empty:
+                            perf_dir = os.path.dirname(snapshots_path)
+                            os.makedirs(perf_dir, exist_ok=True)
+                            snapshots_path_for_metrics = os.path.join(perf_dir, f"portfolio_snapshots_{run_id}.csv")
+                            trades_path_for_metrics = os.path.join(perf_dir, f"trades_{run_id}.csv")
+                            df_snap.to_csv(snapshots_path_for_metrics, index=False)
+                            df_tr.to_csv(trades_path_for_metrics, index=False)
+                except Exception:
+                    # If filtering fails for any reason, fall back to unfiltered paths
+                    snapshots_path_for_metrics = snapshots_path
+                    trades_path_for_metrics = trades_path
+
                 metrics = PerformanceMetrics(
-                    snapshots_path=snapshots_path,
-                    trades_path=trades_path,
+                    snapshots_path=snapshots_path_for_metrics,
+                    trades_path=trades_path_for_metrics,
                 )
                 if hasattr(metrics, "summary"):
                     stats = metrics.summary()
@@ -779,12 +872,44 @@ class BacktestController:
                     stats = metrics.summary_dict
                 else:
                     stats = {}
-                # Save the summary next to the snapshots by default
-                perf_dir = os.path.dirname(snapshots_path)
+
+                # Save the summary next to the (possibly filtered) snapshots
+                perf_dir = os.path.dirname(snapshots_path_for_metrics)
                 perf_path = os.path.join(perf_dir, "performance_summary.json")
                 os.makedirs(perf_dir, exist_ok=True)
                 with open(perf_path, "w") as f:
                     json.dump(stats, f, indent=2)
+
+                # Also promote run-scoped CSVs to top-level flat files for dashboards
+                flat_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "data", "trade_logs"))
+                os.makedirs(flat_dir, exist_ok=True)
+                try:
+                    import shutil
+                    # Clean replace flat CSVs before promotion
+                    flat_snap = os.path.join(flat_dir, "portfolio_snapshots.csv")
+                    flat_trades = os.path.join(flat_dir, "trades.csv")
+
+                    # Remove old files if they exist (to avoid mixing runs)
+                    if os.path.exists(flat_snap):
+                        try:
+                            os.remove(flat_snap)
+                        except Exception:
+                            pass
+
+                    if os.path.exists(flat_trades):
+                        try:
+                            os.remove(flat_trades)
+                        except Exception:
+                            pass
+
+                    # Promote run‑scoped CSVs freshly
+                    shutil.copyfile(snapshots_path_for_metrics, flat_snap)
+                    shutil.copyfile(trades_path_for_metrics, flat_trades)
+
+                    if hasattr(self.logger, "run_id"):
+                        print(f"[PROMOTE] Clean‑replaced flat CSVs from latest run '{self.logger.run_id}'.")
+                except Exception:
+                    pass
         except Exception as e:
             # Non-fatal; just skip
             pass

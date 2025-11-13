@@ -58,6 +58,7 @@ class CockpitLogger:
         "unrealized_pnl",
         "equity",
         "positions",
+        "open_pos_by_edge",
         "run_id",
     ]
 
@@ -91,6 +92,10 @@ class CockpitLogger:
 
         if is_info_enabled() or is_debug_enabled("LOGGER"):
             print(f"[LOGGER][INIT] CockpitLogger initialized for run_id={self.run_id} at {self.out_dir}")
+
+    def set_portfolio(self, portfolio: Any) -> None:
+        """Attach/refresh the portfolio reference so PnL math is accurate."""
+        self.portfolio = portfolio
 
     # -------------------------------------------------------------------- #
     def _ensure_csv_headers(self) -> None:
@@ -169,7 +174,12 @@ class CockpitLogger:
         tkr = fill.get("ticker")
         side = str(fill.get("side", "")).lower()
         qty = float(fill.get("qty", 0))
-        px = float(fill.get("price", fill.get("fill_price", 0.0)))
+        # accept either key; normalize to float if possible
+        px_raw = fill.get("price", fill.get("fill_price", 0.0))
+        try:
+            px = float(px_raw)
+        except Exception:
+            px = 0.0
 
         # Only compute PnL for exit/cover (i.e., closing trades)
         if side not in ("exit", "cover"):
@@ -281,23 +291,53 @@ class CockpitLogger:
 
     # -------------------------------------------------------------------- #
     def log_snapshot(self, snap: Dict[str, Any]) -> None:
-        """Append a portfolio snapshot per bar (timestamp required)."""
+        """Append a portfolio snapshot per bar (timestamp required). Refreshes cash, market_value, realized/unrealized_pnl, equity from live portfolio if available."""
         if not is_logger_enabled():
             return
 
-        if not isinstance(snap, dict) or "equity" not in snap:
+        if not isinstance(snap, dict):
             return
 
+        # Ensure timestamp and base fields exist
         snap = dict(snap)
-        snap["timestamp"] = pd.to_datetime(snap["timestamp"])
-        snap["run_id"] = self.run_id
+        snap["timestamp"] = pd.to_datetime(snap.get("timestamp", datetime.utcnow()))
+        # --- NEW: Recompute snapshot fields directly from live portfolio if available ---
+        if self.portfolio:
+            try:
+                live_cash = float(getattr(self.portfolio, "cash", snap.get("cash", 0.0)))
+                realized = float(getattr(self.portfolio, "realized_pnl", snap.get("realized_pnl", 0.0)))
+                unreal = float(getattr(self.portfolio, "unrealized_pnl", snap.get("unrealized_pnl", 0.0)))
+
+                # Compute market_value from open positions
+                mv = 0.0
+                for t, pos in getattr(self.portfolio, "positions", {}).items():
+                    if hasattr(pos, "qty") and pos.qty != 0:
+                        last_px = getattr(pos, "last_price", getattr(pos, "avg_price", 0.0))
+                        mv += float(pos.qty) * float(last_px)
+
+                snap["cash"] = float(live_cash)
+                snap["realized_pnl"] = float(realized)
+                snap["unrealized_pnl"] = float(unreal)
+                snap["market_value"] = float(mv)
+                snap["equity"] = float(live_cash + mv)
+            except Exception:
+                pass
+        # Note: run_id is injected in _append_to_csv to keep schema consistent
+        # DEBUG: see what logger receives and where it's going to write
+        try:
+            from debug_config import is_debug_enabled
+            if is_debug_enabled("COCKPIT_LOGGER"):
+                print(f"[DEBUG_LOGGER_SNAPSHOT_INPUT] snap={snap}, snap_path={self.snap_path}")
+        except Exception:
+            pass
         self._append_to_csv(self.snap_path, snap)
 
+        # Clear debug print with timestamp, cash, equity
         if is_info_enabled() or is_debug_enabled("LOGGER"):
+            cash = snap.get("cash", 0.0)
+            equity = snap.get("equity", 0.0)
             print(
-                f"[LOGGER][INFO] [SNAPSHOT] {snap['timestamp']:%Y-%m-%d %H:%M} "
-                f"Equity={snap['equity']:.2f} | Cash={snap['cash']:.2f} | "
-                f"Pos={snap['positions']}"
+                f"[LOGGER][DEBUG] [SNAPSHOT WRITE] {snap['timestamp']:%Y-%m-%d %H:%M:%S} | Cash={cash:.2f} | Equity={equity:.2f}"
             )
 
     # -------------------------------------------------------------------- #
