@@ -1,0 +1,19 @@
+# Ignore virtualenvs
+.venv/
+venv/
+
+# Ignore data, logs, caches
+data/
+logs/
+__pycache__/
+*.parquet
+*.csv
+*.log
+
+# Ignore IDE / OS junk
+.DS_Store
+.vscode/
+.idea/
+
+# Ignore model caches / temp
+.cache/

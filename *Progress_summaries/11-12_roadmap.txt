@@ -1,0 +1,391 @@
+High-level roadmap
+
+Phase 1 – Realism & Risk (engine upgrades)
+	1.	Slippage model
+	2.	Bigger ticker universe
+	3.	Risk modes (conservative → degen, incl. crypto toggle)
+	4.	Market impact model
+	5.	Monte Carlo simulation
+
+Phase 2 – Research & Edges (your “secret sauce”)
+2. Multi-edge research (news + tech + fundamentals + AI features)
+7. Tax-aware logic (at least in analysis mode first)
+12. Fundamentals (for strategies & portfolio)
+13. Stop-hunt / volatility handling
+15. Best-practice alignment for actual PnL
+
+Phase 3 – UX & Product Features
+5. Health / system check
+10. “Recommended trades” dashboard tab
+6. Context documents for AI + humans
+
+Phase 4 – Hygiene & Hardening
+8. Code cleanup / de-debugging
+14. Anything missing (tests, CI, config validation, versioning)
+
+Now I’ll go through each item with implementation sketches tied to your current modules (backtest_controller, portfolio, CockpitLogger, governor, dashboards, etc.).
+
+⸻
+
+1. Slippage model (Phase 1)
+
+Goal: Simulate realistic execution prices instead of perfect fills at OHLC.
+
+Design
+	•	Add a SlippageModel abstraction, e.g. engines/execution/slippage.py:
+    class BaseSlippageModel:
+        def get_fill_price(self, side: str, raw_price: float, bar: dict, notional: float) -> float:
+            raise NotImplementedError
+    •	Start simple with config-driven models:
+        •	fixed_bps: e.g. 5 bps per trade → adj_price = raw_price * (1 + sign * bps/1e4)
+        •	spread_half: adj_price = ask for buys, bid for sells, estimated from high/low/close
+        •	Later: impact_bps = k * (notional / ADV)
+
+Where to plug it in
+	•	In backtester/backtest_controller.py, wherever you currently compute:
+    fill_price = bar["Close"]  # or similar
+    replace with:
+    raw_px = bar["Close"]
+    notional = qty * raw_px
+    fill_px = slippage_model.get_fill_price(side, raw_px, bar, notional)
+    fill["fill_price"] = fill_px
+    fill["price"] = fill_px
+    •	This automatically flows into:
+        •	Portfolio.apply_fill
+        •	CockpitLogger.log_fill and your trades.csv
+Config: config/backtest_config.json could include:
+"slippage": {
+  "model": "fixed_bps",
+  "bps": 5
+}
+So you can easily turn it on/off.
+
+⸻
+
+2. Multi-edge research + AI-driven edges (Phase 2)
+
+This is your differentiator.
+
+a. Solidify the “edge” abstraction
+
+Right now you already have:
+	•	edge, edge_id, edge_category, and open_pos_by_edge in snapshots and trades.
+
+Make a formal edge registry, e.g.:
+class Edge:
+    name: str
+    category: str  # 'technical', 'fundamental', 'news', 'ai'
+    def compute_signals(self, data_slice) -> dict: ...
+Then your “Alpha Collector” just loops over registered edges.
+
+b. Add new edge types
+	1.	News edge
+	•	External pipeline creates a daily CSV:
+data/research/news_scores.csv with columns:
+date, ticker, sentiment_score, source_count, headline_risk
+	•	NewsEdge reads this and outputs signals like:
+	•	Long if sentiment > 0.7 and volume above threshold.
+	•	Short/avoid if sentiment < −0.7.
+	2.	Fundamental edge
+	•	Another CSV:
+fundamentals.csv: date, ticker, pe, pb, roe, debt_to_equity, earnings_growth.
+	•	Edges like:
+	•	ValueEdge (low PE/PB)
+	•	QualityEdge (high ROE, low leverage)
+	•	Technical edge (what you have now) stays as is.
+	3.	AI “feature” edge
+	•	You compute “AI scores” offline (using ChatGPT or your own pipeline) like:
+	•	“Business moat”
+	•	“Management quality”
+	•	“Regulatory overhang”
+	•	Store in ai_features.csv: date, ticker, ai_score_1, ai_score_2, ...
+	•	AI edge maps that to a numeric long/short signal.
+
+c. Learning / weight-adjusting research engine
+
+You already have a governor updating edge weights. Extend it to:
+	•	Attribute PnL per edge using your fields:
+	•	For each trade, use edge_id and realized PnL from trades.csv.
+	•	For each bar, you already have open_pos_by_edge in snapshots, which gives contribution.
+	•	Create a research module:
+	•	Reads trades + snapshots
+	•	Computes:
+	•	Per-edge Sharpe
+	•	Hit rate
+	•	Drawdown contribution
+	•	Updates edge weights in engines/engine_d_research/system_governor.py via a simple rule:
+	•	e.g. exponential moving average of performance; clip between [0, 1]; renormalize.
+
+Later, this can become more sophisticated (Bayesian updating, RL, etc.), but start with simple, transparent rules.
+
+⸻
+
+3. Increase ticker universe (Phase 1)
+
+Goal: More realistic backtests across many tickers.
+
+Plan
+	•	Create a universe config:
+	•	config/universe.json with named sets: "SP100", "TOP300_US", etc.
+	•	Update your data loader to:
+	•	Accept universe_name
+	•	Load all OHLCV data for that list from data/prices/… (or external source if you hook in later).
+	•	Ensure:
+	•	Portfolio sizing is robust to more symbols (no weird concentration).
+	•	Backtest performance remains acceptable (vectorization if needed).
+
+You can start with:
+	•	All S&P 500 stocks
+	•	A crypto subset if/when you add that engine.
+
+⸻
+
+4. Adjustable system risk settings (+ crypto/derivatives) (Phase 1–2)
+
+Idea: A user-side slider like: “conservative / balanced / aggressive / degen”.
+
+Implementation
+
+Create a RiskProfile config:
+"risk_profile": "balanced",
+"risk_profiles": {
+  "conservative": {
+    "per_trade_risk_pct": 0.25,
+    "max_gross_exposure": 0.7,
+    "max_leverage": 1.0,
+    "allow_crypto": false,
+    "allow_options": false
+  },
+  "balanced": { ... },
+  "aggressive": { ... },
+  "degen": {
+    "per_trade_risk_pct": 2.0,
+    "max_gross_exposure": 2.0,
+    "max_leverage": 3.0,
+    "allow_crypto": true,
+    "allow_options": true
+  }
+}
+Wire this into:
+	•	Position sizing (where you currently use ATR + risk_budget)
+	•	Universe filters (include crypto tickers only if allow_crypto)
+	•	Leverage usage
+
+Crypto/options support can be staged:
+	•	Stage 1: crypto as just another price series.
+	•	Later: option greeks, implied vol, etc.
+
+⸻
+
+5. Better health / system check (Phase 3)
+
+Not just “is the code running?” but “is the machine healthy?”
+
+Health checks
+
+Implement a health_check.py that can run after a backtest or on demand:
+	1.	Data integrity
+	•	No NaNs in critical fields.
+	•	No duplicate timestamps per ticker.
+	2.	Portfolio integrity
+	•	For all snapshots: abs(equity - (cash + market_value)) < 1e-6.
+	•	No negative share quantities unless shorting is enabled.
+	3.	PnL consistency
+	•	Sum of realized PnL in trades == realized_pnl in final snapshot (within tolerance).
+	4.	Risk sanity
+	•	No position > X% of portfolio unless config allows.
+	•	No leverage > max_leverage.
+
+Write a health_report.json and show a summary in the dashboard (“System Health: ✅ / ⚠️ / ❌”).
+
+⸻
+
+6. Context documents for AI + humans (Phase 3)
+
+Make a /docs folder with:
+	•	ARCHITECTURE_OVERVIEW.md: high-level description of:
+	•	backtest_controller
+	•	CockpitLogger
+	•	Portfolio
+	•	Governor
+	•	Dashboards
+	•	EDGE_SYSTEM.md:
+	•	How edges are defined, logged, weighted.
+	•	LOGGING_INVARIANTS.md:
+	•	Schema of trades.csv & portfolio_snapshots.csv.
+	•	Guarantees (like equity consistency).
+	•	CONTRIBUTING.md:
+	•	Coding style, debug_config usage, where to add logs.
+	•	Maybe TASK_HISTORY.md:
+	•	Short bullet log of big changes (“2025-11-12 – fixed equity drift; new logger, etc.”).
+
+When you have another AI session, you can paste relevant chunks from these docs as context. This dramatically reduces “context drift” and re-work.
+
+⸻
+
+7. Tax loss harvesting / bracket-aware decisions (Phase 2)
+
+This one is advanced; start by treating it as analysis, not hard trading rules.
+
+Step 1: Tax-aware analytics
+	•	Add a tax_config.json:
+	•	Federal + state bracket
+	•	Short-/long-term rates
+	•	Build a tax_analyzer module that:
+	•	Reads trades.csv
+	•	Classifies each realized PnL as ST/LT based on holding period
+	•	Estimates annual tax impact
+	•	Identifies candidates for tax loss harvesting (e.g. positions with unrealized loss > X and held > 30 days).
+
+Step 2: Strategy hooks
+	•	For sell decisions, add a hook:
+	•	“If selling now converts unrealized gain into short-term and you’re X days from long-term, reduce or avoid sale unless risk constraints force it.”
+	•	This can be a separate “TaxPolicy” component that the strategy queries before finalizing exits.
+
+This stays configurable; some users may not want tax logic influencing trades.
+
+⸻
+
+8. Code cleanup (Phase 4)
+	•	Wrap all prints in debug_config flags (you already started).
+	•	Remove dead modules / old engines:
+	•	Deprecate with a doc note, then delete after you’re sure.
+	•	Add basic tests:
+	•	tests/test_portfolio.py for apply_fill, equity math.
+	•	tests/test_logger.py to ensure schema + run_id behavior.
+	•	Apply a formatter + linter (black + ruff) to keep things tidy.
+
+⸻
+
+9. Market impact model (Phase 1, after slippage)
+
+Think of this as slippage that scales with size vs liquidity.
+
+Simple approach
+
+In SlippageModel.get_fill_price:
+	•	Look up a rough ADV (average daily volume) for the ticker (from a CSV).
+	•	Compute size_pct_adv = notional / (ADV * price).
+	•	Add extra bps:
+    impact_bps = impact_k * size_pct_adv  # e.g. impact_k = 50
+    total_bps = base_bps + impact_bps
+That way big trades in illiquid names get hammered (as they should), but you don’t need to modify the whole OHLC series — just the execution price.
+
+For paper trading, you can reuse exactly the same logic.
+
+⸻
+
+10. “Recommended trades” tab (Phase 3)
+
+Feature for users to see trades your engine likes, even if they’re not auto-executing.
+
+Backend
+	•	During each backtest / signal generation step, write a recommended_trades.csv:
+
+Columns:
+date, ticker, side, entry_price, stop_price, take_profit, confidence, reason, edge_combo
+	•	“Reason” can be short text like:
+	•	“xsec_momentum + value edge agreement; sentiment neutral.”
+	•	Only include top N ideas per day (e.g. 5–10).
+
+Dashboard
+	•	Add a tab “Recommended Trades” with a table:
+	•	Ticker
+	•	Side
+	•	Entry
+	•	Stop
+	•	TP
+	•	Edge combo
+	•	Confidence
+	•	Optional “Simulate” button: if user clicks, you’d show hypothetical PnL if they’d taken it.
+
+⸻
+
+11. Monte Carlo simulation (Phase 1–2)
+
+Use your actual trade results to estimate distribution of outcomes.
+
+Implementation sketch
+	•	Read trades.csv and build a series of per-trade or per-day returns.
+	•	Monte Carlo module:
+	•	Resample returns with replacement into synthetic paths of the same length.
+	•	Do this e.g. 1000 times.
+	•	For each path, compute:
+	•	final return
+	•	max drawdown
+	•	Produce distributions (percentiles: 5th, 50th, 95th).
+
+Expose as:
+	•	monte_carlo_summary.json
+	•	Dashboard chart:
+	•	Histogram of final returns.
+	•	Fan chart of equity paths.
+
+This helps evaluate “possible profitability” and tail risk, not just the backtest mean.
+
+⸻
+
+12. Better fundamentals understanding (Phase 2)
+
+On the machine side, that means:
+	•	Treat fundamentals as slow-moving state:
+	•	Only update when quarterly data changes.
+	•	Avoid over-trading on small fundamental changes.
+	•	Classic fundamental factor buckets to consider:
+	•	Value: PE, PB, EV/EBITDA, dividend yield.
+	•	Quality: ROE, ROA, gross margins, stability of earnings.
+	•	Growth: earnings growth, revenue growth.
+	•	Risk: leverage, beta, downside volatility.
+
+Implementation: one or more fundamental edges as in §2(b), plus portfolio constraints:
+	•	Don’t allow too high weight in “junk” (e.g. high leverage + low quality).
+	•	Favor names that are simultaneously good on fundamentals and positive on technicals.
+
+⸻
+
+13. Prevent “stop-hunt” dips from killing you (Phase 2)
+
+You can’t prevent the market from dipping (sadly), but you can design more robust stop logic:
+	•	Use ATR-based stops (you’re already doing ATR sizing; extend it to stops):
+	•	Stop distance = k * ATR, with k higher in volatile regimes.
+	•	Add time-based filters:
+	•	No new stops within X minutes of the open or big macro announcements.
+	•	Use close-based exits in backtests:
+	•	Instead of assuming you get wicked intraday spikes, exit if close breaks your level.
+	•	Implement volatility regime detection:
+	•	If vol is very high, widen stops or reduce risk per trade.
+	•	Consider partial take profits + trailing stop:
+	•	Lock in some gains; trail the stop to reduce the frustration of being stopped at the low.
+
+Architecturally: a StopPolicy component that takes:
+StopPolicy.compute_stop(entry_price, atr, vol_regime, config) -> stop_price
+And maybe StopPolicy.update_stop(current_price, atr, time_in_trade) for trailing stops.
+
+⸻
+
+14. Anything missing
+
+A few big things I’d add over time:
+	•	Benchmark comparison:
+	•	Always log SPY or some benchmark; compute alpha, beta, tracking error.
+	•	Out-of-sample / walk-forward testing:
+	•	Split data into train/validation/test periods to avoid just overfitting.
+	•	Config versioning:
+	•	Every run logs the exact config hash used (config_hash column somewhere).
+	•	Alerts & monitoring for live:
+	•	If portfolio deviates from expected or no trades happen when there should be signals, raise a warning.
+
+⸻
+
+15. Aligning with best practices while maximizing real returns
+
+Throughout all of this, keep these guardrails:
+	•	Risk first:
+	•	Per-trade risk caps, portfolio drawdown limits, leverage limits.
+	•	Simplicity first:
+	•	Start with human-understandable rules before deep black-box ML.
+	•	Separation of concerns:
+	•	Research mode vs. production mode (different configs, same engine).
+	•	Reasonable transaction costs:
+	•	Slippage + commissions + impact from §1 and §9.
+

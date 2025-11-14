@@ -1,0 +1,15 @@
+# Aider Community Edition config for Trading Machine
+
+model: gpt-4.1-mini
+
+# Disable auto-commits until our workflow is stable
+auto-commits: false
+
+# Use our future healthcheck script
+test-cmd: "python scripts/run_healthcheck.py"
+
+# Allow large repo maps but conservative enough for your machine
+map-tokens: 60000
+map-refresh: auto
+
+aiderignore: .aiderignore
