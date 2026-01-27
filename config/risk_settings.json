@@ -1,6 +1,7 @@
 {
   "risk_per_trade_pct": 0.01,
   "atr_stop_mult": 1.5,
+  "high_vol_stop_mult": 2.5,
   "atr_tp_mult": 3.0,
   "cap_atr_to_pct_of_price": 0.2,
   "atr_floor_pct_of_price": 0.005,

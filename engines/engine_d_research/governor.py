@@ -191,6 +191,15 @@ class StrategyGovernor:
                 scale = scale if scale and np.isfinite(scale) else max(1.0, pnl_series.abs().mean())
                 ret = pnl_series / float(scale)
                 sr = ret.mean() / (ret.std() + 1e-12) * np.sqrt(252.0)
+                
+                # Sortino Ratio (Penalize only downside volatility)
+                # Downside Deviation: std of returns < 0
+                downside = ret[ret < 0]
+                if downside.empty or downside.std() == 0:
+                    # Ideal case: no downside. Cap sortino at a high number to avoid inf
+                    sortino = 10.0
+                else:
+                    sortino = ret.mean() / (downside.std() + 1e-12) * np.sqrt(252.0)
 
             # Rolling MDD on cumulative pnl
             cum = pnl_series.cumsum()
@@ -213,13 +222,29 @@ class StrategyGovernor:
                         eg_ret = (pnl_series.loc[common] / (pnl_series.loc[common].abs().median() or 1.0)).fillna(0.0)
                         st_ret = strat_daily_ret.loc[common].fillna(0.0)
                         c = np.corrcoef(eg_ret.values, st_ret.values)[0, 1]
-                        if np.isfinite(c) and c < 0:
-                            corr_penalty = min(0.25, abs(c))  # up to 25% penalty for strong negative corr
+                        if np.isfinite(c):
+                            # Bensdorp/Parrondo Logic:
+                            # High Positive Correlation (>0.7) -> Redundant (Penalty)
+                            # Negative Correlation (<0.0) -> Hedge (Bonus implied by NOT penalizing)
+                            
+                            # We implement "Uncorrelation Bonus" by adjusting the penalty.
+                            # If we use a scalar 'corr_penalty', we can make it negative to boost weight.
+                            
+                            if c > 0.7:
+                                # Penalize redundancy
+                                corr_penalty = (c - 0.7) * 0.5  # up to 0.15 penalty
+                            elif c < 0.0:
+                                # Reward hedge (Negative penalty = Bonus)
+                                # Boost up to 20% for strong inverse correlation
+                                corr_penalty = -min(0.20, abs(c) * 0.5)
+                            else:
+                                corr_penalty = 0.0
 
             # collect diagnostics for this edge
             edge_metrics[edge_name] = {
                 "trade_count": int(trade_count),
                 "sr": float(sr),
+                "sortino": float(sortino),
                 "mdd": float(mdd),
                 "corr_penalty": float(corr_penalty),
             }

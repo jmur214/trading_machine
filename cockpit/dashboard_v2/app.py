@@ -13,21 +13,27 @@ ALPACA_API_KEY = os.environ.get("APCA_API_KEY_ID", "")
 ALPACA_API_SECRET = os.environ.get("APCA_API_SECRET_KEY", "")
 
 # --- Tabs (layouts) ---
-from .tabs.dashboard_tab import dashboard_layout, mode_layout
-from .tabs.analytics_tab import analytics_layout
-from .tabs.performance_tab import performance_layout
-from .tabs.governor_tab import governor_layout
+# --- Tabs (layouts) ---
+# --- Tabs (layouts) ---
+from .tabs.dashboard_tab import dashboard_layout
+from .tabs.analytics_parent_tab import analytics_parent_layout
 from .tabs.settings_tab import settings_layout
 from .tabs.intel_tab import create_intel_layout
 
+# --- Sub-Tabs Imports (for shared callback mapping if needed, though parent handles it) ---
+from .tabs.performance_tab import performance_layout
+from .tabs.governor_tab import governor_layout
+from .tabs.evolution_tab import evolution_layout
+
 # --- Callbacks ---
 from .callbacks.shared_callbacks import register_shared_callbacks
+from .callbacks.analytics_navigation_callbacks import register_analytics_navigation_callbacks
 from .callbacks.dashboard_callbacks import register_dashboard_callbacks
-from .callbacks.analytics_callbacks import register_analytics_callbacks
 from .callbacks.performance_callbacks import register_performance_callbacks
 from .callbacks.governor_callbacks import register_governor_callbacks
 from .callbacks.mode_callbacks import register_mode_callbacks
 from .callbacks.intel_callbacks import register_intel_callbacks
+from .callbacks.evolution_callbacks import register_evolution_callbacks
 
 
 def create_dash_app(live: bool = False) -> dash.Dash:
@@ -41,26 +47,96 @@ def create_dash_app(live: bool = False) -> dash.Dash:
     app.config.suppress_callback_exceptions = True
 
     # ---------- Global Layout ----------
+    # Professional tab styling
+    tab_style = {
+        "padding": "12px 24px",
+        "backgroundColor": "rgba(15, 20, 26, 0.85)",
+        "border": "1px solid rgba(56, 68, 77, 0.4)",
+        "borderRadius": "10px",
+        "color": "#8b949e",
+        "fontWeight": "500",
+        "fontSize": "13px",
+        "marginRight": "8px",
+        "transition": "all 0.25s ease",
+    }
+    
+    selected_tab_style = {
+        **tab_style,
+        "background": "linear-gradient(135deg, rgba(88, 166, 255, 0.15), rgba(88, 166, 255, 0.05))",
+        "borderColor": "#58a6ff",
+        "color": "#58a6ff",
+        "boxShadow": "0 0 20px rgba(88, 166, 255, 0.15)",
+    }
+
     app.layout = html.Div(
-        style={"backgroundColor": "#12151b", "color": "#EEE", "padding": "18px"},
+        style={
+            "minHeight": "100vh",
+            "padding": "0",
+        },
         children=[
-            html.H1("Trading Dashboard v2", style={"textAlign": "center"}),
-            dcc.Store(id="mode_state", data="backtest"),
-            dcc.Tabs(
-                id="tabs",
-                value="tab-mode",
-                parent_style={"color": "#000"},
+            # Header Section
+            html.Div(
+                style={
+                    "padding": "24px 32px 16px",
+                    "borderBottom": "1px solid rgba(56, 68, 77, 0.3)",
+                    "marginBottom": "24px",
+                },
                 children=[
-                    dcc.Tab(label="Mode", value="tab-mode", selected_style={"background": "#222"}),
-                    dcc.Tab(label="Dashboard", value="tab-dashboard", selected_style={"background": "#222"}),
-                    dcc.Tab(label="Performance", value="tab-performance", selected_style={"background": "#222"}),
-                    dcc.Tab(label="Analytics", value="tab-analytics", selected_style={"background": "#222"}),
-                    dcc.Tab(label="Governor", value="tab-governor", selected_style={"background": "#222"}),
-                    dcc.Tab(label="Intel", value="tab-intel", selected_style={"background": "#222"}),
-                    dcc.Tab(label="Settings", value="tab-settings", selected_style={"background": "#222"}),
-                ],
+                    html.H1(
+                        "Trading Cockpit",
+                        style={
+                            "textAlign": "center",
+                            "margin": "0 0 8px 0",
+                            "fontSize": "1.75rem",
+                            "fontWeight": "700",
+                            "letterSpacing": "-0.03em",
+                            "background": "linear-gradient(90deg, #58a6ff, #a371f7)",
+                            "WebkitBackgroundClip": "text",
+                            "WebkitTextFillColor": "transparent",
+                            "backgroundClip": "text",
+                        }
+                    ),
+                    html.P(
+                        "Autonomous Research & Trading Laboratory",
+                        style={
+                            "textAlign": "center",
+                            "margin": "0",
+                            "color": "#6e7681",
+                            "fontSize": "13px",
+                            "fontWeight": "400",
+                        }
+                    ),
+                ]
             ),
-            html.Div(id="tab-content"),
+            
+            # Mode State Store
+            dcc.Store(id="mode_state", data="backtest"),
+            
+            # Navigation Tabs (condensed)
+            html.Div(
+                style={"padding": "0 32px", "marginBottom": "24px"},
+                children=[
+                    dcc.Tabs(
+                        id="tabs",
+                        value="tab-dashboard",
+                        className="custom-tabs",
+                        children=[
+                            dcc.Tab(label="Dashboard", value="tab-dashboard", style=tab_style, selected_style=selected_tab_style),
+                            dcc.Tab(label="Analytics", value="tab-analytics-parent", style=tab_style, selected_style=selected_tab_style),
+                            dcc.Tab(label="Intel", value="tab-intel", style=tab_style, selected_style=selected_tab_style),
+                            dcc.Tab(label="Settings", value="tab-settings", style=tab_style, selected_style=selected_tab_style),
+                        ],
+                    ),
+                ]
+            ),
+            
+            # Tab Content Area
+            html.Div(
+                id="tab-content",
+                style={"padding": "0 32px 32px"},
+            ),
+            
+            # Interval for live updates
             dcc.Interval(id="pulse", interval=2000, n_intervals=0, disabled=not live),
         ],
     )
@@ -70,22 +146,23 @@ def create_dash_app(live: bool = False) -> dash.Dash:
         app,
         live=live,
         layouts={
-            "tab-mode": mode_layout,
             "tab-dashboard": dashboard_layout,
-            "tab-performance": performance_layout,
-            "tab-analytics": analytics_layout,
-            "tab-governor": governor_layout,
+            "tab-analytics-parent": analytics_parent_layout,
             "tab-intel": create_intel_layout,
             "tab-settings": settings_layout,
         },
     )
 
+    # Register sub-nav handler
+    register_analytics_navigation_callbacks(app)
+
+    # Register functional callbacks (they work when their components appear in DOM)
     register_dashboard_callbacks(app)
     register_performance_callbacks(app)
-    register_analytics_callbacks(app, live=live)
     register_governor_callbacks(app)
     register_mode_callbacks(app)
     register_intel_callbacks(app)
+    register_evolution_callbacks(app)
 
     return app
 
@@ -93,7 +170,8 @@ def create_dash_app(live: bool = False) -> dash.Dash:
 def run_dashboard(live: bool = False, port: int = 8050):
     """Launch the v2 dashboard."""
     app = create_dash_app(live=live)
-    app.run(debug=True, host="0.0.0.0", port=port, use_reloader=False)
+    # Default to localhost for security (prevents LAN access)
+    app.run(debug=True, host="127.0.0.1", port=port, use_reloader=False)
 
 
 if __name__ == "__main__":

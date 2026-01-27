@@ -69,7 +69,19 @@ try:
 except Exception:
     SentimentIntensityAnalyzer = None  # type: ignore
 
+# Alpaca Imports
+try:
+    from alpaca.data.historical.news import NewsClient
+    from alpaca.data.requests import NewsRequest
+    from alpaca.common.enums import Sort
+except ImportError:
+    NewsClient = None
+
 from dateutil import parser as dateparser
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
 
 
 # --------------------------- Data Models --------------------------- #
@@ -283,16 +295,88 @@ class NewsCollector:
         except Exception:
             return []
 
-    def fetch_all(self) -> List[NewsItem]:
-        rows: List[NewsItem] = []
-        for i, spec in enumerate(s for s in self.sources if s.enabled):
-            _log(f"Fetching [{i+1}/{len(self.sources)}]: {spec.name} ({spec.type})")
-            if spec.type.lower() == "rss":
-                rows.extend(self._fetch_rss(spec))
-            else:
-                rows.extend(self._fetch_html(spec))
-            time.sleep(self.backoff_seconds)  # be polite
-        return rows
+    def fetch_history_alpaca(self, tickers: List[str], start_date: datetime, end_date: datetime) -> List[NewsItem]:
+        """
+        Fetch historical news for specific tickers using Alpaca API.
+        """
+        if NewsClient is None:
+            _log("ERROR: alpaca-py not installed. Cannot fetch history.")
+            return []
+        
+        api_key = os.getenv("ALPACA_API_KEY")
+        secret_key = os.getenv("ALPACA_SECRET_KEY")
+        if not api_key:
+            _log("ERROR: ALPACA_API_KEY not found.")
+            return []
+
+        client = NewsClient(api_key=api_key, secret_key=secret_key)
+        all_items = []
+
+        # Iterate tickers to manage limits (Alpaca allows 50 items/request typically)
+        # We'll do it in chunks or per ticker
+        for ticker in tickers:
+            _log(f"Fetching history for {ticker} ({start_date.date()} to {end_date.date()})...")
+            try:
+                req = NewsRequest(
+                    symbols=ticker,
+                    start=start_date,
+                    end=end_date,
+                    limit=50, # Page size
+                    sort=Sort.ASC
+                )
+                
+                # Handling pagination loop if needed, for MVP just getting first page or iterating
+                # For robust backfill we might need a loop, but let's grab a chunk first
+                page_token = None
+                while True:
+                    req.page_token = page_token
+                    resp = client.get_news(req)
+                    
+                    # Handle raw object vs dict
+                    data_items = []
+                    if hasattr(resp, 'news'):
+                        data_items = resp.news
+                    elif hasattr(resp, 'data'): # Raw response wrapper
+                         d = resp.data
+                         data_items = d.get('news', []) if isinstance(d, dict) else d
+
+                    if not data_items:
+                        break
+                        
+                    for it in data_items:
+                        # Extract fields
+                        headline = getattr(it, 'headline', "")
+                        summary = getattr(it, 'summary', "")
+                        created_at = getattr(it, 'created_at', None)
+                        source = getattr(it, 'source', "alpaca")
+                        url = getattr(it, 'url', "")
+                        
+                        # Convert to pandas timestamp
+                        ts = pd.to_datetime(created_at) if created_at else None
+
+                        all_items.append(NewsItem(
+                            source=f"alpaca_{source}",
+                            title=headline,
+                            summary=summary,
+                            link=url,
+                            published=ts,
+                            sentiment=None, # Will be computed later
+                            relevance=1.0,  # Explicitly asked for this ticker
+                            domain="alpaca.markets"
+                        ))
+                    
+                    _log(f"  Got {len(data_items)} items. Total: {len(all_items)}")
+                    
+                    page_token = getattr(resp, 'next_page_token', None)
+                    if not page_token:
+                        break
+                    
+                    time.sleep(0.5) # Rate limit default
+                    
+            except Exception as e:
+                _log(f"ERROR fetching {ticker}: {e}")
+        
+        return all_items
 
     # --------------------- Post-processing ------------------------- #
 
@@ -420,6 +504,8 @@ def _parse_cli(argv: Optional[List[str]] = None) -> argparse.Namespace:
     p.add_argument("--date", default="", help="Force output date (YYYY-MM-DD); default today.")
     p.add_argument("--timeout", type=float, default=8.0, help="HTTP timeout per request (seconds).")
     p.add_argument("--backoff", type=float, default=1.5, help="Polite delay between source fetches (seconds).")
+    p.add_argument("--history-start", default="", help="Fetch history start date (YYYY-MM-DD).")
+    p.add_argument("--history-end", default="", help="Fetch history end date (YYYY-MM-DD).")
     return p.parse_args(argv)
 
 
@@ -435,7 +521,48 @@ def main(argv: Optional[List[str]] = None) -> int:
         request_timeout=args.timeout,
         backoff_seconds=args.backoff,
     )
-    collector.run(out_date=(args.date or None))
+
+    if args.history_start:
+        # History Mode
+        try:
+            start = datetime.strptime(args.history_start, "%Y-%m-%d")
+            end = datetime.strptime(args.history_end, "%Y-%m-%d") if args.history_end else datetime.now()
+            
+            if not tickers:
+                print("ERROR: --tickers required for history fetch mode.")
+                return 1
+                
+            items = collector.fetch_history_alpaca(tickers, start, end)
+            if items:
+                collector._apply_sentiment(items)
+                items = collector._dedup(items)
+                
+                # Flatten and Save per ticker or aggregate
+                df = pd.DataFrame([{
+                    "published": (it.published.isoformat() if it.published else None),
+                    "source": it.source,
+                    "title": it.title,
+                    "summary": it.summary,
+                    "sentiment": it.sentiment,
+                    "relevance": it.relevance,
+                    "tickers": args.tickers
+                } for it in items])
+                
+                fn = f"news_history_{args.tickers}_{start.strftime('%Y%m')}.csv"
+                out_path = Path(args.out_dir) / "history" / fn
+                out_path.parent.mkdir(parents=True, exist_ok=True)
+                df.to_csv(out_path, index=False)
+                print(f"Saved {len(df)} historical items to {out_path}")
+            else:
+                print("No historical items found.")
+                
+        except ValueError as e:
+            print(f"Date format error: {e}")
+            return 1
+    else:
+        # Live Snapshot Mode
+        collector.run(out_date=(args.date or None))
+        
     return 0
 
 

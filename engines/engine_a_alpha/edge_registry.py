@@ -88,12 +88,18 @@ class EdgeRegistry:
             return [s for s in vals if s.status == status]
         return vals
 
+    def list_modules(self, status: str = "active") -> List[str]:
+        """
+        Returns module names for edges with the specified status.
+        """
+        return [s.module for s in self._specs.values() if s.status == status]
+
     def list_active_modules(self) -> List[str]:
         """
         Returns module names for edges whose status == 'active'.
         Example output: ["rsi_mean_reversion", "bb_breakout"]
         """
-        return [s.module for s in self._specs.values() if s.status == "active"]
+        return self.list_modules(status="active")
 
     def get(self, edge_id: str) -> Optional[EdgeSpec]:
         return self._specs.get(edge_id)

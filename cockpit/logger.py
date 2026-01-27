@@ -302,7 +302,12 @@ class CockpitLogger:
         snap = dict(snap)
         snap["timestamp"] = pd.to_datetime(snap.get("timestamp", datetime.utcnow()))
         # --- NEW: Recompute snapshot fields directly from live portfolio if available ---
-        if self.portfolio:
+        # FIX: "Vanity Metrics Bug" - Only use live portfolio fallback if snapshot is empty/missing data.
+        # BacktestController sends authoritative snapshot with correct MTM prices. 
+        # Portfolio object usually has stale prices (last fill or tick), causing false PnL.
+        has_data = (snap.get("market_value", 0.0) != 0.0 or snap.get("equity", 0.0) != 0.0)
+        
+        if self.portfolio and not has_data:
             try:
                 live_cash = float(getattr(self.portfolio, "cash", snap.get("cash", 0.0)))
                 realized = float(getattr(self.portfolio, "realized_pnl", snap.get("realized_pnl", 0.0)))

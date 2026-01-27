@@ -1,6 +1,7 @@
 {
   "active_edges": [
-    "xsec_momentum"
+    "momentum_edge",
+    "atr_breakout_v1"
   ],
   "edge_params": {
     "xsec_momentum": {
@@ -17,6 +18,244 @@
       "Volatility (%)": 11.58,
       "Win Rate (%)": 42.55,
       "Trades": 96.0,
+      "top_n": 1.0,
+      "bottom_n": 1.0,
+      "vol_window": 15.0,
+      "vol_target": 0.08,
+      "neutralize": "dollar"
+    },
+    "atr_breakout_v1": {
+      "lookback": 14,
+      "vol_pct": 0.0,
+      "source_run": "results",
+      "threshold": 1.0,
+      "regime_filter": true
+    },
+    "rsi_bounce_v1": {
+      "window": 7,
+      "buy_threshold": 30,
+      "sell_threshold": 70
+    },
+    "rsi_bounce_v1_mut_6f50": {
+      "window": 5,
+      "buy_threshold": 27.58,
+      "sell_threshold": 70.36,
+      "trend_window": 120
+    },
+    "rsi_bounce_v1_mut_5e72": {
+      "window": 20,
+      "buy_threshold": 49.04,
+      "sell_threshold": 69.99,
+      "trend_window": 244
+    },
+    "rsi_bounce_v1_mut_2ff4": {
+      "window": 20,
+      "buy_threshold": 47.92,
+      "sell_threshold": 72.57,
+      "trend_window": 195
+    },
+    "value_trap_v1_mut_e210": {
+      "max_pe": 15.63,
+      "min_market_cap_B": 126.15
+    },
+    "value_trap_v1_mut_3177": {
+      "max_pe": 17.25,
+      "min_market_cap_B": 88.58
+    },
+    "value_trap_v1_mut_2d2b": {
+      "max_pe": 19.72,
+      "min_market_cap_B": 158.18
+    },
+    "fundamental_ratio_v1_mut_e9f4": {
+      "metric": "Debt_to_Equity",
+      "operator": "less",
+      "threshold": 40.43,
+      "max_rsi": 69.99,
+      "enable_rsi": true
+    },
+    "fundamental_ratio_v1_mut_4027": {
+      "metric": "PFCF_Ratio",
+      "operator": "greater",
+      "threshold": 10.05,
+      "max_rsi": 66.13,
+      "enable_rsi": true
+    },
+    "fundamental_ratio_v1_mut_0f6f": {
+      "metric": "Debt_to_Equity",
+      "operator": "greater",
+      "threshold": 47.35,
+      "max_rsi": 62.26,
+      "enable_rsi": false
+    },
+    "composite_gen1_ca42": {
+      "genes": {
+        "type": "technical",
+        "operator": "less",
+        "indicator": "sma_dist_pct",
+        "window": 50,
+        "threshold": 0.0
+      },
+      "direction": "long"
+    },
+    "composite_gen1_53f0_short": {
+      "genes": {
+        "type": "fundamental",
+        "operator": "greater",
+        "metric": "Debt_to_Equity",
+        "threshold": 1.0
+      },
+      "direction": "short"
+    },
+    "composite_gen1_f6eb": {
+      "genes": {
+        "type": "fundamental",
+        "operator": "bottom_percentile",
+        "metric": "PFCF_Ratio",
+        "threshold": 20
+      },
+      "direction": "long"
+    },
+    "rsi_bounce_v1_mut_eb68": {
+      "window": 8,
+      "buy_threshold": 29.07,
+      "sell_threshold": 79.62,
+      "trend_window": 159
+    },
+    "rsi_bounce_v1_mut_458d": {
+      "window": 19,
+      "buy_threshold": 49.9,
+      "sell_threshold": 63.26,
+      "trend_window": 188
+    },
+    "rsi_bounce_v1_mut_e1ef": {
+      "window": 10,
+      "buy_threshold": 26.61,
+      "sell_threshold": 62.35,
+      "trend_window": 116
+    },
+    "value_trap_v1_mut_187b": {
+      "max_pe": 12.55,
+      "min_market_cap_B": 163.15
+    },
+    "value_trap_v1_mut_6a03": {
+      "max_pe": 10.36,
+      "min_market_cap_B": 152.54
+    },
+    "value_trap_v1_mut_dd2d": {
+      "max_pe": 13.09,
+      "min_market_cap_B": 55.56
+    },
+    "fundamental_ratio_v1_mut_149c": {
+      "metric": "PS_Ratio",
+      "operator": "greater",
+      "threshold": 43.96,
+      "max_rsi": 60.98,
+      "enable_rsi": true
+    },
+    "fundamental_ratio_v1_mut_b832": {
+      "metric": "PE_Ratio",
+      "operator": "greater",
+      "threshold": 29.73,
+      "max_rsi": 50.18,
+      "enable_rsi": true
+    },
+    "fundamental_ratio_v1_mut_9243": {
+      "metric": "Debt_to_Equity",
+      "operator": "greater",
+      "threshold": 2.98,
+      "max_rsi": 37.26,
+      "enable_rsi": false
+    },
+    "composite_gen1_b59b": {
+      "genes": {
+        "type": "technical",
+        "operator": "greater",
+        "indicator": "residual_momentum",
+        "window": 60,
+        "threshold": 0.0
+      },
+      "direction": "long"
+    },
+    "composite_gen1_8df1_short": {
+      "genes": {
+        "type": "technical",
+        "operator": "greater",
+        "indicator": "momentum_roc",
+        "window": 120,
+        "threshold": 0.0
+      },
+      "direction": "short"
+    },
+    "composite_gen1_625f": {
+      "genes": {
+        "type": "technical",
+        "operator": "top_percentile",
+        "indicator": "residual_momentum",
+        "window": 60,
+        "threshold": 95
+      },
+      "direction": "long"
+    },
+    "rsi_bounce_v1_mut_fa30": {
+      "window": 12,
+      "buy_threshold": 47.08,
+      "sell_threshold": 69.49,
+      "trend_window": 189
+    },
+    "rsi_bounce_v1_mut_ea85": {
+      "window": 16,
+      "buy_threshold": 41.33,
+      "sell_threshold": 74.18,
+      "trend_window": 79
+    },
+    "rsi_bounce_v1_mut_5f3d": {
+      "window": 8,
+      "buy_threshold": 34.83,
+      "sell_threshold": 70.18,
+      "trend_window": 202
+    },
+    "value_trap_v1_mut_8d5a": {
+      "max_pe": 9.58,
+      "min_market_cap_B": 78.48
+    },
+    "value_trap_v1_mut_e5f8": {
+      "max_pe": 9.27,
+      "min_market_cap_B": 94.95
+    },
+    "value_trap_v1_mut_bce6": {
+      "max_pe": 15.29,
+      "min_market_cap_B": 167.53
+    },
+    "fundamental_ratio_v1_mut_e29d": {
+      "metric": "PE_Ratio",
+      "operator": "less",
+      "threshold": 8.24,
+      "max_rsi": 67.12,
+      "enable_rsi": true
+    },
+    "fundamental_ratio_v1_mut_6fbd": {
+      "metric": "PS_Ratio",
+      "operator": "greater",
+      "threshold": 49.32,
+      "max_rsi": 63.8,
+      "enable_rsi": true
+    },
+    "rsi_bounce": {},
+    "atr_breakout": {},
+    "fundamental_value": {
+      "max_pe": 20.0,
+      "min_market_cap_B": 10.0
+    },
+    "fundamental_ratio": {
+      "metric": "PS_Ratio",
+      "operator": "less",
+      "threshold": 2.0,
+      "enable_rsi": false
+    },
+    "bollinger_reversion": {},
+    "momentum_edge": {
+      "lookback": 10,
+      "vol_pct": 2.85,
       "top_n": 1.0,
       "bottom_n": 1.0,
       "vol_window": 15.0,

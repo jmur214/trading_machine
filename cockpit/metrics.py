@@ -196,7 +196,7 @@ class PerformanceMetrics:
             return np.nan
         excess_daily = self.returns - (self.risk_free_rate / 252.0)
         std = excess_daily.std()
-        return (excess_daily.mean() / std) * sqrt(252) if std > 0 else np.nan
+        return (excess_daily.mean() / std) * sqrt(252) if std > 1e-9 else 0.0
 
     def max_drawdown(self):
         if self.equity.empty:

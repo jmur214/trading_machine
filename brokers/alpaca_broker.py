@@ -2,9 +2,10 @@
 from __future__ import annotations
 import os
 from pathlib import Path
-import alpaca_trade_api as tradeapi
 from dotenv import load_dotenv
-
+from alpaca.trading.client import TradingClient
+from alpaca.trading.requests import MarketOrderRequest, LimitOrderRequest, GetOrdersRequest
+from alpaca.trading.enums import OrderSide, TimeInForce, OrderClass, QueryOrderStatus
 
 class AlpacaBroker:
     """
@@ -28,20 +29,21 @@ class AlpacaBroker:
 
         key = os.getenv("ALPACA_API_KEY")
         secret = os.getenv("ALPACA_API_SECRET")
-        base_url = os.getenv("ALPACA_BASE_URL", "https://paper-api.alpaca.markets")
-
+        # alpaca-py uses 'paper' boolean in TradingClient, not base_url
+        # But we can still respect the intent if user set a custom URL (though less common now)
+        
         if not key or not secret:
             raise ValueError(
                 "❌ Missing Alpaca API credentials. "
                 "Please set ALPACA_API_KEY and ALPACA_API_SECRET in your .env file."
             )
 
-        # Connect to Alpaca API
-        self.api = tradeapi.REST(key, secret, base_url, api_version="v2")
+        # Connect to Alpaca API using new SDK
+        self.client = TradingClient(api_key=key, secret_key=secret, paper=paper)
 
         # Verify connection
         try:
-            acct = self.api.get_account()
+            acct = self.client.get_account()
             print(f"[ALPACA][INFO] Connected successfully — Equity=${acct.equity}, Cash=${acct.cash}")
         except Exception as e:
             print(f"[ALPACA][ERROR] Could not verify account: {e}")
@@ -49,7 +51,7 @@ class AlpacaBroker:
     # ------------------------------------------------------------------ #
     # Core Broker Methods
 
-    def place_order(self, ticker: str, side: str, qty: float, order_type: str = "market"):
+    def place_order(self, ticker: str, side: str, qty: float, order_type: str = "market", limit_price: float = None):
         """
         Submit an order to Alpaca.
 
@@ -58,6 +60,7 @@ class AlpacaBroker:
             side (str): "buy", "sell", "short", or "cover"
             qty (float): quantity to trade
             order_type (str): "market" or "limit" (default: market)
+            limit_price (float): required if order_type is "limit"
         """
         side = side.lower().strip()
         if side not in ("buy", "sell", "short", "cover"):
@@ -65,22 +68,38 @@ class AlpacaBroker:
             return None
 
         # Map internal sides to Alpaca sides
-        if side == "short":
-            alpaca_side = "sell"
-        elif side == "cover":
-            alpaca_side = "buy"
+        # alpaca-py uses OrderSide enum
+        if side in ("short", "sell"):
+            alpaca_side = OrderSide.SELL
         else:
-            alpaca_side = side
+            alpaca_side = OrderSide.BUY
 
         try:
-            order = self.api.submit_order(
-                symbol=ticker,
-                qty=abs(qty),
-                side=alpaca_side,
-                type=order_type,
-                time_in_force="gtc",  # good-till-cancelled
-            )
-            print(f"[ALPACA][INFO] Submitted {alpaca_side.upper()} {qty} {ticker} (order_id={order.id})")
+            req = None
+            if order_type == "market":
+                req = MarketOrderRequest(
+                    symbol=ticker,
+                    qty=abs(qty),
+                    side=alpaca_side,
+                    time_in_force=TimeInForce.GTC
+                )
+            elif order_type == "limit":
+                if limit_price is None:
+                    print(f"[ALPACA][ERROR] Limit order for {ticker} requires limit_price.")
+                    return None
+                req = LimitOrderRequest(
+                    symbol=ticker,
+                    qty=abs(qty),
+                    side=alpaca_side,
+                    time_in_force=TimeInForce.GTC,
+                    limit_price=limit_price
+                )
+            else:
+                print(f"[ALPACA][WARN] Unsupported order type: {order_type}")
+                return None
+
+            order = self.client.submit_order(order_data=req)
+            print(f"[ALPACA][INFO] Submitted {side.upper()} {qty} {ticker} (order_id={order.id})")
             return order
         except Exception as e:
             print(f"[ALPACA][ERROR] Failed to submit order for {ticker}: {e}")
@@ -91,7 +110,7 @@ class AlpacaBroker:
         Return all open positions as {symbol: quantity}.
         """
         try:
-            positions = self.api.list_positions()
+            positions = self.client.get_all_positions()
             pos_dict = {p.symbol: float(p.qty) for p in positions}
             print(f"[ALPACA][INFO] Current positions: {pos_dict}")
             return pos_dict
@@ -104,7 +123,7 @@ class AlpacaBroker:
         Return current account equity.
         """
         try:
-            acct = self.api.get_account()
+            acct = self.client.get_account()
             print(f"[ALPACA][INFO] Equity=${acct.equity}, Cash=${acct.cash}")
             return float(acct.equity)
         except Exception as e:
@@ -116,7 +135,7 @@ class AlpacaBroker:
         Cancel all open orders.
         """
         try:
-            self.api.cancel_all_orders()
+            self.client.cancel_orders()
             print("[ALPACA][INFO] All open orders cancelled.")
         except Exception as e:
             print(f"[ALPACA][ERROR] Failed to cancel orders: {e}")
@@ -126,7 +145,8 @@ class AlpacaBroker:
         List all open (pending) orders.
         """
         try:
-            orders = self.api.list_orders(status="open")
+            req = GetOrdersRequest(status=QueryOrderStatus.OPEN)
+            orders = self.client.get_orders(filter=req)
             print(f"[ALPACA][INFO] Open orders: {[o.symbol for o in orders]}")
             return orders
         except Exception as e:
@@ -136,6 +156,10 @@ class AlpacaBroker:
 # ------------------------------------------------------------------ #
 # Self-test (only runs when called directly)
 if __name__ == "__main__":
-    broker = AlpacaBroker(paper=True)
-    broker.get_equity()
-    broker.get_positions()
+    # Note: Requires .env with valid keys
+    try:
+        broker = AlpacaBroker(paper=True)
+        broker.get_equity()
+        broker.get_positions()
+    except Exception as e:
+        print(f"Self-test failed: {e}")

@@ -10,6 +10,13 @@ import time
 from backtester.execution_simulator import ExecutionSimulator, ExecParams
 import math
 from engines.engine_c_portfolio.portfolio_engine import PortfolioEngine
+from debug_config import is_debug_enabled, is_info_enabled
+
+def is_controller_debug():
+    return is_debug_enabled("BACKTEST_CONTROLLER")
+
+def is_controller_info():
+    return is_info_enabled("BACKTEST_CONTROLLER")
 
 
 # ------------------------------ helpers ------------------------------ #
@@ -93,6 +100,7 @@ class BacktestController:
         initial_capital: float,
         bt_params: Optional[BacktestParams] = None,
         batch_flush_interval: int = 500,
+        portfolio_cfg: Optional[Any] = None,
     ):
         # Normalize data
         self.data_map: Dict[str, pd.DataFrame] = {}
@@ -112,7 +120,7 @@ class BacktestController:
         self.risk = risk_engine
         self.logger = cockpit_logger
         self.run_id = getattr(self.logger, "run_id", None)
-        self.portfolio = PortfolioEngine(initial_capital)
+        self.portfolio = PortfolioEngine(initial_capital, policy_cfg=portfolio_cfg)
         # Store initial capital for later use
         self.initial_capital = float(initial_capital)
         # Ensure portfolio capital and cash are set to initial_capital if <= 0
@@ -257,7 +265,6 @@ class BacktestController:
     # ------------------------------- run ------------------------------- #
 
     def run(self, start: str, end: str):
-        from debug_config import is_debug_enabled, is_info_enabled
         import gc
         import threading
         import sys
@@ -372,11 +379,47 @@ class BacktestController:
                             # fallback safe get
                             slice_map[t] = df.loc[:ts]
 
+                # [BAGHOLDER PROBE] Check for held tickers that are missing from today's data slice
+                # This explicitly visualizes the bug where we lose control of a position.
+                current_holdings = list(self.portfolio.positions.keys())
+                for held_ticker in current_holdings:
+                    if held_ticker not in self.data_map: # Use self.data_map for full data, not slice_map
+                        if is_controller_debug():
+                            print(f"[CONTROLLER][PROBE] 🚨 DATA GAP for {held_ticker} at {ts}. "
+                                  f"Position held but no price data! Logic will skip this ticker.")
+                
+                # Note: AlphaEngine only receives 'data_map' (the slice). It doesn't see tickers not in the slice.
                 if not slice_map:
                     # Memory cleanup for unused slices
                     if i % self.batch_flush_interval == 0:
                         gc.collect()
                     continue
+                    
+                # [SMART SHIELD] 1. Manage existing positions (Trailing Stops)
+                # Before generating new signals, update stops on existing positions
+                if hasattr(self.risk, "manage_positions"):
+                    try:
+                        # Construct current price map for risk manager
+                        # We use 'ts' (current bar close) as the reference price
+                        current_prices = {}
+                        for t, df_slice in slice_map.items():
+                            if not df_slice.empty:
+                                current_prices[t] = float(df_slice.iloc[-1]["Close"])
+                                
+                        updates = self.risk.manage_positions(current_prices)
+                        for upd in updates:
+                            tkr = upd.get("ticker")
+                            new_stop = upd.get("new_stop")
+                            if tkr and new_stop is not None:
+                                pos = self.portfolio.positions.get(tkr)
+                                if pos:
+                                    old_stop = pos.stop
+                                    pos.stop = new_stop
+                                    if is_debug_enabled("BACKTEST_CONTROLLER"):
+                                        print(f"[SMART_SHIELD] Trailing Stop Update for {tkr}: {old_stop} -> {new_stop}")
+                    except Exception as e:
+                        if is_debug_enabled("BACKTEST_CONTROLLER"):
+                            print(f"[BACKTEST][WARN] Trailing stop update failed: {e}")
 
                 # ------------- Engine A: signals at time ts -------------
                 signals = []
@@ -401,6 +444,37 @@ class BacktestController:
                 if self.cfg.verbose and is_debug_enabled("BACKTEST_CONTROLLER"):
                     print(f"[DEBUG][{ts}] Generated signals: {signals}")
 
+                # [BAGHOLDER FIX] Data Gap Protection
+                # If we hold a position but data is missing today, AlphaEngine didn't see it (likely).
+                # We must injected a "Neutral/Exit" signal to allow RiskEngine to manage the exit (if possible).
+                # And we must provide 'stale' history so RiskEngine doesn't crash.
+                held_tickers = []
+                if hasattr(self.portfolio, "positions"):
+                    held_tickers = [t for t, p in self.portfolio.positions.items() if p.qty != 0]
+
+                for t in held_tickers:
+                    if t not in slice_map:
+                        # 1. Fetch stale history (up to ts)
+                        if t in self.data_map:
+                            try:
+                                # Safe get up to ts
+                                stale_hist = self.data_map[t].loc[:ts]
+                                if not stale_hist.empty:
+                                    slice_map[t] = stale_hist
+                                    # 2. Inject Panic/Zero Signal
+                                    # Signal 0.0 usually implies "Exit" or "No Edge" depending on Alpha/Risk logic.
+                                    # We rely on RiskEngine to treat 0.0 as "Close Long/Cover Short" if position exists.
+                                    signals.append({
+                                        "ticker": t,
+                                        "signal": 0.0,
+                                        "weight": 0.0, 
+                                        "meta": {"note": "DATA_GAP_PROTECTION_EXIT", "edges_triggered": []}
+                                    })
+                                    if is_debug_enabled("BACKTEST_CONTROLLER"):
+                                        print(f"[CONTROLLER][PROBE] 🛡️ Injecting GAP EXIT signal for {t} (stale data).")
+                            except Exception:
+                                pass
+
                 # Top edge attribution per ticker (if provided via meta.edges_triggered)
                 top_edge_by_ticker: Dict[str, str] = {}
                 for s in signals:
@@ -420,9 +494,51 @@ class BacktestController:
                     except Exception:
                         continue
 
+                # ---- Engine C: Portfolio Optimization ---------------------------
+                # Convert signals list to dict {ticker: score} for optimizer
+                signal_map = {}
+                for s in signals:
+                    # Generic signal parsing: look for 'strength', then 'confidence', then 'signal'
+                    # AlphaEngine typically returns 'strength' (0.0 to 1.0) and 'side'
+                    if "ticker" not in s:
+                        continue
+                        
+                    raw_score = s.get("strength", s.get("confidence", s.get("signal", 0.0)))
+                    side = s.get("side", "none").lower()
+                    
+                    if side == "none":
+                        continue
+                        
+                    side_mult = 1.0 if side == "long" else -1.0
+                    if side == "short":
+                        side_mult = -1.0
+                        
+                    score = float(raw_score) * side_mult
+                    signal_map[s["ticker"]] = score
+                
+                # Compute portfolio equity (cached or raw)
+                if ts in equity_cache:
+                    equity = equity_cache[ts]
+                else:
+                    # Quick equity calc
+                    mv = 0.0
+                    for t_pos, p_pos in self.portfolio.positions.items():
+                         if p_pos.qty != 0 and t_pos in close_prices_df.columns:
+                             mv += p_pos.qty * close_prices_df.at[ts, t_pos]
+                    equity = self.get_portfolio_capital() + mv
+                    equity_cache[ts] = equity
+
+                # Call Policy (Engine C)
+                # Note: 'slice_map' contains recent history for Volatility estimation
+                target_weights = self.portfolio.compute_target_allocations(
+                    signals=signal_map,
+                    price_data=slice_map,
+                    equity=equity
+                )
+
                 # ---- Engine B: Risk / Orders ------------------------------------
                 orders: List[dict] = []
-                target_weights = getattr(self, "target_weights", None)  # for future PortfolioPolicy support
+                # target_weights is now populated
 
                 # Vectorized equity calculation: use cached if available
                 if ts in equity_cache:
@@ -485,7 +601,9 @@ class BacktestController:
                             order["edge_category"] = sig.get("category")
 
                         orders.append(order)
-                    except Exception:
+                    except Exception as e:
+                        if is_debug_enabled("BACKTEST_CONTROLLER"):
+                            print(f"[CONTROLLER][ERROR] Risk processing error for {sig.get('ticker')}: {e}")
                         continue
 
                 if BACKTEST_DEBUG and orders:
@@ -710,7 +828,7 @@ class BacktestController:
                         snap["market_value"] = live_mv
                         snap["equity"] = live_cash + live_mv
                     except Exception as e:
-                        from debug_config import is_debug_enabled
+
                         if is_debug_enabled("BACKTEST_CONTROLLER"):
                             print(f"[BACKTEST_CONTROLLER][DEBUG] Failed to sync live portfolio state for snapshot: {e}")
                     # Tag snapshot with current run_id and persist into portfolio history

@@ -68,6 +68,8 @@ class SignalProcessor:
         self.ensemble = ensemble
         self.edge_weights = dict(edge_weights or {})
         self.debug = bool(debug)
+        if self.debug:
+            print(f"[SIGNAL_PROCESSOR] Init with Regime: {self.regime}")
 
     # ---- helpers ---- #
 
@@ -116,6 +118,7 @@ class SignalProcessor:
         data_map: Dict[str, pd.DataFrame],
         now: pd.Timestamp,
         raw_scores: Dict[str, Dict[str, float]],
+        regime_meta: Dict[str, any] = None,
     ) -> Dict[str, dict]:
         """
         Returns a dict per ticker with normalized & aggregated score and details.
@@ -148,9 +151,31 @@ class SignalProcessor:
 
                 norm = self._normalize_score(raw_f, self.hygiene.clamp)
 
-                # regime shrink if any regime off
+                norm = self._normalize_score(raw_f, self.hygiene.clamp)
+
+                # regime shrink if any regime off (Micro-Regime per ticker)
                 if not (trend_ok and vol_ok):
+                    old_norm = norm
                     norm *= float(self.regime.shrink_off)
+                    if self.debug:
+                        print(f"[REGIME] {ticker} {now} Micro-Regime blocked (Trend={trend_ok} Vol={vol_ok}). Shrinking {old_norm:.3f} -> {norm:.3f}")
+
+                # --- NEW: Macro Regime Override (Global Market State) ---
+                if regime_meta:
+                    market_trend = regime_meta.get("trend", "unknown")
+                    market_vol = regime_meta.get("volatility", "unknown")
+                    
+                    # Bear Market Defense: Cut long signals in half, or stronger
+                    if market_trend == "bear" and norm > 0:
+                        norm *= 0.5
+                        if self.debug:
+                             print(f"[MACRO] {ticker} {now} Global Bear Market. Cutting LONG signal strength by 50%.")
+                    
+                    # High Volatility Defense: Shrink everything to reduce sizing
+                    if market_vol == "high":
+                        norm *= 0.75
+                        if self.debug:
+                             print(f"[MACRO] {ticker} {now} Global High Volatility. Shrinking signal by 25%.")
 
                 w = float(self.edge_weights.get(edge_name, 1.0))
                 details.append({"edge": edge_name, "raw": raw_f, "norm": norm, "weight": w})

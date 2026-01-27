@@ -73,3 +73,29 @@ python
 
 # --- Environment Management ---
 deactivate                      # Exit virtual environment
+
+___
+# Run diagnostics in sandbox mode (isolated governor updates)
+python -m scripts.run_diagnostics --mode sandbox
+
+# Run edge feedback update in sandbox mode (safe learning)
+python -m analytics.edge_feedback --mode sandbox
+
+# Verify recency-decay weighting behavior
+python -m analytics.edge_feedback --mode sandbox --debug
+
+
+# Run continuous validation (periodic system health monitoring)
+python -m scripts.continuous_validation
+
+# Run once and exit
+python -m scripts.continuous_validation --once
+
+# Set custom interval (minutes between runs)
+python -m scripts.continuous_validation --interval 30
+
+# Skip pytest checks for faster runs
+python -m scripts.continuous_validation --no-tests
+
+# Enable verbose debug output
+python -m scripts.continuous_validation --debug

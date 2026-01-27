@@ -1,0 +1,127 @@
+2026-01-23 00:22:22,047 [INFO] EvolutionController: Starting Evolution Cycle...
+2026-01-23 00:22:22,048 [INFO] EvolutionController: Optimizing Edge: atr_breakout_v1
+2026-01-23 00:22:22,048 [INFO] EvolutionController: Executing: /Users/jacksonmurphy/Dev/trading_machine-2/.venv/bin/python /Users/jacksonmurphy/Dev/trading_machine-2/research/edge_harness.py --edge atr_breakout_v1
+2026-01-25 15:47:36,089 [INFO] EvolutionController: Starting Evolution Cycle...
+2026-01-25 15:47:36,135 [INFO] EvolutionController: Found 12 candidates to validate.
+2026-01-25 15:47:36,136 [INFO] EvolutionController: 🧬 Validating Candidate: rsi_bounce_v1_mut_6f50
+2026-01-25 15:50:01,186 [INFO] EvolutionController: 💀 REJECTION: rsi_bounce_v1_mut_6f50 fails with Sharpe 0.00
+2026-01-25 15:50:01,194 [INFO] EvolutionController: 🧬 Validating Candidate: rsi_bounce_v1_mut_5e72
+2026-01-25 15:52:05,006 [INFO] EvolutionController: 💀 REJECTION: rsi_bounce_v1_mut_5e72 fails with Sharpe 0.00
+2026-01-25 15:52:05,007 [INFO] EvolutionController: 🧬 Validating Candidate: rsi_bounce_v1_mut_2ff4
+2026-01-25 15:54:00,269 [INFO] EvolutionController: 💀 REJECTION: rsi_bounce_v1_mut_2ff4 fails with Sharpe 0.00
+2026-01-25 15:54:00,271 [INFO] EvolutionController: 🧬 Validating Candidate: value_trap_v1_mut_e210
+2026-01-25 15:56:01,475 [INFO] EvolutionController: 💀 REJECTION: value_trap_v1_mut_e210 fails with Sharpe 0.00
+2026-01-25 15:56:01,476 [INFO] EvolutionController: 🧬 Validating Candidate: value_trap_v1_mut_3177
+2026-01-25 15:59:49,483 [INFO] EvolutionController: 💀 REJECTION: value_trap_v1_mut_3177 fails with Sharpe 0.00
+2026-01-25 15:59:49,490 [INFO] EvolutionController: 🧬 Validating Candidate: value_trap_v1_mut_2d2b
+2026-01-25 16:03:39,437 [INFO] EvolutionController: 💀 REJECTION: value_trap_v1_mut_2d2b fails with Sharpe 0.00
+2026-01-25 16:03:39,443 [INFO] EvolutionController: 🧬 Validating Candidate: fundamental_ratio_v1_mut_e9f4
+2026-01-25 16:06:41,536 [INFO] EvolutionController: 💀 REJECTION: fundamental_ratio_v1_mut_e9f4 fails with Sharpe 0.00
+2026-01-25 16:06:41,540 [INFO] EvolutionController: 🧬 Validating Candidate: fundamental_ratio_v1_mut_4027
+2026-01-25 16:09:07,111 [INFO] EvolutionController: 💀 REJECTION: fundamental_ratio_v1_mut_4027 fails with Sharpe 0.00
+2026-01-25 16:09:07,112 [INFO] EvolutionController: 🧬 Validating Candidate: fundamental_ratio_v1_mut_0f6f
+2026-01-25 16:11:53,029 [INFO] EvolutionController: 💀 REJECTION: fundamental_ratio_v1_mut_0f6f fails with Sharpe 0.00
+2026-01-25 16:11:53,037 [INFO] EvolutionController: 🧬 Validating Candidate: composite_gen1_ca42
+2026-01-25 16:15:48,861 [INFO] EvolutionController: 💀 REJECTION: composite_gen1_ca42 fails with Sharpe 0.00
+2026-01-25 16:15:48,863 [INFO] EvolutionController: 🧬 Validating Candidate: composite_gen1_53f0_short
+2026-01-25 16:17:17,970 [INFO] EvolutionController: 💀 REJECTION: composite_gen1_53f0_short fails with Sharpe 0.00
+2026-01-25 16:17:17,970 [INFO] EvolutionController: 🧬 Validating Candidate: composite_gen1_f6eb
+2026-01-25 16:18:47,310 [INFO] EvolutionController: 💀 REJECTION: composite_gen1_f6eb fails with Sharpe 0.00
+2026-01-25 16:18:47,350 [INFO] EvolutionController: Evolution Cycle Complete. Processed 12 candidates.
+2026-01-25 16:42:28,486 [INFO] EvolutionController: Starting Evolution Cycle...
+2026-01-25 16:42:28,532 [INFO] EvolutionController: Found 12 candidates to validate.
+2026-01-25 16:42:28,533 [INFO] EvolutionController: 🧬 Validating Candidate: rsi_bounce_v1_mut_eb68
+2026-01-25 16:44:04,691 [INFO] EvolutionController: 💀 REJECTION: rsi_bounce_v1_mut_eb68 fails with Sharpe 0.00
+2026-01-25 16:44:04,693 [INFO] EvolutionController: 🧬 Validating Candidate: rsi_bounce_v1_mut_458d
+2026-01-25 16:45:40,642 [INFO] EvolutionController: 💀 REJECTION: rsi_bounce_v1_mut_458d fails with Sharpe 0.00
+2026-01-25 16:45:40,643 [INFO] EvolutionController: 🧬 Validating Candidate: rsi_bounce_v1_mut_e1ef
+2026-01-25 16:47:13,475 [INFO] EvolutionController: 💀 REJECTION: rsi_bounce_v1_mut_e1ef fails with Sharpe 0.00
+2026-01-25 16:47:13,475 [INFO] EvolutionController: 🧬 Validating Candidate: value_trap_v1_mut_187b
+2026-01-25 16:48:46,415 [INFO] EvolutionController: 💀 REJECTION: value_trap_v1_mut_187b fails with Sharpe 0.00
+2026-01-25 16:48:46,420 [INFO] EvolutionController: 🧬 Validating Candidate: value_trap_v1_mut_6a03
+2026-01-25 16:50:21,655 [INFO] EvolutionController: 💀 REJECTION: value_trap_v1_mut_6a03 fails with Sharpe 0.00
+2026-01-25 16:50:21,656 [INFO] EvolutionController: 🧬 Validating Candidate: value_trap_v1_mut_dd2d
+2026-01-25 16:51:54,945 [INFO] EvolutionController: 💀 REJECTION: value_trap_v1_mut_dd2d fails with Sharpe 0.00
+2026-01-25 16:51:54,946 [INFO] EvolutionController: 🧬 Validating Candidate: fundamental_ratio_v1_mut_149c
+2026-01-25 16:53:33,110 [INFO] EvolutionController: 💀 REJECTION: fundamental_ratio_v1_mut_149c fails with Sharpe 0.00
+2026-01-25 16:53:33,110 [INFO] EvolutionController: 🧬 Validating Candidate: fundamental_ratio_v1_mut_b832
+2026-01-25 16:55:12,536 [INFO] EvolutionController: 💀 REJECTION: fundamental_ratio_v1_mut_b832 fails with Sharpe 0.00
+2026-01-25 16:55:12,537 [INFO] EvolutionController: 🧬 Validating Candidate: fundamental_ratio_v1_mut_9243
+2026-01-25 16:56:48,007 [INFO] EvolutionController: 💀 REJECTION: fundamental_ratio_v1_mut_9243 fails with Sharpe 0.00
+2026-01-25 16:56:48,007 [INFO] EvolutionController: 🧬 Validating Candidate: composite_gen1_b59b
+2026-01-25 16:59:54,354 [INFO] EvolutionController: 💀 REJECTION: composite_gen1_b59b fails with Sharpe 0.00
+2026-01-25 16:59:54,355 [INFO] EvolutionController: 🧬 Validating Candidate: composite_gen1_8df1_short
+2026-01-25 17:03:09,904 [INFO] EvolutionController: 💀 REJECTION: composite_gen1_8df1_short fails with Sharpe 0.00
+2026-01-25 17:03:09,904 [INFO] EvolutionController: 🧬 Validating Candidate: composite_gen1_625f
+2026-01-25 17:08:02,116 [INFO] EvolutionController: 💀 REJECTION: composite_gen1_625f fails with Sharpe 0.00
+2026-01-25 17:08:02,165 [INFO] EvolutionController: Evolution Cycle Complete. Processed 12 candidates.
+2026-01-25 17:24:47,873 [INFO] EvolutionController: Starting Evolution Cycle...
+2026-01-25 17:24:47,988 [INFO] EvolutionController: Found 12 candidates to validate.
+2026-01-25 17:24:47,988 [INFO] EvolutionController: 🧬 Validating Candidate: rsi_bounce_v1_mut_fa30
+2026-01-25 17:26:34,613 [INFO] EvolutionController: 💀 REJECTION: rsi_bounce_v1_mut_fa30 fails with Sharpe 0.00
+2026-01-25 17:26:34,615 [INFO] EvolutionController: 🧬 Validating Candidate: rsi_bounce_v1_mut_ea85
+2026-01-25 17:28:09,881 [INFO] EvolutionController: 💀 REJECTION: rsi_bounce_v1_mut_ea85 fails with Sharpe 0.00
+2026-01-25 17:28:09,882 [INFO] EvolutionController: 🧬 Validating Candidate: rsi_bounce_v1_mut_5f3d
+2026-01-25 17:29:49,185 [INFO] EvolutionController: 💀 REJECTION: rsi_bounce_v1_mut_5f3d fails with Sharpe 0.00
+2026-01-25 17:29:49,186 [INFO] EvolutionController: 🧬 Validating Candidate: value_trap_v1_mut_8d5a
+2026-01-25 17:31:27,202 [INFO] EvolutionController: 💀 REJECTION: value_trap_v1_mut_8d5a fails with Sharpe 0.00
+2026-01-25 17:31:27,203 [INFO] EvolutionController: 🧬 Validating Candidate: value_trap_v1_mut_e5f8
+2026-01-25 17:33:05,355 [INFO] EvolutionController: 💀 REJECTION: value_trap_v1_mut_e5f8 fails with Sharpe 0.00
+2026-01-25 17:33:05,357 [INFO] EvolutionController: 🧬 Validating Candidate: value_trap_v1_mut_bce6
+2026-01-25 17:34:40,327 [INFO] EvolutionController: 💀 REJECTION: value_trap_v1_mut_bce6 fails with Sharpe 0.00
+2026-01-25 17:34:40,328 [INFO] EvolutionController: 🧬 Validating Candidate: fundamental_ratio_v1_mut_e29d
+2026-01-25 17:36:14,929 [INFO] EvolutionController: 💀 REJECTION: fundamental_ratio_v1_mut_e29d fails with Sharpe 0.00
+2026-01-25 17:36:14,930 [INFO] EvolutionController: 🧬 Validating Candidate: fundamental_ratio_v1_mut_6fbd
+2026-01-25 17:37:54,866 [INFO] EvolutionController: 💀 REJECTION: fundamental_ratio_v1_mut_6fbd fails with Sharpe 0.00
+2026-01-25 17:37:54,867 [INFO] EvolutionController: 🧬 Validating Candidate: fundamental_ratio_v1_mut_4843
+2026-01-25 18:14:39,958 [INFO] EvolutionController: Starting Evolution Cycle...
+2026-01-25 18:14:40,018 [INFO] EvolutionController: Found 24 candidates to validate.
+2026-01-25 18:14:40,018 [INFO] EvolutionController: 🧬 Validating Candidate: rsi_bounce_v1_mut_fa30
+2026-01-25 18:14:51,306 [INFO] EvolutionController: 💀 REJECTION: rsi_bounce_v1_mut_fa30 fails with Sharpe 0.00
+2026-01-25 18:14:51,308 [INFO] EvolutionController: 🧬 Validating Candidate: rsi_bounce_v1_mut_ea85
+2026-01-25 18:15:01,692 [INFO] EvolutionController: 💀 REJECTION: rsi_bounce_v1_mut_ea85 fails with Sharpe 0.00
+2026-01-25 18:15:01,693 [INFO] EvolutionController: 🧬 Validating Candidate: rsi_bounce_v1_mut_5f3d
+2026-01-25 18:15:11,164 [INFO] EvolutionController: 💀 REJECTION: rsi_bounce_v1_mut_5f3d fails with Sharpe 0.00
+2026-01-25 18:15:11,166 [INFO] EvolutionController: 🧬 Validating Candidate: value_trap_v1_mut_8d5a
+2026-01-25 18:15:19,052 [INFO] EvolutionController: 💀 REJECTION: value_trap_v1_mut_8d5a fails with Sharpe 0.00
+2026-01-25 18:15:19,053 [INFO] EvolutionController: 🧬 Validating Candidate: value_trap_v1_mut_e5f8
+2026-01-25 18:15:26,850 [INFO] EvolutionController: 💀 REJECTION: value_trap_v1_mut_e5f8 fails with Sharpe 0.00
+2026-01-25 18:15:26,850 [INFO] EvolutionController: 🧬 Validating Candidate: value_trap_v1_mut_bce6
+2026-01-25 18:15:34,695 [INFO] EvolutionController: 💀 REJECTION: value_trap_v1_mut_bce6 fails with Sharpe 0.00
+2026-01-25 18:15:34,695 [INFO] EvolutionController: 🧬 Validating Candidate: fundamental_ratio_v1_mut_e29d
+2026-01-25 18:15:42,332 [INFO] EvolutionController: 💀 REJECTION: fundamental_ratio_v1_mut_e29d fails with Sharpe 0.00
+2026-01-25 18:15:42,333 [INFO] EvolutionController: 🧬 Validating Candidate: fundamental_ratio_v1_mut_6fbd
+2026-01-25 18:15:50,319 [INFO] EvolutionController: 💀 REJECTION: fundamental_ratio_v1_mut_6fbd fails with Sharpe 0.00
+2026-01-25 18:15:50,319 [INFO] EvolutionController: 🧬 Validating Candidate: fundamental_ratio_v1_mut_4843
+2026-01-25 18:15:58,462 [INFO] EvolutionController: 💀 REJECTION: fundamental_ratio_v1_mut_4843 fails with Sharpe 0.00
+2026-01-25 18:15:58,463 [INFO] EvolutionController: 🧬 Validating Candidate: composite_gen1_4b8c
+2026-01-25 18:16:08,751 [INFO] EvolutionController: 💀 REJECTION: composite_gen1_4b8c fails with Sharpe 0.00
+2026-01-25 18:16:08,752 [INFO] EvolutionController: 🧬 Validating Candidate: composite_gen1_0be9
+2026-01-25 18:16:16,603 [INFO] EvolutionController: 💀 REJECTION: composite_gen1_0be9 fails with Sharpe 0.00
+2026-01-25 18:16:16,605 [INFO] EvolutionController: 🧬 Validating Candidate: composite_gen1_36e1
+2026-01-25 18:16:25,304 [INFO] EvolutionController: 💀 REJECTION: composite_gen1_36e1 fails with Sharpe 0.00
+2026-01-25 18:16:25,306 [INFO] EvolutionController: 🧬 Validating Candidate: rsi_bounce_v1_mut_88db
+2026-01-25 18:16:33,545 [INFO] EvolutionController: 💀 REJECTION: rsi_bounce_v1_mut_88db fails with Sharpe 0.00
+2026-01-25 18:16:33,546 [INFO] EvolutionController: 🧬 Validating Candidate: rsi_bounce_v1_mut_64c2
+2026-01-25 18:16:41,519 [INFO] EvolutionController: 💀 REJECTION: rsi_bounce_v1_mut_64c2 fails with Sharpe 0.00
+2026-01-25 18:16:41,519 [INFO] EvolutionController: 🧬 Validating Candidate: rsi_bounce_v1_mut_da34
+2026-01-25 18:16:49,672 [INFO] EvolutionController: 💀 REJECTION: rsi_bounce_v1_mut_da34 fails with Sharpe 0.00
+2026-01-25 18:16:49,673 [INFO] EvolutionController: 🧬 Validating Candidate: value_trap_v1_mut_c53b
+2026-01-25 18:16:57,738 [INFO] EvolutionController: 💀 REJECTION: value_trap_v1_mut_c53b fails with Sharpe 0.00
+2026-01-25 18:16:57,748 [INFO] EvolutionController: 🧬 Validating Candidate: value_trap_v1_mut_1c34
+2026-01-25 18:17:06,351 [INFO] EvolutionController: 💀 REJECTION: value_trap_v1_mut_1c34 fails with Sharpe 0.00
+2026-01-25 18:17:06,352 [INFO] EvolutionController: 🧬 Validating Candidate: value_trap_v1_mut_4574
+2026-01-25 18:17:14,965 [INFO] EvolutionController: 💀 REJECTION: value_trap_v1_mut_4574 fails with Sharpe 0.00
+2026-01-25 18:17:14,966 [INFO] EvolutionController: 🧬 Validating Candidate: fundamental_ratio_v1_mut_c9b8
+2026-01-25 18:17:22,471 [INFO] EvolutionController: 💀 REJECTION: fundamental_ratio_v1_mut_c9b8 fails with Sharpe 0.00
+2026-01-25 18:17:22,472 [INFO] EvolutionController: 🧬 Validating Candidate: fundamental_ratio_v1_mut_6e65
+2026-01-25 18:17:30,478 [INFO] EvolutionController: 💀 REJECTION: fundamental_ratio_v1_mut_6e65 fails with Sharpe 0.00
+2026-01-25 18:17:30,480 [INFO] EvolutionController: 🧬 Validating Candidate: fundamental_ratio_v1_mut_4931
+2026-01-25 18:17:37,973 [INFO] EvolutionController: 💀 REJECTION: fundamental_ratio_v1_mut_4931 fails with Sharpe 0.00
+2026-01-25 18:17:37,974 [INFO] EvolutionController: 🧬 Validating Candidate: composite_gen1_ae3a_short
+2026-01-25 18:17:46,763 [INFO] EvolutionController: 💀 REJECTION: composite_gen1_ae3a_short fails with Sharpe 0.00
+2026-01-25 18:17:46,763 [INFO] EvolutionController: 🧬 Validating Candidate: composite_gen1_3320
+2026-01-25 18:18:07,900 [INFO] EvolutionController: 💀 REJECTION: composite_gen1_3320 fails with Sharpe 0.00
+2026-01-25 18:18:07,901 [INFO] EvolutionController: 🧬 Validating Candidate: composite_gen1_a084_short
+2026-01-25 18:18:17,813 [INFO] EvolutionController: 💀 REJECTION: composite_gen1_a084_short fails with Sharpe 0.00
+2026-01-25 18:18:17,873 [INFO] EvolutionController: Evolution Cycle Complete. Processed 24 candidates.

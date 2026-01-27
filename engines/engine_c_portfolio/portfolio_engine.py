@@ -7,6 +7,9 @@ import numpy as np
 
 from debug_config import is_debug_enabled, is_info_enabled
 
+def is_portfolio_debug():
+    return is_debug_enabled("PORTFOLIO"), is_info_enabled
+
 from .policy import PortfolioPolicy, PortfolioPolicyConfig
 
 
@@ -20,7 +23,15 @@ class Position:
     edge: Optional[str] = None
     edge_group: Optional[str] = None
     edge_id: Optional[str] = None
+    edge_id: Optional[str] = None
     edge_category: Optional[str] = None
+    # MTM tracking
+    last_price: Optional[float] = None
+    
+    # Trailing Stop State
+    highest_high: float = -1.0  # For Longs: max price since entry
+    lowest_low: float = 1e9     # For Shorts: min price since entry
+    trailing_active: bool = False # Has the trail trigger been hit?
 
 # Helper accessor to present Position as dict for downstream compatibility
 def _as_dict(pos: "Position") -> dict:
@@ -32,7 +43,13 @@ def _as_dict(pos: "Position") -> dict:
         "edge": pos.edge,
         "edge_group": pos.edge_group,
         "edge_id": pos.edge_id,
+        "edge_id": pos.edge_id,
         "edge_category": pos.edge_category,
+        "edge_category": pos.edge_category,
+        "last_price": pos.last_price,
+        "highest_high": pos.highest_high,
+        "lowest_low": pos.lowest_low,
+        "trailing_active": pos.trailing_active,
     }
 
 
@@ -162,6 +179,9 @@ class PortfolioEngine:
                 pos.edge_id = meta_edge_id
             if meta_edge_category is not None and pos.edge_category is None:
                 pos.edge_category = meta_edge_category
+            
+            # Update last known price on any add
+            pos.last_price = float(price)
         else:
             # Opposite-direction order: first close against existing, realize PnL
             closing = min(abs(pos.qty), abs(signed_qty))
@@ -185,7 +205,10 @@ class PortfolioEngine:
                     pos.edge = meta_edge
                     pos.edge_group = meta_edge_group
                     pos.edge_id = meta_edge_id
+                    pos.edge_group = meta_edge_group
+                    pos.edge_id = meta_edge_id
                     pos.edge_category = meta_edge_category
+                    pos.last_price = float(price)
                 else:
                     # exactly flat
                     pos = Position()
@@ -211,7 +234,21 @@ class PortfolioEngine:
             if pos.qty == 0:
                 continue
             open_positions_count += 1
-            px = float(price_map.get(t, pos.avg_price if pos.avg_price else 0.0))
+            if t in price_map:
+                px = float(price_map[t])
+                pos.last_price = px # Update memory
+            else:
+                # [VANITY FIX] Use last_price if available, else 0.0. NEVER avg_price.
+                # If we have no data and no history, the position is effectively worthless until proven otherwise.
+                if pos.last_price is not None:
+                    px = pos.last_price
+                    if is_debug_enabled("PORTFOLIO"):
+                        print(f"[PORTFOLIO][WARN] MTM Gap for {t}: Using last_price {px}")
+                else:
+                    px = 0.0
+                    if is_debug_enabled("PORTFOLIO"):
+                        print(f"[PORTFOLIO][A L E R T] MTM Gap for {t}: No data, no history. Valuing at 0.0.")
+            
             market_value += pos.qty * px
             unrealized += (px - pos.avg_price) * pos.qty
 
@@ -248,7 +285,14 @@ class PortfolioEngine:
         for t, pos in self.positions.items():
             if pos.qty == 0:
                 continue
-            px = float(price_map.get(t, pos.avg_price if pos.avg_price else 0.0))
+            if t in price_map:
+                px = float(price_map[t])
+                # We don't update pos.last_price here generally as total_equity might be called tentatively, 
+                # but for consistency with snapshot we assume price_map is authoritative current state.
+                # However, to simulate 'read-only' equity check, we don't mutate pos.
+            else:
+                px = pos.last_price if pos.last_price is not None else 0.0
+
             mv += pos.qty * px
         return self.cash + mv
     # ------------------------------------------------------------------ #

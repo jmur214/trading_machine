@@ -1,0 +1,92 @@
+{
+    "geopolitics": {
+        "keywords": [
+            "war",
+            "conflict",
+            "sanctions",
+            "military",
+            "attack",
+            "geopolitical",
+            "tensions"
+        ],
+        "impact": {
+            "Energy": 0.8,
+            "Industrials": 0.6,
+            "Consumer Cyclical": -0.6,
+            "Consumer Defensive": -0.2,
+            "Technology": -0.4,
+            "Financials": -0.3
+        }
+    },
+    "monetary": {
+        "keywords": [
+            "rates",
+            "hike",
+            "inflation",
+            "federal reserve",
+            "fed",
+            "powell",
+            "yields",
+            "treasury"
+        ],
+        "impact": {
+            "Financials": 0.5,
+            "Real Estate": -0.7,
+            "Technology": -0.6,
+            "Utilities": -0.5,
+            "Consumer Cyclical": -0.4
+        }
+    },
+    "economy": {
+        "keywords": [
+            "recession",
+            "unemployment",
+            "gdp",
+            "slowdown",
+            "contraction",
+            "jobless"
+        ],
+        "impact": {
+            "Consumer Cyclical": -0.8,
+            "Industrials": -0.7,
+            "Financials": -0.5,
+            "Consumer Defensive": 0.4,
+            "Utilities": 0.3,
+            "Healthcare": 0.2
+        }
+    },
+    "supply_chain": {
+        "keywords": [
+            "shortage",
+            "supply chain",
+            "oil spike",
+            "chip shortage",
+            "logistics",
+            "shipping"
+        ],
+        "impact": {
+            "Technology": 0.5,
+            "Energy": 0.6,
+            "Basic Materials": 0.5,
+            "Consumer Cyclical": -0.5,
+            "Industrials": -0.3
+        }
+    },
+    "regulation": {
+        "keywords": [
+            "antitrust",
+            "doj",
+            "lawsuit",
+            "fine",
+            "investigation",
+            "breakup",
+            "ban"
+        ],
+        "impact": {
+            "Technology": -0.7,
+            "Communication Services": -0.7,
+            "Healthcare": -0.5,
+            "Financials": -0.4
+        }
+    }
+}

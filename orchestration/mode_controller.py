@@ -195,6 +195,7 @@ class PaperTradeController:
         exec_params: dict,
         paper_params: Optional[PaperParams] = None,
         mode_label: str = "paper",
+        portfolio_cfg: Optional[Any] = None,
     ):
         self.data_map: Dict[str, pd.DataFrame] = {}
         for t, df in data_map.items():
@@ -211,7 +212,7 @@ class PaperTradeController:
 
         self.alpha = alpha_engine
         self.risk = risk_engine
-        self.portfolio = PortfolioEngine(initial_capital)
+        self.portfolio = PortfolioEngine(initial_capital, policy_cfg=portfolio_cfg)
         self.exec = ExecutionSimulator(
             slippage_bps=float(exec_params.get("slippage_bps", 10.0)),
             commission=float(exec_params.get("commission", 0.0)),
@@ -371,10 +372,11 @@ class LiveTradeController:
         adapter: Optional[ExecutionAdapter] = None,
         live_params: Optional[LiveParams] = None,
         mode_label: str = "live",
+        portfolio_cfg: Optional[Any] = None,
     ):
         self.alpha = alpha_engine
         self.risk = risk_engine
-        self.portfolio = PortfolioEngine(initial_capital)
+        self.portfolio = PortfolioEngine(initial_capital, policy_cfg=portfolio_cfg)
         self.logger = cockpit_logger
         self.logger.portfolio = self.portfolio
         if hasattr(self.logger, "mode"):
@@ -490,6 +492,7 @@ class ModeController:
         self.cfg_bt = load_json(str(self.root / "config" / "backtest_settings.json"))
         self.cfg_risk = load_json(str(self.root / "config" / "risk_settings.json"))
         self.cfg_edges = load_json(str(self.root / "config" / "edge_config.json"))
+        self.cfg_portfolio = load_json(str(self.root / "config" / "portfolio_settings.json"))
 
         # --- Core run params ---
         self.tickers: List[str] = self.cfg_bt["tickers"]
@@ -514,6 +517,11 @@ class ModeController:
         # --- Engines ---
         self.alpha = AlphaEngine(edges=self.edges, edge_weights=self.edge_weights, debug=True)
         self.risk = RiskEngine(self.cfg_risk)
+        
+        # --- Portfolio Config Object ---
+        from engines.engine_c_portfolio.policy import PortfolioPolicyConfig
+        pp_cfg = PortfolioPolicyConfig(**{k:v for k,v in self.cfg_portfolio.items() if k in PortfolioPolicyConfig.__annotations__})
+        self.portfolio_cfg = pp_cfg
 
         # --- Cockpit ---
         self.cockpit = CockpitLogger(out_dir=str(self.root / "data" / "trade_logs"), flush_each_fill=True)
@@ -557,6 +565,7 @@ class ModeController:
             cockpit_logger=self.cockpit,
             exec_params=self.exec_params,
             initial_capital=self.init_cap,
+            portfolio_cfg=self.portfolio_cfg,
         )
         history = controller.run(self.start, self.end)
         print(f"[BACKTEST] Complete. Snapshots: {len(history)}")
@@ -578,6 +587,7 @@ class ModeController:
             exec_params=self.exec_params,
             paper_params=PaperParams(fill_bar_delay=fill_bar_delay, sleep_seconds=sleep_seconds),
             mode_label="paper",
+            portfolio_cfg=self.portfolio_cfg,
         )
 
         history = paper.run(self.start, self.end)
@@ -614,6 +624,7 @@ class ModeController:
             ),
             live_params=LiveParams(poll_seconds=poll_seconds, dry_run=dry_run),
             mode_label="live" if not dry_run else "live(dry_run)",
+            portfolio_cfg=self.portfolio_cfg,
         )
 
         live.run_loop(feed=feed, max_steps=max_steps)

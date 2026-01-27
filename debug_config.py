@@ -22,6 +22,8 @@ DEBUG_LEVELS = {
     "NEWS_EDGE": False,
     "PROMOTE": False,
     "PROMOTE_INFO": False,
+    "PORTFOLIO": False,
+    "PORTFOLIO_INFO": False,
     "RISK": False,
     "RISK_INFO": False,
     "TEST_EDGE": False,
@@ -31,18 +33,24 @@ DEBUG_LEVELS = {
 # Global toggle to fully enable or disable CockpitLogger
 LOGGER_ENABLED = True  # Set to False to silence all trade/snapshot logging
 
+import os
+
 def is_debug_enabled(section: str) -> bool:
     """
     Check if debugging is enabled for a given section.
-    Example: if is_debug_enabled("ALPHA"): print("debug message")
+    Checks DEBUG_LEVELS dict OR "{SECTION}_DEBUG" env var.
     """
+    if os.getenv(f"{section.upper()}_DEBUG") == "1":
+        return True
     return DEBUG_LEVELS.get(section.upper(), False)
 
 def is_info_enabled(section: str) -> bool:
     """
     Check if info-level logging is enabled for a given section.
-    Example: if is_info_enabled("ALPHA"): print("info message")
+    Checks DEBUG_LEVELS dict OR "{SECTION}_INFO" env var.
     """
+    if os.getenv(f"{section.upper()}_INFO") == "1":
+        return True
     return DEBUG_LEVELS.get(f"{section.upper()}_INFO", False)
 
 def enable_debug_level(level: str):

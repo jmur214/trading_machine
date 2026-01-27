@@ -9,6 +9,54 @@ import plotly.graph_objects as go
 from ..utils.datamanager import DataManager
 from ..utils.websocket_manager import AlpacaStreamManager
 
+
+# --------------------- Chart styling helpers ---------------------
+def get_chart_layout(title: str = "", **kwargs) -> dict:
+    """Return consistent chart layout settings."""
+    base = {
+        "template": "plotly_dark",
+        "paper_bgcolor": "rgba(0,0,0,0)",
+        "plot_bgcolor": "rgba(0,0,0,0)",
+        "font": {"family": "Inter, sans-serif", "color": "#c9d1d9"},
+        "title": {"text": title, "font": {"size": 14, "color": "#f0f6fc"}} if title else None,
+        "margin": {"l": 40, "r": 20, "t": 40 if title else 20, "b": 40},
+        "xaxis": {
+            "gridcolor": "rgba(56, 68, 77, 0.3)",
+            "zerolinecolor": "rgba(56, 68, 77, 0.5)",
+        },
+        "yaxis": {
+            "gridcolor": "rgba(56, 68, 77, 0.3)",
+            "zerolinecolor": "rgba(56, 68, 77, 0.5)",
+        },
+        "hovermode": "x unified",
+    }
+    base.update(kwargs)
+    return base
+
+
+def empty_chart_with_message(message: str) -> go.Figure:
+    """Create an empty chart with a centered message."""
+    fig = go.Figure()
+    fig.add_annotation(
+        text=message,
+        xref="paper",
+        yref="paper",
+        x=0.5,
+        y=0.5,
+        showarrow=False,
+        font={"size": 14, "color": "#6e7681", "family": "Inter, sans-serif"},
+        align="center",
+    )
+    fig.update_layout(
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+        xaxis={"visible": False},
+        yaxis={"visible": False},
+        margin={"l": 20, "r": 20, "t": 20, "b": 20},
+    )
+    return fig
+
+
 # --------------------- Helper functions for timeframe filtering, FIFO PnL, summary ---------------------
 def timeframe_filter(df: pd.DataFrame, tf_value: str) -> pd.DataFrame:
     if df is None or df.empty:
@@ -149,7 +197,13 @@ ALPACA_API_SECRET = os.environ.get("APCA_API_SECRET_KEY", "")
 
 dataman = DataManager()
 alpaca_ws = AlpacaStreamManager(ALPACA_API_KEY, ALPACA_API_SECRET, paper=True)
-alpaca_ws.start()
+if ALPACA_API_KEY and ALPACA_API_SECRET:
+    try:
+        alpaca_ws.start()
+    except Exception as e:
+        print(f"[DASHBOARD] Failed to start Alpaca Stream: {e}")
+else:
+    print("[DASHBOARD] Alpaca keys missing; skipping WebSocket stream.")
 
 def register_dashboard_callbacks(app):
     @app.callback(
@@ -157,7 +211,7 @@ def register_dashboard_callbacks(app):
         Output("drawdown_chart", "figure"),
         Output("edge_pnl_chart", "figure"),
         Output("summary_box", "children"),
-        Output("recent_trades_box", "children"),
+        Output("recent_trades_table", "data"),
         Input("timeframe", "value"),
         Input("pulse", "n_intervals"),
         Input("mode_state", "data"),
@@ -167,14 +221,10 @@ def register_dashboard_callbacks(app):
     def update_dashboard(tf_value, n_pulse, mode_value, _refresh_clicks):
         # LIVE placeholder
         if mode_value == "live":
-            empty_fig = go.Figure()
-            empty_fig.update_layout(
-                template="plotly_dark",
-                annotations=[dict(text="LIVE MODE (Coming Soon)", x=0.5, y=0.5, xref="paper", yref="paper", showarrow=False, font=dict(color="orange", size=32))]
-            )
-            return empty_fig, empty_fig, empty_fig, html.Div("Live mode disabled."), "Live mode disabled."
+            empty_fig = empty_chart_with_message("LIVE MODE (Coming Soon)")
+            return empty_fig, empty_fig, empty_fig, html.Div("Live mode maintenance."), []
 
-        # PAPER MODE
+        # PAPER MODE (Partial implementation - return list of dicts for trades)
         if mode_value == "paper":
             eq_df = dataman.get_equity_curve("paper")
             trades_df = dataman.get_trades("paper")
@@ -246,53 +296,105 @@ def register_dashboard_callbacks(app):
                     # Equity chart
                     eq_fig = go.Figure()
                     if not eq_df.empty:
-                        eq_fig.add_trace(go.Scatter(x=eq_df["timestamp"], y=eq_df["equity"], mode="lines", name="Equity", line=dict(color="deepskyblue", width=2)))
+                        eq_fig.add_trace(go.Scatter(
+                            x=eq_df["timestamp"], 
+                            y=eq_df["equity"], 
+                            mode="lines", 
+                            name="Equity", 
+                            line=dict(color="#58a6ff", width=2)
+                        ))
                     else:
-                        eq_fig.add_trace(go.Scatter(x=["Now"], y=[equity], mode="markers+text", text=[f"${equity:,.2f}"], textposition="top center"))
-                    eq_fig.update_layout(title="Account Equity (Paper)", yaxis_title="Equity ($)", template="plotly_dark", showlegend=False)
+                        eq_fig.add_trace(go.Scatter(
+                            x=["Now"], 
+                            y=[equity], 
+                            mode="markers+text", 
+                            text=[f"${equity:,.2f}"], 
+                            textposition="top center"
+                        ))
+                    eq_fig.update_layout(get_chart_layout(
+                        title="Account Equity (Paper)",
+                        yaxis_title="Equity ($)",
+                        showlegend=False
+                    ))
 
                     # Drawdown chart
                     dd_fig = go.Figure()
                     if not eq_df.empty:
                         roll_max = eq_df["equity"].cummax()
                         drawdown = (eq_df["equity"] - roll_max) / roll_max
-                        dd_fig.add_trace(go.Scatter(x=eq_df["timestamp"], y=drawdown.clip(-1, 0), fill="tozeroy", mode="lines", name="Drawdown", line=dict(color="firebrick")))
-                    dd_fig.update_layout(title="Drawdown Over Time", xaxis_title="Date", yaxis_title="Drawdown", yaxis_tickformat=".0%", template="plotly_dark")
+                        dd_fig.add_trace(go.Scatter(
+                            x=eq_df["timestamp"], 
+                            y=drawdown.clip(-1, 0), 
+                            fill="tozeroy", 
+                            mode="lines", 
+                            name="Drawdown", 
+                            line=dict(color="#f85149")
+                        ))
+                        dd_fig.update_layout(get_chart_layout(
+                            title="Drawdown Over Time",
+                            xaxis_title="Date",
+                            yaxis_title="Drawdown",
+                            yaxis_tickformat=".0%"
+                        ))
+                    else:
+                        dd_fig = empty_chart_with_message("No drawdown history")
 
                     # Edge PnL bar
                     edge_fig = go.Figure()
                     if trades_df is not None and not trades_df.empty and {"edge", "pnl"}.issubset(set(trades_df.columns)):
                         pnl_by_edge = trades_df.groupby("edge", dropna=False)["pnl"].sum().sort_values(ascending=False).reset_index()
                         if not pnl_by_edge.empty:
-                            colors = ["limegreen" if v >= 0 else "firebrick" for v in pnl_by_edge["pnl"]]
-                            edge_fig.add_trace(
-                                go.Bar(x=pnl_by_edge["edge"].astype(str), y=pnl_by_edge["pnl"], marker_color=colors, text=[f"${v:,.2f}" for v in pnl_by_edge["pnl"]], textposition="auto", name="PnL")
-                            )
-                    edge_fig.update_layout(title="Profit / Loss by Edge", xaxis_title="Edge", yaxis_title="PnL ($)", template="plotly_dark")
+                            colors = ["#3fb950" if v >= 0 else "#f85149" for v in pnl_by_edge["pnl"]]
+                            edge_fig.add_trace(go.Bar(
+                                x=pnl_by_edge["edge"].astype(str), 
+                                y=pnl_by_edge["pnl"], 
+                                marker_color=colors, 
+                                text=[f"${v:,.2f}" for v in pnl_by_edge["pnl"]], 
+                                textposition="auto", 
+                                name="PnL"
+                            ))
+                        edge_fig.update_layout(get_chart_layout(
+                            title="Profit / Loss by Edge",
+                            xaxis_title="Edge",
+                            yaxis_title="PnL ($)"
+                        ))
+                    else:
+                        edge_fig = empty_chart_with_message("No trade history")
 
-                    # Positions text
-                    pos_list = []
-                    if positions:
-                        for pos in positions:
+                    # Recent trades table data
+                    recent_data = []
+                    if trades_df is not None and not trades_df.empty:
+                        # Ensure columns exist
+                        cols = ["timestamp", "ticker", "side", "qty", "fill_price", "pnl"]
+                        for c in cols:
+                            if c not in trades_df.columns:
+                                trades_df[c] = "-" if c != "pnl" else 0
+                        
+                        # Sort by date
+                        trades_sorted = trades_df.sort_values("timestamp", ascending=False).head(20)
+                        
+                        # Format numbers
+                        for idx, row in trades_sorted.iterrows():
+                            record = row.to_dict()
+                            # Format dollars
+                            for k in ["fill_price", "pnl"]:
+                                if isinstance(record.get(k), (int, float)):
+                                    record[k] = f"${record[k]:.2f}"
+                            # Format timestamp
                             try:
-                                symbol = getattr(pos, "symbol", "-")
-                                qty = getattr(pos, "qty", "-")
-                                unreal = float(getattr(pos, "unrealized_pl", 0) or 0)
-                                side = getattr(pos, "side", "-")
-                                pos_list.append(f"{symbol} ({side}) | Qty: {qty} | Unr. PnL: ${unreal:,.2f}")
-                            except Exception:
-                                continue
-                    if latest_positions:
-                        pos_list.extend(latest_positions)
-                    recent_txt = "\n".join(pos_list) if pos_list else "No open positions."
-                    return eq_fig, dd_fig, edge_fig, summary_cards, recent_txt
+                                record["timestamp"] = pd.to_datetime(record["timestamp"]).strftime("%Y-%m-%d %H:%M")
+                            except:
+                                pass
+                            recent_data.append(record)
+                            
+                    return eq_fig, dd_fig, edge_fig, summary_cards, recent_data
                 except Exception as e:
                     pass
 
             # Fallback if TradingClient missing/unavailable
-            empty = go.Figure(); empty.update_layout(template="plotly_dark")
-            notice = html.Div(html.Div("No paper account connected.", style={"color": "#ffb300", "fontSize": "22px", "padding": "18px 0"}))
-            return empty, empty, empty, notice, "No paper account connected."
+            empty = empty_chart_with_message("No paper account connected")
+            notice = html.Div(html.Div("No paper account connected.", style={"color": "#d29922", "fontSize": "16px", "padding": "18px 0"}))
+            return empty, empty, empty, notice, []
 
         # BACKTEST mode
         snapshots_path = "data/trade_logs/portfolio_snapshots.csv"
@@ -313,59 +415,232 @@ def register_dashboard_callbacks(app):
         summary = summarize_period(df_tf, trades_tf)
         summary_cards = html.Div(_summary_kpi_cards(summary))
 
-        eq_fig = go.Figure()
-        if not df_tf.empty:
-            eq_fig.add_trace(go.Scatter(x=df_tf["timestamp"], y=df_tf["equity"], mode="lines", name="Equity", line=dict(color="deepskyblue", width=2)))
-        eq_fig.update_layout(title="Equity Curve", xaxis_title="Date", yaxis_title="Equity ($)", hovermode="x unified", template="plotly_dark", legend=dict(x=0, y=1))
+        if df_tf.empty:
+            eq_fig = empty_chart_with_message("No equity data available")
+            dd_fig = empty_chart_with_message("No drawdown data available")
+        else:
+            eq_fig = go.Figure()
+            # Equity Curve
+            eq_fig.add_trace(go.Scatter(
+                x=df_tf["timestamp"], 
+                y=df_tf["equity"], 
+                mode="lines", 
+                name="Equity", 
+                line=dict(color="#58a6ff", width=2)
+            ))
+            
+            # Benchmark (SPY) Comparison - Real Data via yfinance
+            try:
+                import yfinance as yf
+                bench_sym = "SPY"
+                start_date = df_tf["timestamp"].min().strftime("%Y-%m-%d")
+                end_date = df_tf["timestamp"].max().strftime("%Y-%m-%d")
+                
+                # Fetch data
+                b_df = yf.download(bench_sym, start=start_date, end=end_date, progress=False)
+                
+                if not b_df.empty:
+                    # Clean yfinance data
+                    # Handle MultiIndex: columns are (Price, Ticker) -> ('Close', 'SPY')
+                    if isinstance(b_df.columns, pd.MultiIndex):
+                        # Extract Close price
+                        if "Close" in b_df.columns.levels[0]:
+                            b_df = b_df.xs("Close", level=0, axis=1)
+                        # Now has columns=['SPY'] usually
+                    elif "Close" in b_df.columns:
+                        b_df = b_df[["Close"]]
+                    
+                    # Ensure we have a single "Close" column
+                    if len(b_df.columns) == 1:
+                        b_df.columns = ["Close"]
+                    else:
+                        # Fallback: take first column or column named bench_sym
+                        if bench_sym in b_df.columns:
+                            b_df = b_df[[bench_sym]].rename(columns={bench_sym: "Close"})
+                        else:
+                            b_df = b_df.iloc[:, [0]]
+                            b_df.columns = ["Close"]
 
-        dd_fig = go.Figure()
-        if not df_tf.empty:
+                    b_df = b_df.reset_index()
+                    # Ensure timezone match (convert to UTC)
+                    # Yfinance output often has Date index timezone-naive or aware?
+                    # Safer to just force UTC if possible
+                    col_date = "Date" if "Date" in b_df.columns else b_df.columns[0]
+                    b_df[col_date] = pd.to_datetime(b_df[col_date]).dt.tz_localize(None) # strip to align
+                    # Or align with equity timestamp which is UTC
+                    # Equity: df_tf["timestamp"] type?
+                    
+                    # Normalization
+                    start_val = df_tf["equity"].iloc[0]
+                    base_price = b_df["Close"].iloc[0] if not b_df.empty else 1.0
+                    
+                    # Plot
+                    eq_fig.add_trace(go.Scatter(
+                        x=b_df[col_date], 
+                        y=start_val * (b_df["Close"] / base_price), 
+                        mode="lines", name=f"{bench_sym}",
+                        line=dict(color="#8b949e", width=1, dash="dot")
+                    ))
+                else:
+                    raise Exception("No data from yfinance")
+
+            except Exception:
+                # No synthetic fallback requested; ensure chart handles empty gracefully
+                pass
+
+            eq_fig.update_layout(get_chart_layout(
+                yaxis_title="Equity ($)",
+                legend=dict(x=0, y=1),
+                margin=dict(l=40, r=20, t=10, b=40), # Compact
+            ))
+
+            dd_fig = go.Figure()
             roll_max = df_tf["equity"].cummax()
             drawdown = (df_tf["equity"] - roll_max) / roll_max
-            dd_fig.add_trace(go.Scatter(x=df_tf["timestamp"], y=drawdown.clip(-1, 0), fill="tozeroy", mode="lines", name="Drawdown", line=dict(color="firebrick")))
-        dd_fig.update_layout(title="Drawdown Over Time", xaxis_title="Date", yaxis_title="Drawdown", yaxis_tickformat=".0%", template="plotly_dark")
+            dd_fig.add_trace(go.Scatter(
+                x=df_tf["timestamp"], 
+                y=drawdown.clip(-1, 0), 
+                fill="tozeroy", 
+                mode="lines", 
+                name="Drawdown", 
+                line=dict(color="#f85149")
+            ))
+            dd_fig.update_layout(get_chart_layout(
+                yaxis_title="Drawdown",
+                yaxis_tickformat=".0%"
+            ))
 
-        edge_fig = go.Figure()
-        if not trades_tf.empty and {"edge", "pnl"}.issubset(set(trades_tf.columns)):
+        if trades_tf.empty or not {"edge", "pnl"}.issubset(set(trades_tf.columns)):
+            edge_fig = empty_chart_with_message("No trade data available")
+        else:
+            edge_fig = go.Figure()
             pnl_by_edge = trades_tf.groupby("edge", dropna=False)["pnl"].sum().sort_values(ascending=False).reset_index()
             if not pnl_by_edge.empty:
-                colors = ["limegreen" if v >= 0 else "firebrick" for v in pnl_by_edge["pnl"]]
-                edge_fig.add_trace(go.Bar(x=pnl_by_edge["edge"].astype(str), y=pnl_by_edge["pnl"], marker_color=colors, text=[f"${v:,.2f}" for v in pnl_by_edge["pnl"]], textposition="auto"))
-        edge_fig.update_layout(title="Profit / Loss by Edge", xaxis_title="Edge", yaxis_title="PnL ($)", template="plotly_dark")
+                colors = ["#3fb950" if v >= 0 else "#f85149" for v in pnl_by_edge["pnl"]]
+                edge_fig.add_trace(go.Bar(
+                    x=pnl_by_edge["edge"].astype(str), 
+                    y=pnl_by_edge["pnl"], 
+                    marker_color=colors, 
+                    text=[f"${v:,.2f}" for v in pnl_by_edge["pnl"]], 
+                    textposition="auto"
+                ))
+            edge_fig.update_layout(get_chart_layout(
+                xaxis_title="Strategy",
+                yaxis_title="PnL ($)"
+            ))
 
-        recent_txt = trades_tf.tail(10).to_string(index=False) if not trades_tf.empty else "No trades found."
-        return eq_fig, dd_fig, edge_fig, summary_cards, recent_txt
+        # Recent trades table data
+        recent_data = []
+        if not trades_tf.empty:
+            # Ensure columns exist
+            cols = ["timestamp", "ticker", "side", "qty", "fill_price", "pnl"]
+            for c in cols:
+                if c not in trades_tf.columns:
+                    trades_tf[c] = "-" if c != "pnl" else 0
+            
+            # Sort by date descending
+            trades_sorted = trades_tf.sort_values("timestamp", ascending=False).head(20)
+            
+            # Format numbers
+            for idx, row in trades_sorted.iterrows():
+                record = row.to_dict()
+                # Format dollars
+                for k in ["fill_price", "pnl"]:
+                    if isinstance(record.get(k), (int, float)):
+                        record[k] = f"${record[k]:.2f}"
+                # Format timestamp
+                try:
+                    record["timestamp"] = pd.to_datetime(record["timestamp"]).strftime("%Y-%m-%d %H:%M")
+                except:
+                    pass
+                recent_data.append(record)
+
+        return eq_fig, dd_fig, edge_fig, summary_cards, recent_data
 
 
 def _summary_kpi_cards(summary: dict):
+    """Generate KPI cards with consistent glassmorphism styling."""
     card_style = {
-        "backgroundColor": "#181c22",
-        "color": "#e0e0e0",
-        "padding": "16px 18px",
-        "borderRadius": "10px",
-        "boxShadow": "0 2px 12px rgba(0,0,0,0.21)",
-        "margin": "0 10px 12px 0",
+        "background": "rgba(15, 20, 26, 0.85)",
+        "backdropFilter": "blur(16px)",
+        "border": "1px solid rgba(56, 68, 77, 0.4)",
+        "borderRadius": "12px",
+        "padding": "16px 20px",
         "minWidth": "140px",
         "textAlign": "center",
-        "display": "inline-block",
+        "position": "relative",
+        "overflow": "hidden",
     }
+    
     kpi_order = [
-        "Starting Equity", "Ending Equity", "Net Profit", "Total Return (%)",
-        "CAGR (%)", "Sharpe Ratio", "Max Drawdown (%)", "Volatility (%)", "Win Rate (%)",
+        ("Starting Equity", "#8b949e"),
+        ("Ending Equity", "#8b949e"),
+        ("Net Profit", "#58a6ff"),
+        ("Total Return (%)", "#58a6ff"),
+        ("CAGR (%)", "#a371f7"),
+        ("Sharpe Ratio", "#3fb950"),
+        ("Max Drawdown (%)", "#f85149"),
+        ("Volatility (%)", "#d29922"),
+        ("Win Rate (%)", "#3fb950"),
     ]
+    
     def fmt(val, k):
-        if val == "-" or val is None: return "-"
-        if any(x in k for x in ("Return", "Drawdown", "Volatility", "CAGR", "Win Rate")): return f"{val:.2f}%"
-        if "Sharpe" in k: return f"{val:.3f}"
+        if val == "-" or val is None:
+            return "-"
+        if any(x in k for x in ("Return", "Drawdown", "Volatility", "CAGR", "Win Rate")):
+            return f"{val:.2f}%"
+        if "Sharpe" in k:
+            return f"{val:.3f}"
         return f"${val:,.2f}" if isinstance(val, (int, float)) else str(val)
+    
+    def get_value_color(k, v):
+        if v == "-" or v is None:
+            return "#6e7681"
+        if "Profit" in k or "Return" in k:
+            try:
+                return "#3fb950" if float(v) > 0 else "#f85149"
+            except:
+                return "#c9d1d9"
+        if "Drawdown" in k:
+            return "#f85149"
+        return "#c9d1d9"
+    
     cards = []
-    for k in kpi_order:
+    for k, accent_color in kpi_order:
         v = summary.get(k, "-")
+        value_color = get_value_color(k, v)
         cards.append(
             html.Div(
-                [html.Div(str(k), style={"fontSize": "15px", "opacity": 0.76, "marginBottom": "6px"}),
-                 html.Div(fmt(v, k), style={"fontSize": "22px", "fontWeight": 600})],
+                [
+                    # Accent line
+                    html.Div(style={
+                        "position": "absolute",
+                        "top": "0",
+                        "left": "0",
+                        "right": "0",
+                        "height": "3px",
+                        "background": f"linear-gradient(90deg, {accent_color}, transparent)",
+                    }),
+                    html.Div(str(k), style={
+                        "fontSize": "11px",
+                        "fontWeight": "500",
+                        "color": "#6e7681",
+                        "textTransform": "uppercase",
+                        "letterSpacing": "0.05em",
+                        "marginBottom": "8px",
+                    }),
+                    html.Div(fmt(v, k), style={
+                        "fontSize": "20px",
+                        "fontWeight": "700",
+                        "color": value_color,
+                        "letterSpacing": "-0.02em",
+                    }),
+                ],
                 style=card_style,
             )
         )
-    return html.Div(cards, style={"display": "flex", "flexWrap": "wrap", "gap": "0.5rem"})
+    return html.Div(cards, style={
+        "display": "grid",
+        "gridTemplateColumns": "repeat(auto-fit, minmax(140px, 1fr))",
+        "gap": "16px",
+    })

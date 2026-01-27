@@ -1,0 +1,27 @@
+{
+  "genes": [
+    {
+      "type": "technical",
+      "operator": "greater",
+      "indicator": "donchian_breakout",
+      "window": 20,
+      "threshold": 0.0
+    },
+    {
+      "type": "fundamental",
+      "operator": "less",
+      "metric": "PS_Ratio",
+      "threshold": 2
+    },
+    {
+      "type": "technical",
+      "operator": "less",
+      "indicator": "momentum_roc",
+      "window": 60,
+      "threshold": 0.0
+    }
+  ],
+  "direction": [
+    "short"
+  ]
+}

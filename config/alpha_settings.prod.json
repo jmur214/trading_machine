@@ -1,30 +1,65 @@
 {
-  "debug": false,
-  "enter_threshold": 0.25,
-  "exit_threshold": 0.08,
-  "regime": {
-    "enable_trend": true,
-    "trend_fast": 20,
-    "trend_slow": 50,
-    "enable_vol": true,
-    "vol_lookback": 30,
-    "vol_z_max": 2.0,
-    "shrink_off": 0.0
-  },
-  "hygiene": {
-    "min_history": 60,
-    "dedupe_last_n": 2,
-    "clamp": 4.0
-  },
-  "ensemble": {
-    "enable_shrink": true,
-    "shrink_lambda": 0.35,
-    "combine": "weighted_mean"
-  },
-  "flip_cooldown_bars": 3,
-  "min_edge_contribution": 0.1,
-  "edge_weights": {
-    "rsi_mean_reversion": 0.5,
-    "xsec_meanrev": 0.5
-  }
+    "debug": false,
+    "enter_threshold": 0.01,
+    "exit_threshold": 0.005,
+    "regime": {
+        "enable_trend": true,
+        "trend_fast": 20,
+        "trend_slow": 50,
+        "enable_vol": true,
+        "vol_lookback": 30,
+        "vol_z_max": 2.5,
+        "shrink_off": 0.5
+    },
+    "hygiene": {
+        "min_history": 20,
+        "dedupe_last_n": 2,
+        "clamp": 4.0
+    },
+    "ensemble": {
+        "enable_shrink": true,
+        "shrink_lambda": 0.35,
+        "combine": "weighted_mean"
+    },
+    "flip_cooldown_bars": 3,
+    "min_edge_contribution": 0.05,
+    "edge_weights": {
+        "atr_breakout_v1": 2.5,
+        "momentum_edge_v1": 1.5,
+        "rsi_bounce_v1": 0.0,
+        "bollinger_reversion_v1": 0.0,
+        "news_sentiment_edge": 0.5,
+        "value_trap_v1": 0.5,
+        "value_deep_v1": 0.5,
+        "growth_sales_v1": 0.5
+    },
+    "edge_params": {
+        "atr_breakout_v1": {
+            "start": "2024-01-01",
+            "end": "2024-10-19",
+            "lookback": 10,
+            "top_n": null,
+            "bottom_n": null,
+            "vol_window": null,
+            "vol_target": null,
+            "neutralize": null,
+            "Starting Equity": 100000.0,
+            "Ending Equity": 96244.03,
+            "Net Profit": -3755.97,
+            "Total Return (%)": -3.76,
+            "CAGR (%)": -4.7,
+            "Max Drawdown (%)": -13.27,
+            "Sharpe Ratio": -0.305,
+            "Volatility (%)": 22.36,
+            "Win Rate (%)": 18.48,
+            "Trades": 374.0,
+            "cagr_pct": -4.7,
+            "max_drawdown_pct": -13.27,
+            "vol_pct": 22.36,
+            "win_rate_pct": 18.48,
+            "timestamp": "2026-01-23T06:19:17.425386",
+            "threshold": 0.01,
+            "regime_filter": null
+        }
+    }
 }

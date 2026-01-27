@@ -1,15 +1,98 @@
 # cockpit/dashboard/tabs/governor_tab.py
+"""Governor tab - Strategy weights and recommendations visualization."""
 from __future__ import annotations
 from dash import dcc, html
 
+# ============================================
+# DESIGN TOKENS
+# ============================================
+CARD_STYLE = {
+    "background": "rgba(15, 20, 26, 0.85)",
+    "backdropFilter": "blur(20px)",
+    "border": "1px solid rgba(56, 68, 77, 0.4)",
+    "borderRadius": "16px",
+    "padding": "24px",
+    "boxShadow": "0 4px 12px rgba(0, 0, 0, 0.4)",
+}
+
+SECTION_HEADER = {
+    "display": "flex",
+    "alignItems": "center",
+    "gap": "12px",
+    "marginBottom": "16px",
+    "paddingBottom": "12px",
+    "borderBottom": "1px solid rgba(56, 68, 77, 0.4)",
+}
+
+
 def governor_layout():
+    """Governor intelligence tab with strategy weights and recommendations."""
     return html.Div(
-        style={"backgroundColor": "#161b22", "padding": "16px 18px", "borderRadius": "12px"},
+        style={"minHeight": "70vh"},
         children=[
-            html.H3("Governor Intelligence", style={"marginTop": 0, "color": "#e0e0e0"}),
-            html.Div([dcc.Graph(id="gov_weight_chart")], style={"margin": "12px 0"}),
-            html.Div([dcc.Graph(id="gov_sr_weight_scatter")], style={"margin": "12px 0"}),
-            html.Div([dcc.Graph(id="gov_recommendation_chart")], style={"margin": "12px 0"}),
-            html.Div([dcc.Graph(id="gov_weight_evolution")], style={"margin": "12px 0"}),
+            # Header
+            html.Div(
+                style=SECTION_HEADER,
+                children=[
+                    html.H3("Governor Intelligence", style={"margin": "0", "color": "#f0f6fc"}),
+                    html.Span("Strategy Weight Allocation & Recommendations", style={
+                        "background": "rgba(88, 166, 255, 0.15)",
+                        "color": "#58a6ff",
+                        "fontSize": "11px",
+                        "fontWeight": "600",
+                        "padding": "4px 12px",
+                        "borderRadius": "20px",
+                    }),
+                ]
+            ),
+            
+            # Charts Grid - 2x2
+            html.Div(
+                style={"display": "grid", "gridTemplateColumns": "repeat(2, minmax(0, 1fr))", "gap": "24px", "marginBottom": "24px"},
+                children=[
+                    html.Div(
+                        style=CARD_STYLE,
+                        children=[
+                            html.Div(style=SECTION_HEADER, children=[
+                                html.H4("Current Weight Allocation", style={"margin": "0", "color": "#f0f6fc", "fontSize": "14px"}),
+                            ]),
+                            dcc.Graph(id="gov_weight_chart", style={"height": "300px"}, config={"displayModeBar": False}),
+                        ],
+                    ),
+                    html.Div(
+                        style=CARD_STYLE,
+                        children=[
+                            html.Div(style=SECTION_HEADER, children=[
+                                html.H4("Sharpe Ratio vs Weight", style={"margin": "0", "color": "#f0f6fc", "fontSize": "14px"}),
+                            ]),
+                            dcc.Graph(id="gov_sr_weight_scatter", style={"height": "300px"}, config={"displayModeBar": False}),
+                        ],
+                    ),
+                ],
+            ),
+            
+            html.Div(
+                style={"display": "grid", "gridTemplateColumns": "repeat(2, minmax(0, 1fr))", "gap": "24px"},
+                children=[
+                    html.Div(
+                        style=CARD_STYLE,
+                        children=[
+                            html.Div(style=SECTION_HEADER, children=[
+                                html.H4("Strategy Recommendations", style={"margin": "0", "color": "#f0f6fc", "fontSize": "14px"}),
+                            ]),
+                            dcc.Graph(id="gov_recommendation_chart", style={"height": "300px"}, config={"displayModeBar": False}),
+                        ],
+                    ),
+                    html.Div(
+                        style=CARD_STYLE,
+                        children=[
+                            html.Div(style=SECTION_HEADER, children=[
+                                html.H4("Weight Evolution Over Time", style={"margin": "0", "color": "#f0f6fc", "fontSize": "14px"}),
+                            ]),
+                            dcc.Graph(id="gov_weight_evolution", style={"height": "300px"}, config={"displayModeBar": False}),
+                        ],
+                    ),
+                ],
+            ),
         ],
     )

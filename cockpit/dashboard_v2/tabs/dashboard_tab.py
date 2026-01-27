@@ -1,187 +1,205 @@
 # cockpit/dashboard/tabs/dashboard_tab.py
+"""Main dashboard tab with KPIs and charts."""
 from __future__ import annotations
-from dash import dcc, html
+from dash import dcc, html, dash_table
 
-def mode_layout():
+# ============================================
+# DESIGN TOKENS
+# ============================================
+CARD_STYLE = {
+    "background": "rgba(15, 20, 26, 0.85)",
+    "backdropFilter": "blur(20px)",
+    "border": "1px solid rgba(56, 68, 77, 0.4)",
+    "borderRadius": "16px",
+    "padding": "24px",
+    "boxShadow": "0 4px 12px rgba(0, 0, 0, 0.4)",
+}
+
+CHART_CONTAINER = {
+    **CARD_STYLE,
+    "padding": "16px",
+}
+
+SECTION_HEADER = {
+    "display": "flex",
+    "alignItems": "center",
+    "gap": "12px",
+    "marginBottom": "16px",
+    "paddingBottom": "12px",
+    "borderBottom": "1px solid rgba(56, 68, 77, 0.4)",
+}
+
+
+def dashboard_layout():
+    """Main dashboard tab with professional KPIs and charts."""
     return html.Div(
-        style={
-            "minHeight": "78vh",
-            "background": "linear-gradient(180deg,#121212,#101010,#0c0c0c)",
-            "borderRadius": "12px",
-            "padding": "28px 28px 40px 28px",
-            "boxShadow": "0 0 12px rgba(0,0,0,0.55)",
-        },
+        style={"minHeight": "70vh"},
         children=[
+            # Mode Indicator Bar
             html.Div(
                 style={
+                    **CARD_STYLE,
                     "display": "flex",
+                    "alignItems": "center",
                     "justifyContent": "space-between",
-                    "alignItems": "flex-start",
-                    "gap": "24px",
-                    "flexWrap": "wrap",
+                    "padding": "16px 24px",
+                    "marginBottom": "24px",
                 },
                 children=[
                     html.Div(
-                        style={
-                            "flex": "0 0 320px",
-                            "backgroundColor": "#171717",
-                            "border": "1px solid #2a2a2a",
-                            "borderRadius": "10px",
-                            "padding": "18px 20px",
-                        },
                         children=[
-                            html.H3("Select Trading Mode", style={"marginTop": 0}),
-                            dcc.RadioItems(
-                                id="mode_selector_radio",
+                            html.Span(id="mode_label", style={"fontSize": "14px", "color": "#8b949e", "marginRight": "12px"}),
+                            html.Span(id="mode_top_indicator"),
+                        ],
+                    ),
+                    html.Div(
+                        style={"display": "flex", "alignItems": "center", "gap": "16px"},
+                        children=[
+                            html.Label("Timeframe:", style={"color": "#8b949e", "fontSize": "13px", "marginBottom": "0"}),
+                            dcc.Dropdown(
+                                id="timeframe",
                                 options=[
-                                    {"label": "Backtest", "value": "backtest"},
-                                    {"label": "Paper Trading", "value": "paper"},
+                                    {"label": "All Time", "value": "all"},
+                                    {"label": "1 Year", "value": "1y"},
+                                    {"label": "6 Months", "value": "6m"},
+                                    {"label": "3 Months", "value": "3m"},
+                                    {"label": "1 Month", "value": "1m"},
                                 ],
-                                value="backtest",
-                                labelStyle={"display": "block", "margin": "10px 0"},
-                                style={"fontSize": "16px"},
+                                value="all",
+                                clearable=False,
+                                style={"width": "140px"},
                             ),
                             html.Button(
-                                "INITIATE LIVE",
-                                id="go_live_button",
+                                "Refresh",
+                                id="refresh_button",
                                 n_clicks=0,
-                                style={
-                                    "backgroundColor": "red",
-                                    "color": "white",
-                                    "padding": "10px 20px",
-                                    "border": "none",
-                                    "cursor": "not-allowed",
-                                    "opacity": 0.6,
-                                    "marginTop": "10px",
-                                },
-                                disabled=True,
                             ),
-                            html.Div(id="mode_status", style={"marginTop": "12px", "fontSize": "16px"}),
+                        ],
+                    ),
+                ],
+            ),
+            
+            # KPI Summary Section
+            html.Div(
+                style=SECTION_HEADER,
+                children=[
+                    html.H3("Performance Overview", style={"margin": "0", "color": "#f0f6fc"}),
+                ]
+            ),
+            html.Div(
+                id="summary_box",
+                style={"marginBottom": "32px"},
+            ),
+            
+            # Charts Grid
+            html.Div(
+                style={"display": "grid", "gridTemplateColumns": "repeat(2, minmax(0, 1fr))", "gap": "24px", "marginBottom": "24px"},
+                children=[
+                    html.Div(
+                        style=CHART_CONTAINER,
+                        children=[
+                            html.Div(style=SECTION_HEADER, children=[
+                                html.H4("Equity Curve", style={"margin": "0", "color": "#f0f6fc", "fontSize": "14px"}),
+                            ]),
+                            dcc.Graph(id="equity_chart", style={"height": "300px"}, config={"displayModeBar": False}),
                         ],
                     ),
                     html.Div(
-                        id="mode_summary_box",
-                        style={
-                            "flex": "1 1 480px",
-                            "minWidth": "420px",
-                            "backgroundColor": "#171717",
-                            "border": "1px solid #2a2a2a",
-                            "borderRadius": "10px",
-                            "padding": "18px 22px",
-                        },
+                        style=CHART_CONTAINER,
+                        children=[
+                            html.Div(style=SECTION_HEADER, children=[
+                                html.H4("Drawdown", style={"margin": "0", "color": "#f0f6fc", "fontSize": "14px"}),
+                            ]),
+                            dcc.Graph(id="drawdown_chart", style={"height": "300px"}, config={"displayModeBar": False}),
+                        ],
                     ),
                 ],
             ),
-        ],
-    )
-
-def dashboard_layout():
-    return html.Div(
-        style={"backgroundColor": "#161b22", "padding": "16px 18px", "borderRadius": "12px"},
-        children=[
+            
+            # Bottom Grid: Strategy PnL & Activity
             html.Div(
-                [
-                    html.H4(id="mode_label", style={"margin": "0 0 6px 0"}),
+                style={"display": "grid", "gridTemplateColumns": "repeat(2, minmax(0, 1fr))", "gap": "24px", "marginBottom": "24px"},
+                children=[
+                    # Strategy PnL
                     html.Div(
-                        id="mode_top_indicator",
-                        style={"fontSize": "18px", "fontWeight": "bold", "marginLeft": "10px", "display": "inline-block"},
+                        style=CHART_CONTAINER,
+                        children=[
+                            html.Div(style=SECTION_HEADER, children=[
+                                html.H4("Profit/Loss by Strategy", style={"margin": "0", "color": "#f0f6fc", "fontSize": "14px"}),
+                            ]),
+                            dcc.Graph(id="edge_pnl_chart", style={"height": "300px"}, config={"displayModeBar": False}),
+                        ],
                     ),
-                ],
-                style={
-                    "margin": "0 0 10px 0",
-                    "padding": "8px 12px",
-                    "background": "#171717",
-                    "border": "1px solid #222",
-                    "borderRadius": "8px",
-                    "display": "flex",
-                    "alignItems": "center",
-                },
-            ),
-            html.Div(
-                [
+                    
+                    # Recent Activity
                     html.Div(
-                        [
-                            html.H4("Performance Summary"),
-                            html.Div(id="summary_box"),
-                            html.Br(),
-                            html.Div(
-                                style={"display": "flex", "alignItems": "center", "gap": "10px"},
-                                children=[
-                                    html.Label("Timeframe", style={"marginBottom": 0}),
-                                    dcc.Dropdown(
-                                        id="timeframe",
-                                        options=[
-                                            {"label": "All", "value": "all"},
-                                            {"label": "1Y", "value": "1y"},
-                                            {"label": "6M", "value": "6m"},
-                                            {"label": "3M", "value": "3m"},
-                                            {"label": "1M", "value": "1m"},
-                                        ],
-                                        value="all",
-                                        clearable=False,
-                                        style={"width": 120, "color": "#000", "marginRight": "10px"},
-                                    ),
-                                    html.Button(
-                                        "Refresh Data",
-                                        id="refresh_button",
-                                        n_clicks=0,
-                                        style={
-                                            "backgroundColor": "#2d8cff",
-                                            "color": "#fff",
-                                            "padding": "5px 18px",
-                                            "border": "none",
-                                            "borderRadius": "5px",
-                                            "fontSize": "15px",
-                                            "fontWeight": "bold",
-                                            "boxShadow": "0 1px 4px #0003",
-                                            "cursor": "pointer",
-                                        },
-                                    ),
+                        style=CHART_CONTAINER,
+                        children=[
+                            html.Div(style=SECTION_HEADER, children=[
+                                html.H4("Recent Activity", style={"margin": "0", "color": "#f0f6fc", "fontSize": "14px"}),
+                            ]),
+                            dash_table.DataTable(
+                                id="recent_trades_table",
+                                data=[],
+                                columns=[
+                                    {"name": "Date", "id": "timestamp"},
+                                    {"name": "Ticker", "id": "ticker"},
+                                    {"name": "Side", "id": "side"},
+                                    {"name": "Qty", "id": "qty"},
+                                    {"name": "Price", "id": "fill_price"},
+                                    {"name": "PnL", "id": "pnl"},
+                                ],
+                                page_size=8,
+                                sort_action="native",
+                                filter_action="native",
+                                style_table={"overflowX": "auto", "height": "290px", "overflowY": "auto"},
+                                style_header={
+                                    "backgroundColor": "rgba(22, 27, 34, 0.9)",
+                                    "color": "#c9d1d9",
+                                    "fontWeight": "600",
+                                    "fontSize": "11px",
+                                    "textTransform": "uppercase",
+                                    "letterSpacing": "0.05em",
+                                    "border": "none",
+                                    "borderBottom": "1px solid rgba(56, 68, 77, 0.6)",
+                                    "padding": "12px 16px",
+                                    "position": "sticky", "top": 0, "zIndex": 1
+                                },
+                                style_cell={
+                                    "backgroundColor": "transparent",
+                                    "color": "#c9d1d9",
+                                    "fontSize": "12px",
+                                    "border": "none",
+                                    "borderBottom": "1px solid rgba(56, 68, 77, 0.3)",
+                                    "padding": "10px 14px",
+                                    "fontFamily": "'SF Mono', 'Fira Code', 'Consolas', monospace",
+                                    "textAlign": "left",
+                                },
+                                style_data_conditional=[
+                                    {"if": {"row_index": "odd"}, "backgroundColor": "rgba(22, 27, 34, 0.4)"},
+                                    {
+                                        "if": {"filter_query": "{pnl} > 0", "column_id": "pnl"},
+                                        "color": "#3fb950",
+                                        "fontWeight": "600"
+                                    },
+                                    {
+                                        "if": {"filter_query": "{pnl} < 0", "column_id": "pnl"},
+                                        "color": "#f85149",
+                                        "fontWeight": "600"
+                                    },
+                                    {
+                                        "if": {"filter_query": "{side} = 'buy'", "column_id": "side"},
+                                        "color": "#58a6ff"
+                                    },
+                                    {
+                                        "if": {"filter_query": "{side} = 'sell'", "column_id": "side"},
+                                        "color": "#a371f7"
+                                    },
                                 ],
                             ),
                         ],
-                        style={
-                            "width": "32%",
-                            "display": "inline-block",
-                            "verticalAlign": "top",
-                            "backgroundColor": "#1b1b1b",
-                            "borderRadius": "10px",
-                            "border": "1px solid #232323",
-                            "padding": "18px 18px 10px 18px",
-                            "boxShadow": "0 0 8px #0004",
-                            "minHeight": "320px",
-                        },
-                    ),
-                    html.Div(
-                        [dcc.Graph(id="equity_chart")],
-                        style={
-                            "width": "66%",
-                            "display": "inline-block",
-                            "backgroundColor": "#1b1b1b",
-                            "borderRadius": "10px",
-                            "border": "1px solid #232323",
-                            "padding": "12px 8px 10px 8px",
-                            "boxShadow": "0 0 8px #0004",
-                            "minHeight": "320px",
-                            "verticalAlign": "top",
-                        },
                     ),
                 ],
-                style={"margin": "12px 0", "display": "flex", "gap": "18px"},
-            ),
-            html.Div(
-                [dcc.Graph(id="drawdown_chart")],
-                style={"margin": "12px 0", "backgroundColor": "#1b1b1b", "borderRadius": "10px", "padding": "10px 8px", "boxShadow": "0 0 8px #0004"},
-            ),
-            html.H4("Profit / Loss by Edge"),
-            html.Div(
-                [dcc.Graph(id="edge_pnl_chart")],
-                style={"margin": "12px 0", "backgroundColor": "#1b1b1b", "borderRadius": "10px", "padding": "10px 8px", "boxShadow": "0 0 8px #0004"},
-            ),
-            html.H4("Recent Trades"),
-            html.Pre(
-                id="recent_trades_box",
-                style={"backgroundColor": "#181818", "borderRadius": "8px", "padding": "12px", "fontSize": "14px", "color": "#e0e0e0", "border": "1px solid #232323"},
             ),
         ],
     )

@@ -10,12 +10,21 @@ class ATRBreakoutEdge(EdgeBase):
     def compute_signals(self, data_map, as_of):
         scores = {}
         for t, df in data_map.items():
-            if len(df) < 20: continue
-            high, low, close = df["High"], df["Low"], df["Close"]
+            # Get dynamic params with defaults
+            atr_window = int(self.params.get("lookback", 14))
+            breakout_window = int(self.params.get("breakout_window", 20))
+            score_scale = float(self.params.get("threshold", 3.0))
+
+            if len(df) < max(atr_window, breakout_window) + 2: continue
+
+            high = df['High']
+            low = df['Low']
+            close = df['Close']
+
             tr = np.maximum(high - low, np.abs(high - close.shift()), np.abs(low - close.shift()))
-            atr = tr.rolling(14).mean()
-            breakout = (close - close.rolling(20).mean()) / (atr + 1e-9)
-            scores[t] = float(np.tanh(breakout.iloc[-1] / 3))
+            atr = tr.rolling(atr_window).mean()
+            breakout = (close - close.rolling(breakout_window).mean()) / (atr + 1e-9)
+            scores[t] = float(np.tanh(breakout.iloc[-1] / score_scale))
         return scores
 
     def generate_signals(self, data_map, as_of):

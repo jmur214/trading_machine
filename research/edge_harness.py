@@ -19,6 +19,10 @@ Outputs:
 • data/research/<edge_name>_<timestamp>/report.html
 """
 
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 import argparse
 import itertools
 import json
@@ -32,6 +36,10 @@ from debug_config import is_debug_enabled, is_info_enabled
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
+import yfinance as yf
+
+# Global cache for regime data
+GLOBAL_SPY_DF = None
 
 # repo-local imports
 from backtester.backtest_controller import BacktestController
@@ -139,16 +147,45 @@ def _run_single_bt(
         for name in edge_cfg.get("active_edges", []):
             try:
                 mod = __import__(f"engines.engine_a_alpha.edges.{name}", fromlist=["*"])
-                # If the edge supports set_params(dict), call it (optional)
-                if hasattr(mod, "set_params") and edge_cfg.get("edge_params", {}).get(name):
-                    mod.set_params(edge_cfg["edge_params"][name])
-                edges[name] = mod
-            except Exception:
+                
+                # Find the class in the module that is an EdgeBase subclass
+                from engines.engine_a_alpha.edge_base import EdgeBase
+                import inspect
+                
+                edge_instance = None
+                for attr_name in dir(mod):
+                    attr = getattr(mod, attr_name)
+                    if isinstance(attr, type) and issubclass(attr, EdgeBase) and attr is not EdgeBase:
+                        edge_instance = attr()
+                        break
+                
+                if edge_instance:
+                    if edge_cfg.get("edge_params", {}).get(name):
+                        edge_instance.set_params(edge_cfg["edge_params"][name])
+                    edges[name] = edge_instance
+                else:
+                    # Fallback to module if no class found (legacy support)
+                    if hasattr(mod, "set_params") and edge_cfg.get("edge_params", {}).get(name):
+                        mod.set_params(edge_cfg["edge_params"][name])
+                    edges[name] = mod
+            except Exception as e:
+                print(f"[HARNESS][WARN] Failed to load edge {name}: {e}")
                 continue
+
+        # Load alpha config if specified in bt_cfg or env
+        # Note: We rely on the caller to provide alpha settings, but here we can try to load the production one
+        # To make this robust, let's load config/alpha_settings.prod.json if it exists, else alpha_settings.json
+        alpha_config_path = "config/alpha_settings.prod.json"
+        if not os.path.exists(alpha_config_path):
+            alpha_config_path = "config/alpha_settings.json"
+        
+        with open(alpha_config_path, "r") as f:
+            alpha_config = json.load(f)
 
         alpha = AlphaEngine(
             edges=edges,
             edge_weights=edge_cfg.get("edge_weights", {}),
+            config=alpha_config,
             debug=False,
         )
 
@@ -171,12 +208,24 @@ def _run_single_bt(
         )
 
         history = controller.run(start, end)
-
+        
+        # New CockpitLogger writes to {tmp_dir}/{run_id}/portfolio_snapshots.csv
+        # We need to find the run_id folder
+        subdirs = [d for d in os.listdir(tmp_dir) if os.path.isdir(os.path.join(tmp_dir, d))]
+        run_dir = tmp_dir
+        for d in subdirs:
+            candidate = os.path.join(tmp_dir, d)
+            if os.path.exists(os.path.join(candidate, "portfolio_snapshots.csv")):
+                run_dir = candidate
+                break
+        else:
+            run_dir = tmp_dir # Fallback
+            
         # Load snapshots/trades directly from logger outputs
         from cockpit.metrics import PerformanceMetrics
         pm = PerformanceMetrics(
-            snapshots_path=os.path.join(tmp_dir, "portfolio_snapshots.csv"),
-            trades_path=os.path.join(tmp_dir, "trades.csv"),
+            snapshots_path=os.path.join(run_dir, "portfolio_snapshots.csv"),
+            trades_path=os.path.join(run_dir, "trades.csv"),
         )
         snaps = pm.snapshots.copy() if pm.snapshots is not None else pd.DataFrame()
         trades = pm.trades.copy() if pm.trades is not None else pd.DataFrame()
@@ -301,6 +350,22 @@ def _run_single_bt(
         return pd.DataFrame(), pd.DataFrame(), {"error": str(e)}
 
 
+def _augment_with_regime(snaps: pd.DataFrame) -> pd.DataFrame:
+    if GLOBAL_SPY_DF is None or snaps.empty:
+        return snaps
+    try:
+        df = snaps.copy()
+        # Normalize to date for merging
+        df['date'] = pd.to_datetime(df['timestamp']).dt.normalize()
+        spy_subset = GLOBAL_SPY_DF[['is_bull', 'is_high_vol']].copy()
+        if spy_subset.empty: return snaps
+        spy_subset.index = pd.to_datetime(spy_subset.index).normalize()
+        # Merge left to keep all snaps rows
+        return df.merge(spy_subset, left_on='date', right_index=True, how='left')
+    except Exception:
+        return snaps
+
+
 def _summarize(snaps: pd.DataFrame, trades: pd.DataFrame) -> Dict[str, Any]:
     """
     Keep this function consistent with dashboard metrics logic (sanity-capped MDD, SR, etc.).
@@ -313,6 +378,10 @@ def _summarize(snaps: pd.DataFrame, trades: pd.DataFrame) -> Dict[str, Any]:
         "vol_pct": np.nan,
         "win_rate_pct": np.nan,
         "trades": int(trades.shape[0]) if trades is not None else 0,
+        "sharpe_bull": np.nan,
+        "sharpe_bear": np.nan,
+        "sharpe_high_vol": np.nan,
+        "sharpe_low_vol": np.nan,
     }
     if snaps is None or snaps.empty:
         return out
@@ -340,6 +409,33 @@ def _summarize(snaps: pd.DataFrame, trades: pd.DataFrame) -> Dict[str, Any]:
     if not rets.empty and rets.std() > 0:
         out["sharpe"] = (rets.mean() / rets.std()) * np.sqrt(252.0)
         out["vol_pct"] = rets.std() * np.sqrt(252.0) * 100.0
+    
+    # --- Regime Specific Stats ---
+    try:
+        reg_df = _augment_with_regime(snaps)
+        if 'is_bull' in reg_df.columns:
+            # Bull
+            bull = reg_df[reg_df['is_bull'] == True]
+            if len(bull) > 20:
+                rb = bull['equity'].pct_change().dropna()
+                if rb.std() > 0: out['sharpe_bull'] = (rb.mean() / rb.std()) * np.sqrt(252.0)
+            # Bear
+            bear = reg_df[reg_df['is_bull'] == False]
+            if len(bear) > 20:
+                rb = bear['equity'].pct_change().dropna()
+                if rb.std() > 0: out['sharpe_bear'] = (rb.mean() / rb.std()) * np.sqrt(252.0)
+            # High Vol
+            hv = reg_df[reg_df['is_high_vol'] == True]
+            if len(hv) > 20:
+                rb = hv['equity'].pct_change().dropna()
+                if rb.std() > 0: out['sharpe_high_vol'] = (rb.mean() / rb.std()) * np.sqrt(252.0)
+            # Low Vol
+            lv = reg_df[reg_df['is_high_vol'] == False]
+            if len(lv) > 20:
+                rb = lv['equity'].pct_change().dropna()
+                if rb.std() > 0: out['sharpe_low_vol'] = (rb.mean() / rb.std()) * np.sqrt(252.0)
+    except Exception:
+        pass
 
     if trades is not None and not trades.empty and "pnl" in trades.columns:
         realized = trades.dropna(subset=["pnl"])
@@ -347,7 +443,7 @@ def _summarize(snaps: pd.DataFrame, trades: pd.DataFrame) -> Dict[str, Any]:
             out["win_rate_pct"] = 100.0 * (realized["pnl"] > 0).sum() / len(realized)
 
     # Ensure all keys present with np.nan if missing
-    required_keys = ["total_return_pct", "cagr_pct", "max_drawdown_pct", "sharpe", "vol_pct", "win_rate_pct", "trades"]
+    required_keys = ["total_return_pct", "cagr_pct", "max_drawdown_pct", "sharpe", "vol_pct", "win_rate_pct", "trades", "sharpe_bull", "sharpe_bear"]
     for key in required_keys:
         if key not in out:
             out[key] = np.nan
@@ -398,6 +494,39 @@ def run_harness(spec: HarnessSpec) -> Path:
         bt_cfg = json.load(f)
     with open(spec.risk_config_path, "r") as f:
         risk_cfg = json.load(f)
+
+    # Pre-fetch SPY data for regime detection (Regime-Aware Harness)
+    global GLOBAL_SPY_DF
+    if GLOBAL_SPY_DF is None:
+        try:
+            if is_info_enabled("HARNESS"): print("[HARNESS] Fetching SPY data for Regime-Aware metrics...")
+            spy_raw = yf.download("SPY", period="10y", progress=False, auto_adjust=True) 
+            if not spy_raw.empty:
+                if isinstance(spy_raw.columns, pd.MultiIndex):
+                    spy_raw.columns = spy_raw.columns.get_level_values(0)
+                
+                # 1. Trend (SMA200)
+                spy_raw['SMA200'] = spy_raw['Close'].rolling(200).mean()
+                spy_raw['is_bull'] = spy_raw['Close'] > spy_raw['SMA200']
+                
+                # 2. Volatility (ATR approx using simple TR)
+                high = spy_raw['High']
+                low = spy_raw['Low']
+                close = spy_raw['Close']
+                # Vectorized TR (High-Low, High-PreClose, Low-PreClose)
+                tr0 = abs(high - low)
+                tr1 = abs(high - close.shift())
+                tr2 = abs(low - close.shift())
+                tr = pd.concat([tr0, tr1, tr2], axis=1).max(axis=1)
+                
+                atr = tr.rolling(14).mean()
+                vol_75 = atr.rolling(252).quantile(0.75)
+                spy_raw['is_high_vol'] = atr > vol_75
+                
+                GLOBAL_SPY_DF = spy_raw
+                if is_info_enabled("HARNESS"): print(f"[HARNESS] SPY data cached. Rows: {len(spy_raw)}")
+        except Exception as e:
+            print(f"[HARNESS][WARN] Failed to fetch SPY for regime metrics: {e}")
 
     results: List[Dict[str, Any]] = []
     combos = _grid_iter(spec.param_grid)
@@ -507,7 +636,8 @@ def run_harness(spec: HarnessSpec) -> Path:
     expected_cols = [
         "edge", "combo_idx", "wf_idx", "start", "end",
         "total_return_pct", "cagr_pct", "max_drawdown_pct",
-        "sharpe", "vol_pct", "win_rate_pct", "trades", "error"
+        "sharpe", "vol_pct", "win_rate_pct", "trades", "error",
+        "sharpe_bull", "sharpe_bear", "sharpe_high_vol", "sharpe_low_vol"
     ]
     for col in expected_cols:
         if col not in df.columns:

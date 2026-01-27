@@ -290,6 +290,17 @@ class AlphaEngine:
                 if is_info_enabled() or is_debug_enabled("ALPHA"):
                     print(f"[ALPHA][DEBUG] Failed to import news_sentiment_boost: {e}")
 
+        # Registers News Sentiment Edge (Phase 15) - Always Active
+        try:
+            ns = importlib.import_module("engines.engine_a_alpha.edges.news_sentiment_edge")
+            self.edges.setdefault("news_sentiment_edge", ns.NewsSentimentEdge)
+            if is_info_enabled() or is_debug_enabled("ALPHA"):
+                print(f"[ALPHA][INFO] Registered edge: news_sentiment_edge")
+        except Exception as e:
+            if is_debug_enabled("ALPHA"):
+                print(f"[ALPHA][WARN] Could not register news_sentiment_edge: {e}")
+
+
         # 3️⃣ Print out all loaded edges for confirmation
         if is_info_enabled() or is_debug_enabled("ALPHA"):
             print(f"[ALPHA][INFO] Active edges after init: {list(self.edges.keys())}")
@@ -316,6 +327,24 @@ class AlphaEngine:
             self._cfg_source = str(cfg_file)
             if is_debug_enabled("ALPHA"):
                 print(f"[ALPHA][CONFIG] Loaded from file: {cfg_file}")
+
+        # --- APPLY EDGE PARAMS FROM CONFIG ---
+        edge_params = cfg_raw.get("edge_params", {})
+        for edge_name, edge_instance in self.edges.items():
+            # Check edge_name directly or edge_id
+            # Edge naming is tricky (key in dict vs EDGE_ID attr)
+            # Try to match key first
+            params = edge_params.get(edge_name)
+            
+            # If edge has .EDGE_ID, check that too
+            if not params and hasattr(edge_instance, "EDGE_ID"):
+                params = edge_params.get(edge_instance.EDGE_ID)
+                
+            if params and hasattr(edge_instance, "set_params"):
+                if is_info_enabled():
+                    print(f"[ALPHA][INFO] Setting params for {edge_name}: {params}")
+                edge_instance.set_params(params)
+
 
         # Build AlphaConfig from JSON (with sensible defaults)
         regime = RegimeSettings(
@@ -374,6 +403,7 @@ class AlphaEngine:
             min_edge_contribution=self.cfg.min_edge_contribution,
         )
 
+
         # 5️⃣ Ensure at least the default edges are available if none were supplied
         if not self.edges:
             try:
@@ -390,6 +420,8 @@ class AlphaEngine:
                     print(f"[ALPHA][WARN] Could not import default edge xsec_momentum: {e}")
             if is_info_enabled() or is_debug_enabled("ALPHA"):
                 print(f"[ALPHA][INFO] Default edges in use: {list(self.edges.keys())}")
+
+
 
         # State for cooldown & last known side per ticker
         self._last_side: Dict[str, Optional[str]] = {}
@@ -450,6 +482,34 @@ class AlphaEngine:
 
     # ------------------------------------------------------------------ #
 
+    # ------------------------------------------------------------------ #
+
+    def _get_spy_history(self, now: pd.Timestamp, data_map: Optional[Dict[str, pd.DataFrame]] = None) -> pd.DataFrame:
+        """Helper to get SPY/Benchmark history for Regime Detection.
+        Prioritizes data_map['SPY'] if available (Backtest mode).
+        Falls back to yfinance download (Live mode).
+        """
+        # 1. Backtest / DataMap path
+        if data_map and "SPY" in data_map:
+            spy = data_map["SPY"]
+            # Slice up to 'now' (inclusive) to prevent lookahead
+            return spy.loc[:now]
+
+        # 2. Live Download path
+        try:
+            import yfinance as yf
+            end_str = now.strftime("%Y-%m-%d")
+            # Fetch enough history for SMA200
+            start_date = (now - pd.Timedelta(days=400)).strftime("%Y-%m-%d")
+            df = yf.download("SPY", start=start_date, end=end_str, progress=False, auto_adjust=True)
+            if df.empty:
+                return pd.DataFrame()
+            return df
+        except Exception as e:
+            if is_debug_enabled("ALPHA"):
+                print(f"[ALPHA][WARN] Failed to fetch SPY for regime: {e}")
+            return pd.DataFrame()
+
     def generate_signals(
         self,
         data_map: Dict[str, pd.DataFrame],
@@ -475,6 +535,23 @@ class AlphaEngine:
         if is_debug_enabled("ALPHA"):
             print(f"[ALPHA][TRACE] Entered generate_signals() with tickers={list(data_map.keys())} at {now}")
         
+        # ----------------------------------------------------------------
+        # 🧠 COGNITIVE GOVERNOR: Detect Regime
+        # ----------------------------------------------------------------
+        from engines.engine_d_research.regime_detector import RegimeDetector
+        regime_meta = {"regime": "unknown", "trend": "unknown", "volatility": "unknown"}
+        
+        try:
+            spy_df = self._get_spy_history(now, data_map)
+            if not spy_df.empty:
+                detector = RegimeDetector()
+                regime_meta = detector.detect_regime(spy_df)
+                if is_debug_enabled("ALPHA"):
+                    print(f"[ALPHA][COGNITION] Market State: {regime_meta['regime']} (Trend={regime_meta['trend']}, Vol={regime_meta['volatility']})")
+        except Exception as e:
+            if is_debug_enabled("ALPHA"):
+                print(f"[ALPHA][WARN] Cognition Error: {e}")
+
         # Normalize incoming data from any source (Alpaca, yfinance, CSV)
         data_map = {t: self._normalize_dataframe(df) for t, df in data_map.items()}
 
@@ -504,7 +581,7 @@ class AlphaEngine:
         # 2) Process: normalize, regime-gate, shrinkage, hygiene checks
         if is_debug_enabled("ALPHA"):
             print(f"[ALPHA][TRACE] Beginning signal processing for {len(raw_scores)} tickers")
-        proc = self.processor.process(data_map, now, raw_scores)
+        proc = self.processor.process(data_map, now, raw_scores, regime_meta=regime_meta)
         if is_debug_enabled("ALPHA"):
             print(f"[ALPHA][TRACE] Processor output size={len(proc) if proc else 0}")
         # --- Fallback: if processor yields nothing but we have raw_scores, build a minimal proc ---
@@ -580,10 +657,21 @@ class AlphaEngine:
                 strength = 0.0
 
             # Ensure we skip signals with non-positive strength (prevents empty backtest output)
-            if side is None or strength <= 0:
+            # FIX: "Bagholder Bug" - If we have a position (tracked by _last_side) but signal is weak,
+            # we MUST emit a signal (side="none") so RiskEngine sees it and can exit.
+            is_weak = (side is None or strength <= 0)
+            was_active = (self._last_side.get(ticker) is not None)
+            
+            if is_weak and not was_active:
                 if self.cfg.debug and (self._debug_env or is_debug_enabled("ALPHA")):
                     print(f"[ALPHA][DEBUG] Dropping {ticker} at {now} agg={agg:.4f} (below enter_threshold={self.cfg.enter_threshold})")
                 continue
+            elif is_weak and was_active:
+                # Signal has faded, but we were active. Send explicit "none" (neutral) signal.
+                side = "none"
+                strength = 0.0
+                if self.cfg.debug and (self._debug_env or is_debug_enabled("ALPHA")):
+                    print(f"[ALPHA][DEBUG] Fading {ticker} at {now} (agg={agg:.4f}). Sending neutral signal to trigger exit.")
 
             self._update_flip_state(ticker, side, now)
 
@@ -631,11 +719,54 @@ class AlphaEngine:
                 "meta": {
                     "edges_triggered": edges_triggered,
                     "regimes": regimes,
+                    "market_state": regime_meta, # COGNITION INJECTION
                 },
             })
 
         if is_debug_enabled("ALPHA"):
             print(f"[ALPHA][TRACE] Built {len(signals)} pre-governor signals at {now}")
+            
+        # ----------------------------------------------------------------
+        # ----------------------------------------------------------------
+        # 🤖 AI SIGNAL GATING (Integrated ML)
+        # ----------------------------------------------------------------
+        # 1. Try to load ML Predictor
+        # In a real production system, this would be loaded once in __init__
+        # For this MVP, we lazy-load or assume it's available if trained.
+        
+        try:
+            # We check if a model exists. If so, we use it to filter/boost signals.
+            from engines.engine_a_alpha.ml_predictor import MLPredictor
+            ml_model_path = "data/models/rf_model.pkl"
+            
+            if os.path.exists(ml_model_path) and signals:
+                predictor = MLPredictor(model_path=ml_model_path)
+                
+                for sig in signals:
+                    tkr = sig["ticker"]
+                    if tkr in data_map:
+                        prob_up = predictor.predict(data_map[tkr])
+                        
+                        # AI Logic:
+                        # If Signal is LONG but ML says Prob(Up) < 45%, CUT IT.
+                        if sig["side"] == "long" and prob_up < 0.45:
+                            sig["strength"] *= 0.5
+                            sig["meta"]["ml_confidence"] = f"LOW ({prob_up:.2f})"
+                        
+                        # If Signal is LONG and ML says Prob(Up) > 60%, BOOST IT.
+                        elif sig["side"] == "long" and prob_up > 0.60:
+                            sig["strength"] = min(1.0, sig["strength"] * 1.2)
+                            sig["meta"]["ml_confidence"] = f"HIGH ({prob_up:.2f})"
+                        else:
+                            sig["meta"]["ml_confidence"] = f"NEUTRAL ({prob_up:.2f})"
+                            
+        except Exception as e:
+            if is_debug_enabled("ALPHA"):
+                print(f"[ALPHA][ML] Inference skipped: {e}")
+
+        # Legacy hook (kept for backward compat)
+        if hasattr(self, "signal_gate"):
+            signals = self.signal_gate.predict(signals, data_map)
 
         # Governor adjustment (if present)
         if self.governor and signals:

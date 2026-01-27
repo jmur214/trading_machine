@@ -13,3 +13,4 @@ config/alpaca_keys.json
 # Logs and data
 data/
 logs/
+.aider*

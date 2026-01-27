@@ -19,3 +19,6 @@ alpaca-py
 psutil
 pytest # for testing
 # pipx install aider-ce
+urllib3>=1.26.18
+dash>=2.13.0
+plotly>=5.17.0

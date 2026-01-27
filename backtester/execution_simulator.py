@@ -9,6 +9,7 @@ from debug_config import is_debug_enabled, is_info_enabled
 import os
 import numpy as np
 
+from engines.execution.slippage_model import get_slippage_model, SlippageModel
 
 # ------------------------------- Config -------------------------------- #
 
@@ -17,7 +18,9 @@ class ExecParams:
     """
     Execution simulation knobs.
 
-    slippage_bps     : per-side bps slippage added to fills
+    slippage_bps     : per-side bps slippage added to fills (base)
+    slippage_model   : "fixed" or "volatility"
+    vol_lookback     : lookback window for volatility calc
     commission       : per-fill commission (flat)
     gap_warn         : print a warning if next open differs from prev close by > this fraction
     prefer_close_fallback: if next Open is missing/invalid, fall back to Close
@@ -26,6 +29,8 @@ class ExecParams:
                            optimistic bias when bar path is unknown.
     """
     slippage_bps: float = 10.0
+    slippage_model: str = "fixed"
+    vol_lookback: int = 20
     commission: float = 0.0
     gap_warn: float = 0.50
     prefer_close_fallback: bool = True
@@ -54,6 +59,8 @@ class ExecutionSimulator:
 
     def __init__(self,
                  slippage_bps: float = 10.0,
+                 slippage_model: str = "fixed",
+                 vol_lookback: int = 20,
                  commission: float = 0.0,
                  gap_warn: float = 0.50,
                  prefer_close_fallback: bool = True,
@@ -61,12 +68,21 @@ class ExecutionSimulator:
                  verbose: bool = True):
         self.params = ExecParams(
             slippage_bps=float(slippage_bps),
+            slippage_model=str(slippage_model),
+            vol_lookback=int(vol_lookback),
             commission=float(commission),
             gap_warn=float(gap_warn),
             prefer_close_fallback=bool(prefer_close_fallback),
             conservative_intrabar=bool(conservative_intrabar),
             verbose=bool(verbose),
         )
+        
+        # Initialize the slippage model
+        self.model: SlippageModel = get_slippage_model({
+            "model_type": self.params.slippage_model,
+            "slippage_bps": self.params.slippage_bps,
+            "vol_lookback": self.params.vol_lookback
+        })
 
     # ---------------------------- internals ---------------------------- #
 
@@ -78,15 +94,10 @@ class ExecutionSimulator:
         if self.params.verbose and is_info_enabled("EXEC"):
             print(msg)
 
-    def _apply_slippage(self, price: float, side: str) -> float:
-        """Apply per-side bps slippage to a *paid/received* price."""
-        slip = price * (self.params.slippage_bps / 10_000.0)
-        s = str(side).lower()
-        if s in ("long", "buy", "cover"):   # paying (for buys / buy-to-cover)
-            return price + slip
-        if s in ("short", "sell", "exit"):  # receiving (for sells / sell-to-close)
-            return price - slip
-        return price
+    def _apply_slippage(self, price: float, side: str, ticker: str, bar_data: Any) -> float:
+        """Delegate to SlippageModel."""
+        bps = self.model.calculate_slippage_bps(ticker, bar_data, side)
+        return self.model.apply_slippage(price, bps, side)
 
     def _extract_bar_prices(self, bar_like: Any) -> Dict[str, float]:
         """
@@ -181,7 +192,9 @@ class ExecutionSimulator:
                 self._log_info(f"[WARN][EXEC] Gap > {self.params.gap_warn:.0%} on {ticker}: "
                                f"prev={prev:.4f}, open={raw:.4f} ({gap:.1%})")
 
-        traded = self._apply_slippage(raw, side)
+        # Apply slippage using the model
+        traded = self._apply_slippage(raw, side, ticker, next_bar_like)
+        
         fill = {
             "ticker": ticker,
             "side": side,
@@ -295,7 +308,9 @@ class ExecutionSimulator:
 
         # For stops/targets we model fill at the *level* (then add slippage).
         paid_side = "sell" if is_long else "buy"
-        px = self._apply_slippage(level, paid_side)
+        
+        # Apply slippage using the model
+        px = self._apply_slippage(level, paid_side, ticker, bar_like)
 
         fill = {
             "ticker": ticker,
