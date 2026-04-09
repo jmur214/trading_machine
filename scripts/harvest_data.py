@@ -1,6 +1,12 @@
 import pandas as pd
 import numpy as np
+import sys
+import os
 from pathlib import Path
+
+# Add project root to path
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from scripts.run_backtest import run_backtest_logic
 from engines.engine_d_research.learning.signal_gate import SignalGate
 

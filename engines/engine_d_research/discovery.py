@@ -1,7 +1,8 @@
-
 from __future__ import annotations
 import random
 import yaml
+import pandas as pd
+import logging
 from pathlib import Path
 from typing import List, Dict, Any, TypeVar, Type
 
@@ -10,6 +11,11 @@ from engines.engine_a_alpha.edge_template import EdgeTemplate
 from engines.engine_a_alpha.edges.rsi_bounce import RSIBounceEdge
 from engines.engine_a_alpha.edges.fundamental_value import ValueTrapEdge
 from engines.engine_a_alpha.edges.fundamental_ratio import FundamentalRatioEdge
+from engines.engine_a_alpha.edges.rule_based_edge import RuleBasedEdge
+
+# Research Modules
+from engines.engine_d_research.tree_scanner import DecisionTreeScanner
+from engines.engine_d_research.feature_engineering import FeatureEngineer
 
 class DiscoveryEngine:
     """
@@ -29,6 +35,74 @@ class DiscoveryEngine:
             ValueTrapEdge,
             FundamentalRatioEdge
         ]
+
+    def hunt(self, data_map: Dict[str, pd.DataFrame]) -> List[Dict[str, Any]]:
+        """
+        Phase 2 Core: The "Hunter".
+        1. Calculate Features for all data.
+        2. Run TreeScanner to find patterns.
+        3. Convert Rules -> RuleBasedEdge Candidates.
+        """
+        logger = logging.getLogger("DISCOVERY")
+        
+        # 1. Feature Prep
+        fe = FeatureEngineer()
+        scanner = DecisionTreeScanner(max_depth=4, min_prob=0.55)
+        
+        # We need a massive DataFrame of ALL tickers to find universal patterns
+        # Note: This is memory intensive. In prod, we might sample or use Dask.
+        
+        all_dfs = []
+        for ticker, df in data_map.items():
+            if df.empty: continue
+            
+            # Compute Features (if not already present)
+            # Check if features exist to avoid re-compute? 
+            # For now, safe compute
+            f_df = fe.compute_all_features(df, pd.DataFrame()) 
+            
+            # Add Targets
+            t_df = scanner.generate_targets(f_df)
+            t_df["ticker"] = ticker # Keep track for debugging
+            
+            all_dfs.append(t_df)
+            
+        if not all_dfs:
+            return []
+            
+        big_data = pd.concat(all_dfs).reset_index(drop=True)
+        logger.info(f"Hunting on {len(big_data)} rows of data...")
+        
+        # 2. Scan
+        rules = scanner.scan(big_data, target_col="Target")
+        
+        # 3. Convert to Candidates
+        candidates = []
+        
+        for r in rules:
+            # Hash rule string to get ID
+            import hashlib
+            rule_hash = hashlib.md5(r["rule_string"].encode()).hexdigest()[:8]
+            cand_id = f"hunter_{rule_hash}"
+            
+            spec = {
+                "edge_id": cand_id,
+                "module": RuleBasedEdge.__module__,
+                "class": RuleBasedEdge.__name__,
+                "category": "discovered_rule",
+                "params": {
+                    "rule_string": r["rule_string"],
+                    "target_class": r["target_class"],
+                    "probability": r["probability"],
+                    "description": f"Target {r['target_name']} ({r['probability']:.1%})"
+                },
+                "status": "candidate",
+                "version": "1.0.0-auto",
+                "origin": "tree_scanner"
+            }
+            candidates.append(spec)
+            
+        return candidates
 
     def generate_candidates(self, n_mutations: int = 5) -> List[Dict[str, Any]]:
         """
@@ -83,7 +157,10 @@ class DiscoveryEngine:
             elif rand < 0.20: # 10% chance of Market Neutral
                 direction = "market_neutral"
                 candidate_id += "_neutral"
-
+                
+            # Create a dummy probability for the params structure if needed, or stick to genome
+            # RuleBasedEdge needs "rule_string", composite uses "genes"
+            
             spec = {
                 "edge_id": candidate_id,
                 "module": CompositeEdge.__module__,
@@ -187,6 +264,21 @@ class DiscoveryEngine:
                 
         return gene
 
+    def get_queued_candidates(self, status: str = "candidate") -> List[Dict[str, Any]]:
+        """
+        Retrieve candidates from registry that are ready for validation.
+        """
+        if not self.registry_path.exists():
+            return []
+            
+        try:
+            data = yaml.safe_load(self.registry_path.read_text())
+            edges = data.get("edges", [])
+            return [e for e in edges if e.get("status") == status]
+        except Exception as e:
+            print(f"[DISCOVERY] Error reading registry: {e}")
+            return []
+
     def save_candidates(self, candidates: List[Dict[str, Any]]) -> None:
         """
         Append candidates to the active edges.yml (or a separate staging registry).
@@ -208,18 +300,21 @@ class DiscoveryEngine:
         current_map = {e.get("edge_id"): e for e in existing.get("edges", [])}
         
         new_count = 0
+        update_count = 0
         for cand in candidates:
             cid = cand["edge_id"]
             if cid not in current_map:
-                current_map[cid] = cand
                 new_count += 1
+            else:
+                update_count += 1
+            current_map[cid] = cand
         
         # Write back
         final_list = list(current_map.values())
         with self.registry_path.open("w") as f:
             yaml.dump({"edges": final_list}, f, sort_keys=False)
             
-        print(f"[DISCOVERY] Registered {new_count} new candidates to {self.registry_path}")
+        print(f"[DISCOVERY] Registry saved. New: {new_count}, Updated: {update_count}. Path: {self.registry_path}")
 
     def validate_candidate(self, candidate_spec: Dict[str, Any], data_map: Dict[str, pd.DataFrame]) -> Dict[str, float]:
         """
@@ -278,24 +373,19 @@ class DiscoveryEngine:
                 return {"sharpe": 0.0, "win_rate": 0.0}
                 
             # Extract PnL curve
-            # Simple Sharpe approximation
-            equity_curve = [h["equity"] for h in history]
-            if len(equity_curve) < 2:
+            # 3. Calculate Fitness
+            if not history:
                 return {"sharpe": 0.0, "win_rate": 0.0}
                 
-            returns = pd.Series(equity_curve).pct_change().dropna()
-            if returns.std() == 0:
-                sharpe = 0.0
-                sortino = 0.0
-            else:
-                sharpe = returns.mean() / returns.std() * np.sqrt(252)
-                
-                # Sortino
-                downside = returns[returns < 0]
-                if downside.empty or downside.std() == 0:
-                     sortino = 10.0
-                else:
-                     sortino = returns.mean() / downside.std() * np.sqrt(252)
+            equity_curve = pd.Series([h["equity"] for h in history])
+            
+            # Use unified MetricsEngine
+            from engines.engine_d_research.metrics_engine import MetricsEngine
+            metrics = MetricsEngine.calculate_all(equity_curve)
+            
+            sharpe = metrics["Sharpe"]
+            sortino = metrics["Sortino"]
+            cagr = metrics["CAGR %"]
                 
             # 4. PBO Check (Optional but recommended for Tier 1)
             # We run a quick check with limited paths (e.g. 10) for speed during discovery.

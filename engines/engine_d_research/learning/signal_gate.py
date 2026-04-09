@@ -59,51 +59,57 @@ class SignalGate:
         # Momentum: Simple ROC 14
         mom_14 = (close.iloc[-1] / (close.iloc[-14] + 1e-9)) - 1.0
         
-        return np.array([[vol_20, trend_dist, mom_14]]) # Shape (1, 3)
+        # Volume: Ratio of current volume to 20-day average
+        if "Volume" in data.columns:
+            vol_curr = data["Volume"].iloc[-1]
+            vol_avg = data["Volume"].rolling(20).mean().iloc[-1]
+            vol_ratio = vol_curr / (vol_avg + 1e-9)
+        else:
+            vol_ratio = 1.0
+            
+        return np.array([[vol_20, trend_dist, mom_14, vol_ratio]]) # Shape (1, 4)
 
     def predict(self, signals, data_map):
         """
-        Filter a list of signals.
-        
-        Args:
-            signals (list): List of signal dicts from AlphaEngine
-            data_map (dict): Current market data snapshot
-            
-        Returns:
-            list: Filtered/Modified signals
+        Score a list of signals.
+        Attaches 'gate_confidence' (0.0 to 1.0) to each signal dict.
         """
         if not self.loaded:
             return signals # Pass-through if no model
             
-        approved_signals = []
+        processed_signals = []
         for sig in signals:
             ticker = sig["ticker"]
             if ticker not in data_map:
+                processed_signals.append(sig) 
                 continue
                 
             features = self.extract_features(ticker, data_map[ticker], sig)
-            if features is None or features.shape[1] != 3: # Safety check
-                approved_signals.append(sig)
+            if features is None: 
+                processed_signals.append(sig)
                 continue
+                
+            # Allow model to be robust to feature count if we retrain
+            if self.model and hasattr(self.model, "n_features_in_"):
+                if features.shape[1] != self.model.n_features_in_:
+                    # Model expects different features (e.g. old model, new code)
+                    # Pass through to avoid crash, but warn in debug
+                    processed_signals.append(sig) 
+                    continue
                 
             try:
                 # Predict Probability of Success (Class 1)
                 prob_success = self.model.predict_proba(features)[0][1]
+                sig["gate_confidence"] = float(prob_success)
                 
-                # Thresholding logic
-                # If model is < 50% confident, kill the signal
-                if prob_success > 0.5:
-                    # Optional: boost confidence if model is very sure
-                    approved_signals.append(sig)
-                else:
-                    # GATED
-                    # print(f"[AI] Rejected {ticker} signal (Prob: {prob_success:.2f})")
-                    pass
+                # We can still filter hard failures here if we want, 
+                # but better to let Risk Engine decide based on confidence.
+                if prob_success > 0.45: # Slightly lower threshold, let position sizing handle it
+                    processed_signals.append(sig)
             except Exception as e:
-                # Fallback
-                approved_signals.append(sig)
+                processed_signals.append(sig)
                 
-        return approved_signals
+        return processed_signals
 
     def train(self, X, y):
         """

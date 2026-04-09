@@ -13,8 +13,8 @@ class RiskConfig:
     """
     Risk and constraint configuration (config-driven).
     """
-    # Per-trade sizing knobs
-    risk_per_trade_pct: float = 0.01        # risk budget per trade, as % of equity
+    # Per-trade sizing knobs (Small Account Tuned)
+    risk_per_trade_pct: float = 0.025       # risk budget per trade (2.5% for small accounts to allow concentration)
     atr_stop_mult: float = 1.5              # stop distance = mult * ATR
     atr_tp_mult: float = 3.0                # take-profit distance = mult * ATR
     cap_atr_to_pct_of_price: float = 0.20   # clamp extreme ATR (e.g., 20% of price)
@@ -22,7 +22,7 @@ class RiskConfig:
     max_pos_value_pct: float = 0.30         # cap single-name notional as % of equity
     min_qty: int = 1
     round_qty: bool = True
-    min_notional: float = 50.0              # enforce minimum ticket size (USD)
+    min_notional: float = 10.0              # Lowered for fractional/small capabilities
     force_min_qty_on_signal: bool = True     # if sizing rounds to 0, optionally force 1 share when safe
 
     # Portfolio-level constraints
@@ -573,7 +573,46 @@ class RiskEngine:
                 if is_debug_enabled("RISK"): print(f"[RISK] Low Vol detected: Tightening stop to {stop_mult}x ATR")
                 
             stop_dist = max(stop_mult * atr, 1e-9)
-            risk_budget = max(0.0, float(equity) * self.cfg.risk_per_trade_pct)
+            
+            # --- Dynamic Sizing (AI Confidence) ---
+            # Default Risk (Config)
+            base_risk_pct = self.cfg.risk_per_trade_pct
+            
+            # Modifiers
+            risk_scaler = 1.0
+            
+            # 1. Gate Confidence (AI Brain)
+            gate_conf = float(signal.get("gate_confidence", 0.5))
+            if gate_conf > 0.0:
+                 # Scale: 50% prob -> 1.0x, 90% -> 1.5x?
+                 # Or: 50% is low. 
+                 # Let's say: 
+                 # 0.0-0.5: 0.0x (Should be blocked by Gate, but if not, 0 size)
+                 # 0.5-0.6: 0.5x
+                 # 0.6-0.8: 1.0x
+                 # 0.8-1.0: 1.5x
+                 if gate_conf < 0.5: risk_scaler = 0.0
+                 elif gate_conf < 0.6: risk_scaler = 0.5
+                 elif gate_conf < 0.8: risk_scaler = 1.0
+                 else: risk_scaler = 1.5
+                 
+            # 2. Strategy Strength (Raw Alpha)
+            # If gate_confidence absent, maybe use signal strength
+            elif "strength" in signal:
+                strength = float(signal.get("strength", 0.0))
+                # Map 0..1 to 0.5..1.5
+                risk_scaler = 0.5 + strength 
+            
+            adjusted_risk_pct = base_risk_pct * risk_scaler
+            
+            # Cap extreme risk (max 2x base)
+            adjusted_risk_pct = min(adjusted_risk_pct, base_risk_pct * 2.0)
+            
+            risk_budget = max(0.0, float(equity) * adjusted_risk_pct)
+            
+            if is_debug_enabled("RISK") and risk_scaler != 1.0:
+                 print(f"[RISK] Dynamic Sizing: {ticker} (Conf={gate_conf:.2f}) -> Scaler {risk_scaler:.2f} -> Risk {adjusted_risk_pct*100:.2f}%")
+
             if risk_budget <= 0:
                 self._fail(ticker, "non_positive_risk_budget")
                 

@@ -621,7 +621,7 @@ class DataManager:
                         timeframe=alpaca_timeframe,
                         start=start_dt,
                         end=end_dt,
-                        adjustment="raw",
+                        adjustment="split", # CRITICAL FIX: Handle splits to preserve price continuity
                         feed="iex",
                         limit=10000,
                     )

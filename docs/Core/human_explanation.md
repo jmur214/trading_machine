@@ -1,0 +1,9 @@
+# Explanations by Audience
+A. For someone who knows very little:  
+> It’s a self-learning trading system — kind of like an automated investor that studies its own past decisions. It runs trading strategies on historical market data to see what works, learns from the results, and adjusts its approach over time. It keeps track of every trade, measures performance, and then rebalances which strategies it trusts most. You can watch it all happen through a live dashboard that shows profits, losses, and how the system is improving.
+
+B. For someone who understands trading but not coding:
+> It’s an automated, data-driven portfolio manager that tests and trades multiple strategies (“edges”) at once. It runs backtests on historical data, tracks which edges make or lose money, and automatically reweights capital toward the best performers. It can trade live through Alpaca, calculate key metrics like Sharpe and drawdown, and visualize everything in a professional dashboard. Essentially, it’s like having a quant research desk, a portfolio manager, and a risk analyst all working together automatically.
+
+C. For someone who understands both trading and coding:
+> It’s a modular, self-adaptive trading framework — a full research-to-execution stack. It has separate engines for alpha generation, risk control, portfolio accounting, and edge discovery, all connected through a continuous feedback loop. Every backtest or paper session logs trades and equity, computes performance, and passes results to a “governor” that dynamically reweights strategy edges. The cockpit dashboard (built on Dash/Plotly) then visualizes equity, edge performance, correlations, and adaptive weight changes in real time. The end goal is a fully autonomous trading lab that evolves its portfolio allocation and strategies based on quantified feedback — essentially, a self-optimizing trading organism.

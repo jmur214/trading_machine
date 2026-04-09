@@ -56,9 +56,16 @@ class AutonomousEvolution:
     def run_cycle(self, n_candidates=10):
         logger.info(f"Starting Evolution Cycle at {datetime.now()}")
         
-        # 1. DISCOVER
-        candidates = self.discovery.generate_candidates(n_mutations=n_candidates)
-        logger.info(f"Generated {len(candidates)} mutant candidates.")
+        # 1. DISCOVER / LOAD
+        # First, check if the Hunter left us anything
+        candidates = self.discovery.get_queued_candidates(status="candidate")
+        
+        if candidates:
+            logger.info(f"Loaded {len(candidates)} queued candidates from Registry (Hunter/Discovery).")
+        else:
+            logger.info("No queued candidates. Activating Random Discovery...")
+            candidates = self.discovery.generate_candidates(n_mutations=n_candidates)
+            logger.info(f"Generated {len(candidates)} mutant candidates.")
         
         winners = []
         
@@ -74,14 +81,24 @@ class AutonomousEvolution:
             logger.info(f"   > Metrics: Sharpe={sharpe:.2f} | Sortino={sortino:.2f} | Survival={survival*100:.0f}%")
             
             # Gating Logic (Tier 1 Filters)
-            if sharpe < 0.8:
-                logger.info("   > REJECTED: Low Sharpe")
-                continue
-            if sortino < 1.0: # Want upside potential
-                logger.info("   > REJECTED: Low Sortino (No Skyrocket potential)")
-                continue
-            if survival < 0.5: # 50% survival in parallel universes (start lenient)
-                logger.info("   > REJECTED: Failed Robustness Check (Overfit)")
+            passed = True
+            rejection_reason = ""
+            
+            if sharpe < 0.5: # Lowered slightly for 'potential'
+                passed = False; rejection_reason = "Low Sharpe"
+            elif sortino < 0.8: 
+                passed = False; rejection_reason = "Low Sortino"
+            elif survival < 0.4:
+                passed = False; rejection_reason = "Failed Robustness"
+            
+            if not passed:
+                logger.info(f"   > REJECTED: {rejection_reason}")
+                # Update registry to 'failed' so we don't loop forever
+                cand["status"] = "failed"
+                # We need a way to save this status update back to registry
+                # For now, we just batch update at end? 
+                # Better to update self.discovery registry. 
+                # We'll re-save the whole list at the end.
                 continue
                 
             logger.info("   > PASSED INITIAL VALIDATION. Proceeding to WFO...")
@@ -124,6 +141,10 @@ class AutonomousEvolution:
             self._promote_winners(winners)
         else:
             logger.info("No winners in this generation. Evolution is hard.")
+            
+        # 5. SAVE REGISTRY UPDATES
+        # This saves the 'failed' or 'active' status back to edges.yml
+        self.discovery.save_candidates(candidates)
             
     def _promote_winners(self, winners: list):
         """

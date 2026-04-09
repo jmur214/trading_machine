@@ -32,7 +32,8 @@ def run_backtest_logic(
     override_start=None,
     override_end=None,
     override_params=None,  # Dict for injecting optimizer params e.g. {"lookback": 20}
-    exact_edge_ids=None    # List of edge_ids to load exclusively (Isolation Mode)
+    exact_edge_ids=None,    # List of edge_ids to load exclusively (Isolation Mode)
+    override_capital=None
 ):
     """
     Programmatic entry point for running a backtest.
@@ -65,6 +66,7 @@ def run_backtest_logic(
     # allow overrides
     if override_start: cfg_bt["start_date"] = override_start
     if override_end: cfg_bt["end_date"] = override_end
+    if override_capital: cfg_bt["initial_capital"] = override_capital
     
     start = cfg_bt.get("start_date", "2024-01-01")
     end = cfg_bt.get("end_date", "2024-01-01")
@@ -319,6 +321,8 @@ def main():
                         help="Use dev or prod configuration set")
     parser.add_argument("--mode", choices=["sandbox", "prod"], default="prod",
                         help="Run mode to separate data paths")
+    parser.add_argument("--capital", type=float, default=None, 
+                        help="Override initial capital (e.g. 5000)")
     args = parser.parse_args()
 
     # Call the logic function
@@ -327,7 +331,8 @@ def main():
         mode=args.mode,
         fresh=args.fresh,
         no_governor=args.no_governor,
-        alpha_debug=args.alpha_debug
+        alpha_debug=args.alpha_debug,
+        override_capital=args.capital
     )
     
     print("\nPerformance Summary")

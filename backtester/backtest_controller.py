@@ -161,6 +161,16 @@ class BacktestController:
 
         self.cfg = bt_params or BacktestParams()
         self.batch_flush_interval = batch_flush_interval
+        
+        # Load Signal Gate (AI Brain)
+        try:
+             from engines.engine_d_research.learning.signal_gate import SignalGate
+             self.signal_gate = SignalGate()
+             self.signal_gate.load()
+        except Exception as e:
+             if is_debug_enabled("BACKTEST_CONTROLLER"):
+                 print(f"[BACKTEST] Could not load SignalGate: {e}")
+             self.signal_gate = None
 
     # ------------------------------ logging helpers --------------------------- #
     def _log_fill_compat(self, fill: dict, ts):
@@ -443,6 +453,21 @@ class BacktestController:
 
                 if self.cfg.verbose and is_debug_enabled("BACKTEST_CONTROLLER"):
                     print(f"[DEBUG][{ts}] Generated signals: {signals}")
+
+                # [SIGNAL GATE] AI Filter based on trained regime model
+                # This applies "learned" wisdom to block bad signals
+                if hasattr(self, "signal_gate") and self.signal_gate and signals:
+                     try:
+                         # We need a data interface for the gate. It expects {ticker: dataframe_history}
+                         # slice_map is exactly that.
+                         filtered_signals = self.signal_gate.predict(signals, slice_map)
+                         if len(filtered_signals) < len(signals):
+                             if is_debug_enabled("BACKTEST_CONTROLLER"):
+                                 print(f"[SIGNAL_GATE] Blocked {len(signals) - len(filtered_signals)} signals at {ts}")
+                         signals = filtered_signals
+                     except Exception as e:
+                         pass # Fail open if gate errors
+
 
                 # [BAGHOLDER FIX] Data Gap Protection
                 # If we hold a position but data is missing today, AlphaEngine didn't see it (likely).

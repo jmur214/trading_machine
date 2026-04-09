@@ -1,0 +1,9 @@
+{
+    "mode": "mean_variance",
+    "target_volatility": 0.15,
+    "max_weight": 0.20,
+    "min_weight": -0.10,
+    "rebalance_threshold": 0.05,
+    "vol_lookback": 60,
+    "cost_penalty_bps": 10
+}

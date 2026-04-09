@@ -5,12 +5,26 @@ __pycache__/
 *.pyd
 *.DS_Store
 .venv/
+.pytest_cache/
 
-# Local configs
+# IDE
+.vscode/
+.idea/
+
+# Local configs & secrets
 .env
+.env.*
 config/alpaca_keys.json
 
-# Logs and data
+# Logs and runtime data
 data/
 logs/
+evolution.log
+storage/*.json
+storage/*.csv
+
+# Aider
 .aider*
+
+# Archived info
+Archive/
