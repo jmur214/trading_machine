@@ -1,5 +1,7 @@
 # System Core Functional Blueprint
 
+> **This document describes how each engine works TODAY in the actual code.** For the target design (what each engine *should* do after refactoring), see `engine_charters.md`. The gap between these two files represents the refactoring work remaining.
+
 *This document rigorously maps the exact high-level business rules and functional logic of each core engine, completely separated from their low-level code implementation.*
 
 ## Engine A: Alpha Generation (The Brain)

@@ -21,19 +21,44 @@ The system is built on four core pillars:
    - Manages strict stop-loss, take-profit rules, and portfolio exposure limits.
 
 3. **Engine C: Portfolio Management (The Accountant)**
-   - Manages portfolio "Sleeves", breaking the single custodial account into virtual sub-accounts (e.g., specialized equity, fixed-income, or core/satellite sleeves) that can be tracked and managed independently. This enables specialized, concurrent management of different assets, specialized accounting, and independent rebalancing.
+   - *Planned:* Will manage portfolio "Sleeves", breaking the single custodial account into virtual sub-accounts (e.g., specialized equity, fixed-income, or core/satellite sleeves) that can be tracked and managed independently. This will enable specialized, concurrent management of different assets, specialized accounting, and independent rebalancing.
    - Keeps track of global account balance, equity, realized/unrealized P&L, and position states.
    - Does *not* generate signals or place orders; strictly manages the holistic portfolio picture.
 
-4. **Engine D: Strategy Governor (The Meta-Brain)**
-   - Tracks the performance of every edge (Sharpe, Max Drawdown, Win Rate).
-   - Dynamically reweighs capital allocation and more importantly, decides which edges should be active and which should be inactive as well as retires edges based on recent performance and market regimes. For instance, if the "Mean Reversion" edge stops working in a trending market, the Governor removes capital from it and routes it to an edge that *is* working.
-   - Creates a continuous learning loop where the system adapts to what is currently working.
+4. **Engine D: Strategy Governor & Research (The Meta-Brain)**
+   - **Governance:** Tracks the performance of every edge (Sharpe, Max Drawdown, Win Rate). Dynamically reweighs capital allocation and decides which edges should be active, inactive, or retired based on recent performance and market regimes. For instance, if the "Mean Reversion" edge stops working in a trending market, the Governor removes capital from it and routes it to an edge that *is* working.
+   - **Discovery & Evolution:** Autonomously hunts for new edges via Decision Tree scanning and genetic programming (composite "genome" mutation). Validates candidates through walk-forward optimization and robustness testing (Probability of Backtest Overfitting).
+   - **Research Infrastructure:** Provides centralized metrics computation (Sharpe, Sortino, Calmar, VaR, Kelly), feature engineering for ML models, and a time-decay scoring system for ranking edges across research runs.
+   - **Regime Detection:** Houses the current `RegimeDetector` (trend + volatility classification via SMA/ATR on SPY). This functionality is planned to eventually graduate into its own Engine E.
+   - Creates a continuous, autonomous learning loop where the system discovers, validates, adapts, and evolves.
 
 ## Supporting Infrastructure & Ecosystem
 While the 4 Engines govern trading logic, the broader system heavily relies on:
 - **Data Ingestion & Management:** Standardizes external market/alternative data into clean, highly optimized formats (e.g., Parquet).
 - **The Backtester:** A rigorous, high-fidelity historical simulator that replays data to validate edge hypotheses, built with strict cross-validation guardrails to prevent overfitting.
+
+## Orchestration Layer
+The `ModeController` (`orchestration/mode_controller.py`) binds the engines together. It allows the exact same logic pipeline to run in:
+- **Backtest Mode:** Slices data bar-by-bar locally.
+- **Paper Mode:** Streams data via websockets and simulates execution.
+- **Live Mode:** Plumbs the final Portfolio engine diffs straight to Broker REST APIs.
+
+## Planned: Engine E — Regime Intelligence
+> A 5th engine (Regime Intelligence) has been formally chartered but **not yet implemented**. It is designed to be the system's single official source of macro/environmental truth — classifying market regimes (trending, mean-reverting, high volatility, crisis) so other engines can condition their behavior. See `docs/Audit/engine_charters.md` for the full charter.
+
+## Current State
+
+| Component | Status | Notes |
+|-----------|--------|-------|
+| Engine A (Alpha) | ✅ Functional | Signal filtering may need to be loosened |
+| Engine B (Risk) | ✅ Functional | ATR sizing, exposure caps, trailing stops |
+| Engine C (Portfolio) | ✅ Functional | Ledger/Allocation wall not yet enforced |
+| Engine D (Governor & Research) | ✅ Functional | Autonomous governance + edge discovery/evolution pipeline |
+| Engine E (Regime) | 📋 Chartered | `RegimeDetector` exists in Engine D as a module; not yet a standalone engine |
+| Data Manager | ✅ Functional | Alpaca + cache + normalization |
+| Backtester | ✅ Functional | Walk-forward capable |
+| Dashboard (V2) | ✅ Functional | V1 deprecated |
+| Live Trading | ⚠️ Scaffolded | Broker interface exists, not fully tested |
 
 ## What is an Edge?
 At its core, an **Edge** is simply *a pattern that produces profitable trades*. It is not restricted to complex mathematical equations; it is a vast net of independent, real-world anomalies that can be cataloged and exploited. It is a repeatable factor that lets you consistently make money over many trades, and produces a positive expected value (EV).

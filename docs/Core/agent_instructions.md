@@ -1,7 +1,7 @@
 # Agent Instructions & Best Practices
 
 ## Operational Reminders
-- **README Updates:** Ensure `README.md` is updated anytime a new file or CLI argument is created.
+- **CLI Tracking:** Ensure `docs/Core/execution_manual.md` is updated anytime a new CLI command or argument is created or discovered.
 - **Git Commits:** Make descriptive and atomic git commits for milestone changes. 
 - **Documentation & Tracking:** 
   - Consult and update `docs/Core/ROADMAP.md` before and after major feature additions to stay aligned on forward-looking goals.
@@ -9,12 +9,20 @@
   - Log any new feature additions in `docs/Progress_Summaries/` with a timestamped file when completing a major phase.
   - The architectural documentation (`index.md` files) utilizes a hybrid approach. If you add, modify, or delete core scripts, you MUST run the documentation sync workflow via the `/6_docs_maintenance` slash command, or manually run `python scripts/sync_docs.py`. After doing so, verify that the manual qualitative summaries at the top of the `index.md` files are still accurate regarding the new code.
   - **Command Tracking (CRITICAL):** Track all aspects of using the command line in your reasoning (if commands work, fail, what they do, etc.). Most importantly, if any *new* commands are researched or utilized, they must IMMEDIATELY be added to `docs/Core/execution_manual.md`.
+- **Engine Boundaries:** Before modifying any engine's core logic, consult `docs/Audit/engine_charters.md` to understand the target authority boundaries (these charters are in-progress drafts but represent the design intent). Cross-reference with `docs/Audit/high_level-engine_function.md` to understand what the engine currently does.
 - **Environment Variables:** All secrets and API keys (e.g., Alpaca keys) must reside in `.env`. Never commit them to source control.
 
 ## System Workflows
 - **Execution Commands:** When tasked with running a subsystem, backtest, or data pipeline, do NOT guess python script pathways. Explicitly consult `docs/Core/execution_manual.md` for the exact, approved CLI execution syntax.
 - **Idea Ingestion:** If the user shares unstructured thoughts or requests brainstorming for new features, use the `docs/Core/Ideas_Pipeline/` modules to extract and evaluate those concepts before touching core logic. See `ideas_backlog.md` for the exact semantic processing rules.
 - **UI Architecture:** `cockpit/dashboard/` is an obsolete legacy directory. All active UI development, analytical tabs, and reactive callbacks must be executed exclusively within `cockpit/dashboard_v2/`.
+
+## Edge & Strategy Lifecycle
+- **Edge Registry:** All edges are tracked in `data/governor/edges.yml` with lifecycle statuses: `candidate` → `active` → `paused` → `retired`. Never manually edit edge weights in `data/governor/edge_weights.json` — the Governor manages this autonomously.
+- **Evolution Pipeline:** The system discovers → validates → promotes edges via: `DiscoveryEngine.hunt()` / `generate_candidates()` → `EdgeHarness` walk-forward testing → `EdgeResearchDB` ranking → `promote.py` to `config/edge_config.json`. Do not skip validation steps.
+- **Config Environments:** The system supports `--env dev` and `--env prod` flags. Dev and prod have separate config files (`alpha_settings.dev.json` / `alpha_settings.prod.json`, same for risk). Always specify the environment when running backtests.
+- **Debug System:** `debug_config.py` at the project root defines `DEBUG_LEVELS` — a dict of flags like `ALPHA`, `RISK`, `PORTFOLIO`, `DATA_MANAGER`. Set flags via environment variables (e.g., `ALPHA_DEBUG=1`) or by editing the file directly. Use `is_debug_enabled("ALPHA")` to guard verbose logging.
+- **Run Isolation:** Each backtest generates a unique `run_id`. Trade logs and snapshots are written to run-scoped subdirectories in `data/trade_logs/` and promoted to flat files post-run. Never mix run outputs.
 
 ## Coding Best Practices
 - **Modularity:** Keep functions small and single-purpose. Prefer `def` functions over inline Dash callbacks where possible. Avoid mixing UI logic with data processing.

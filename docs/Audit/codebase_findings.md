@@ -6,6 +6,8 @@
 3. If an initial assumption is proven incorrect by later research (e.g., discovering a script is actually a legacy unused file instead of a core bug), you MUST update this document to correct the record.
 4. Highlight critical weaknesses (e.g., CSV reliance, bypasses, circular dependencies) clearly.
 
+> **Currency Note:** This audit was produced during the initial deep-dive codebase review. Some items (e.g., legacy UI archival, `extensive_files.md` removal, creation of `index.md` files) have since been addressed. Cross-reference with `engine_charters.md` for the current target design and `ROADMAP.md` for what's been completed.
+
 ---
 
 ## 1. Documentation & Execution Manual (`docs/Core/`)

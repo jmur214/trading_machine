@@ -35,20 +35,10 @@ python -m analytics.edge_feedback --mode sandbox
 # Verify recency-decay weighting behavior
 python -m analytics.edge_feedback --mode sandbox --debug
 
-# Run continuous validation (periodic system health monitoring)
-python -m scripts.continuous_validation
-
-# Run once and exit
-python -m scripts.continuous_validation --once
-
-# Set custom interval (minutes between runs)
-python -m scripts.continuous_validation --interval 30
-
-# Skip pytest checks for faster runs
-python -m scripts.continuous_validation --no-tests
-
-# Enable verbose debug output
-python -m scripts.continuous_validation --debugt
+# Run unified health check (pytest + backtest + invariant checks)
+python -m scripts.run_healthcheck
+python -m scripts.run_healthcheck --skip-tests    # Skip pytest, run backtest only
+python -m scripts.run_healthcheck --skip-backtest  # Skip backtest, run pytest only
 ```
 
 ### CORE SYSTEM COMMANDS
@@ -68,9 +58,6 @@ python -m cockpit.dashboard_v2.app
 # Launch on custom port (default 8050)
 python -m cockpit.dashboard_v2.app --port 8055
 
-# Launch Cockpit dashboard in live/paper mode
-python -m cockpit.dashboard --live
-
 # Run Governor weight update from latest results
 python -m analytics.edge_feedback
 python -m analytics.edge_feedback --history     # show weight history
@@ -86,8 +73,8 @@ python -m research.edge_harness \
   --backtest-config config/backtest_settings.json \
   --risk-config config/risk_settings.json
 
-# Inspect global edge research database
-python -m research.edge_db_viewer
+# Run edge evaluator (rank edges by time-decay composite score)
+python -m scripts.run_evaluator
 
 # Clear old research results
 rm -rf data/research/*
@@ -141,14 +128,13 @@ python -m intelligence.news_summarizer
 
 ### ANALYTICS & PERFORMANCE
 ```bash
-# Analyze performance summary from latest run
-python -m analytics.performance_summary
-
 # View research and backtest outputs
 cat data/trade_logs/trades.csv
 cat data/trade_logs/portfolio_snapshots.csv
-cat data/research/edge_results.parquet
 cat data/governor/edge_weights.json
+
+# View Parquet research results (binary format, requires Python)
+python -c "import pandas as pd; print(pd.read_parquet('data/research/edge_results.parquet'))"
 ```
 
 ### DEBUGGING & DIAGNOSTICS
@@ -172,7 +158,7 @@ pytest -v tests/test_collector_integration.py        # SignalCollector
 pytest -v tests/test_alpha_pipeline.py               # AlphaEngine pipeline
 pytest -v tests/test_portfolio.py                    # Portfolio accounting
 pytest -v tests/test_backtest_controller.py          # Backtest orchestration
-pytest -v tests/test_governor_feedback.py            # Governor feedback loop
+pytest -v tests/test_golden_path.py                  # Edge cases (data gaps, crashes)
 
 # Typical Usage:
 #   After editing an edge → test_edge_outputs_extended.py
@@ -180,27 +166,48 @@ pytest -v tests/test_governor_feedback.py            # Governor feedback loop
 #   Before committing code → pytest -v
 ```
 
-### DATASTORE & MIGRATION COMMANDS
-```bash
-# Initialize or inspect DuckDB data store
-python -m datastore.inspect --path data/trading.duckdb
-python -m datastore.migrate --mirror-csv true
-
-# View active run registry
-duckdb data/trading.duckdb "SELECT run_id, mode, started_at FROM runs;"
-```
-
 ### UTILITY & CLEANUP
 ```bash
 # Backup and start fresh backtest
 python -m scripts.run_backtest --fresh
 
-# View logs in real time
-tail -f data/logs/latest.log
-grep ALPHA data/logs/latest.log | tail
-
 # Clean generated files
 rm -rf data/trade_logs/*
 rm -rf data/research/*
 rm -rf data/governor/*
+```
+
+---
+
+### DEPRECATED COMMANDS
+> These commands reference modules or paths that no longer exist or have been replaced. Kept for historical reference.
+
+```bash
+# V1 Dashboard (replaced by dashboard_v2)
+python -m cockpit.dashboard --live
+
+# continuous_validation (replaced by run_healthcheck)
+python -m scripts.continuous_validation
+python -m scripts.continuous_validation --once
+python -m scripts.continuous_validation --interval 30
+python -m scripts.continuous_validation --no-tests
+python -m scripts.continuous_validation --debug
+
+# DuckDB datastore (never implemented)
+python -m datastore.inspect --path data/trading.duckdb
+python -m datastore.migrate --mirror-csv true
+duckdb data/trading.duckdb "SELECT run_id, mode, started_at FROM runs;"
+
+# edge_db_viewer (use run_evaluator instead)
+python -m research.edge_db_viewer
+
+# performance_summary module (metrics computed inline by backtest)
+python -m analytics.performance_summary
+
+# Parquet files are binary (use Python to read, not cat)
+cat data/research/edge_results.parquet
+
+# File logging (system uses print(), no log files)
+tail -f data/logs/latest.log
+grep ALPHA data/logs/latest.log | tail
 ```

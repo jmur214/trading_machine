@@ -227,6 +227,7 @@ This project uses a structured, AI-native documentation system designed to maint
 |----------|---------|
 | [`GOAL.md`](docs/Core/GOAL.md) | AI entry point — north star orientation |
 | [`PROJECT_CONTEXT.md`](docs/Core/PROJECT_CONTEXT.md) | Architecture brief & philosophy |
+| [`human-system_explanation.md`](docs/Core/Human/human-system_explanation.md) | Plain-English project overview (3 audience levels) |
 | [`ROADMAP.md`](docs/Core/ROADMAP.md) | Phased development plan |
 | [`execution_manual.md`](docs/Core/execution_manual.md) | Every CLI command in one place |
 | [`agent_instructions.md`](docs/Core/agent_instructions.md) | AI operating rules & coding standards |

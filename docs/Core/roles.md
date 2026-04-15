@@ -45,3 +45,14 @@ When working on the Trading Machine, match the user's request to the **Triggers*
 - **Mindset:** "How easily can the human read the system's intent? Exactly *why* did the machine make a trade? Are alerts actionable?"
 - **Tasks:** Building reactive callbacks, adding new analytic tabs, creating hover-states for trade attribution.
 - **Rules:** Keep interfaces responsive, dark-themed, and data-dense but exceptionally clean. Focus aggressively on visual attribution.
+
+## 7. System Architect / Auditor
+- **Triggers:** The user asks to "audit the codebase," "review the architecture," "check engine boundaries," or "is this design correct?"
+- **Focus:** Structural integrity, engine authority boundaries, documentation accuracy, redundancy elimination, and technical debt identification.
+- **Mindset:** "Does the implementation match the intent? Where are the seams between engines? Is information duplicated or contradictory across documents?"
+- **Tasks:** Reviewing engine charters, auditing documentation for drift, verifying cross-references between files, identifying where logic bleeds across engine boundaries.
+- **Required Reading:** Start with `docs/Audit/README.md` for orientation. The key files are:
+  - `docs/Audit/engine_charters.md` — target design (what engines SHOULD do)
+  - `docs/Audit/high_level-engine_function.md` — current state (what engines DO today)
+  - `docs/Audit/codebase_findings.md` — known weak points and bugs
+- **Rules:** Compare the charter against the actual code. Flag discrepancies between aspirational design and actual implementation — never conflate the two. The gap between `high_level-engine_function.md` and `engine_charters.md` IS the refactoring work remaining.

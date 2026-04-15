@@ -4,7 +4,7 @@ description: Golden Invariants and Rules for the Trading Machine Codebase
 
 # Trading Machine Rules
 
-These rules must be followed by all agents working on this codebase. They are derived from `MASTER_CONTEXT-v3.md`.
+These rules must be followed by all agents working on this codebase. For full system context, start with `docs/Core/GOAL.md`. For engine authority boundaries, see `docs/Audit/engine_charters.md`.
 
 ## 1. Golden Invariants (DO NOT BREAK)
 
@@ -24,7 +24,7 @@ These rules must be followed by all agents working on this codebase. They are de
     *   Do not introduce ad-hoc edge signatures.
 
 5.  **Data Contracts**:
-    *   Use `Order`, `Fill`, `Position` structures as defined in `MASTER_CONTEXT-v3.md`.
+    *   Use `Order`, `Fill`, `Position` structures as defined in the engine charters.
     *   Do not invent new fields without explicit user approval and schema updates.
 
 6.  **Stable Logging**:
@@ -44,3 +44,6 @@ These rules must be followed by all agents working on this codebase. They are de
 
 *   Data is stored in `data/`.
 *   Logs are in `data/trade_logs/<run_id>/`.
+*   Documentation hub: `docs/Core/` (start with `GOAL.md`).
+*   Engine design targets: `docs/Audit/engine_charters.md`.
+

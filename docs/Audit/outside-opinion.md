@@ -1,4 +1,7 @@
 # Outside Opinion
+
+> **TL;DR:** This document captures an independent external review of our 4-engine architecture. The reviewer validated the modular design but identified key risks: too many layered filters muting real edge in Engine A, confidence-based sizing making Engine B a second alpha engine, fragile MVO in Engine C, and Engine D's potential to become a live overfitting machine. The core recommendation was to sharpen engine boundaries so each has a single clean mandate. These findings directly shaped `engine_charters.md`, which is the distilled, actionable result of this review.
+
 ## Prompt 1
 > based on what you know about the machine I've been working on, can you give me the pros, and more importantly the cons, of the following as the 4 engines
 
