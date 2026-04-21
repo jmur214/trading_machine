@@ -9,6 +9,7 @@ def is_info_enabled() -> bool:
 import pandas as pd
 import numpy as np
 from math import sqrt
+from core.metrics_engine import MetricsEngine
 
 
 def _epsilon_series(x: pd.Series, eps: float = 1e-9) -> pd.Series:
@@ -173,43 +174,37 @@ class PerformanceMetrics:
             return 0.0
         return x
 
-    # ---- metrics ----
+    # ---- metrics (delegated to MetricsEngine for single source of truth) ----
+    def _engine_metrics(self) -> dict:
+        """Compute all metrics via MetricsEngine (cached per instance)."""
+        if not hasattr(self, "_cached_engine_metrics"):
+            if self.equity.empty or len(self.equity) < 2:
+                self._cached_engine_metrics = MetricsEngine._empty_metrics()
+            else:
+                eq_series = self.equity.copy()
+                # Use .loc to align timestamps with equity's actual index (handles NaN-dropped rows)
+                eq_series.index = pd.to_datetime(self.snapshots.loc[eq_series.index, "timestamp"].values)
+                self._cached_engine_metrics = MetricsEngine.calculate_all(eq_series)
+        return self._cached_engine_metrics
+
     def total_return(self):
-        if self.equity.empty or self.equity.iloc[0] <= 0:
-            return np.nan
-        return (self.equity.iloc[-1] / self.equity.iloc[0]) - 1
+        v = self._engine_metrics().get("Total Return %", 0.0)
+        return v / 100.0 if v else np.nan
 
     def cagr(self):
-        if self.snapshots.empty or self.equity.empty or self.equity.iloc[0] <= 0:
-            return np.nan
-        days = (self.snapshots["timestamp"].iloc[-1] - self.snapshots["timestamp"].iloc[0]).days
-        if days <= 0:
-            return np.nan
-        return (self.equity.iloc[-1] / self.equity.iloc[0]) ** (365.0 / days) - 1
+        v = self._engine_metrics().get("CAGR %", 0.0)
+        return v / 100.0 if v else np.nan
 
     def volatility(self):
-        # log-return stdev annualized
-        return self.returns.std() * sqrt(252) if not self.returns.empty else np.nan
+        v = self._engine_metrics().get("Volatility %", 0.0)
+        return v / 100.0 if v else np.nan
 
     def sharpe_ratio(self):
-        if self.returns.empty:
-            return np.nan
-        excess_daily = self.returns - (self.risk_free_rate / 252.0)
-        std = excess_daily.std()
-        return (excess_daily.mean() / std) * sqrt(252) if std > 1e-9 else 0.0
+        return self._engine_metrics().get("Sharpe", np.nan)
 
     def max_drawdown(self):
-        if self.equity.empty:
-            return np.nan
-        eq = self.equity.copy()
-        eq = eq.replace([np.inf, -np.inf], np.nan).dropna()
-        eq = eq[eq > 0]  # ignore zero/negative equity windows for MDD
-        if eq.empty:
-            return np.nan
-        roll_max = eq.cummax()
-        dd = (eq - roll_max) / roll_max
-        dd = dd.clip(lower=-1.0, upper=0.0)
-        return dd.min()
+        v = self._engine_metrics().get("Max Drawdown %", 0.0)
+        return v / 100.0 if v else np.nan
 
     def win_rate(self):
         if self.trades is None or "pnl" not in self.trades.columns:

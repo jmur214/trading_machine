@@ -500,3 +500,191 @@ pre,
     max-width: 100% !important;
     overflow-x: auto !important;
 }
+
+/* ============================================
+   TERMINAL & COMMAND CENTER STYLES
+   ============================================ */
+
+/* Terminal output area */
+pre#bt-output,
+pre#cmd-output {
+    background: #0d1117 !important;
+    color: #3fb950 !important;
+    font-family: 'SF Mono', 'Fira Code', 'Consolas', 'Monaco', monospace !important;
+    font-size: 12px !important;
+    line-height: 1.6 !important;
+    padding: 16px 20px !important;
+    border: 1px solid rgba(56, 68, 77, 0.3) !important;
+    border-radius: 12px !important;
+    scroll-behavior: smooth;
+}
+
+pre#bt-output::selection,
+pre#cmd-output::selection {
+    background: rgba(88, 166, 255, 0.25);
+}
+
+/* ============================================
+   BUTTON VARIANTS — override the global button rule
+   ============================================ */
+
+/* Secondary/subtle buttons */
+button#bt-bench-btn,
+button#bt-stop-btn,
+button#cmd-stop-btn {
+    background: rgba(22, 27, 34, 0.9) !important;
+    border: 1px solid rgba(56, 68, 77, 0.4) !important;
+    color: #c9d1d9 !important;
+    box-shadow: none !important;
+}
+
+button#bt-stop-btn,
+button#cmd-stop-btn {
+    color: #f85149 !important;
+    border-color: rgba(248, 81, 73, 0.3) !important;
+}
+
+button#bt-stop-btn:hover,
+button#cmd-stop-btn:hover {
+    background: rgba(248, 81, 73, 0.1) !important;
+    box-shadow: 0 0 12px rgba(248, 81, 73, 0.15) !important;
+}
+
+button#bt-bench-btn:hover {
+    background: rgba(56, 68, 77, 0.5) !important;
+    border-color: rgba(88, 166, 255, 0.3) !important;
+}
+
+/* Disabled buttons */
+button:disabled {
+    opacity: 0.45 !important;
+    cursor: not-allowed !important;
+    box-shadow: none !important;
+}
+
+/* ============================================
+   FORM INPUTS — dark styled inputs
+   ============================================ */
+
+input[type="text"]#bt-start-date,
+input[type="text"]#bt-end-date,
+input[type="number"]#bt-capital,
+input[type="text"]#cmd-param-start,
+input[type="text"]#cmd-param-end,
+input[type="number"]#cmd-param-capital,
+input[type="text"]#cmd-param-extra {
+    background: rgba(22, 27, 34, 0.7) !important;
+    color: #c9d1d9 !important;
+    border: 1px solid rgba(56, 68, 77, 0.4) !important;
+    border-radius: 8px !important;
+    padding: 8px 12px !important;
+    font-size: 13px !important;
+    outline: none !important;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease !important;
+}
+
+input[type="text"]#bt-start-date:focus,
+input[type="text"]#bt-end-date:focus,
+input[type="number"]#bt-capital:focus,
+input[type="text"]#cmd-param-start:focus,
+input[type="text"]#cmd-param-end:focus,
+input[type="number"]#cmd-param-capital:focus,
+input[type="text"]#cmd-param-extra:focus {
+    border-color: rgba(88, 166, 255, 0.5) !important;
+    box-shadow: 0 0 0 3px rgba(88, 166, 255, 0.1) !important;
+}
+
+/* ============================================
+   STATUS BADGES — animated states
+   ============================================ */
+
+@keyframes statusPulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.6; }
+}
+
+/* Target running status badges by content  */
+span#bt-status-badge,
+span#cmd-status-badge {
+    font-family: 'SF Mono', 'Fira Code', monospace;
+    letter-spacing: 0.05em;
+}
+
+/* ============================================
+   CARD HOVER EFFECTS
+   ============================================ */
+
+/* Subtle elevation on hover for all card-like elements */
+div[style*="backdrop-filter"] {
+    transition: border-color 0.25s ease, box-shadow 0.25s ease, transform 0.25s ease !important;
+}
+
+/* ============================================
+   SUB-TAB NAVIGATION (Analytics)
+   ============================================ */
+
+.sub-tabs {
+    border: none !important;
+    background: transparent !important;
+    margin-bottom: 20px !important;
+}
+
+.sub-tabs .tab {
+    background: transparent !important;
+    border: 1px solid rgba(56, 68, 77, 0.4) !important;
+    border-radius: 8px !important;
+    color: #8b949e !important;
+    font-weight: 500 !important;
+    font-size: 12px !important;
+    padding: 8px 18px !important;
+    margin-right: 6px !important;
+    transition: all 0.2s ease !important;
+}
+
+.sub-tabs .tab:hover {
+    color: #f0f6fc !important;
+    border-color: rgba(88, 166, 255, 0.3) !important;
+}
+
+.sub-tabs .tab--selected {
+    background: linear-gradient(135deg, rgba(88, 166, 255, 0.12), rgba(88, 166, 255, 0.04)) !important;
+    border-color: #58a6ff !important;
+    color: #58a6ff !important;
+}
+
+/* ============================================
+   CHECKLIST STYLING
+   ============================================ */
+
+.dash-checklist label {
+    cursor: pointer;
+    transition: color 0.15s ease;
+}
+
+.dash-checklist label:hover {
+    color: #f0f6fc !important;
+}
+
+.dash-checklist input[type="checkbox"] {
+    accent-color: #58a6ff;
+}
+
+/* ============================================
+   RESPONSIVE IMPROVEMENTS
+   ============================================ */
+
+@media (max-width: 1200px) {
+    #react-entry-point>div {
+        padding: 16px 20px;
+    }
+}
+
+@media (max-width: 900px) {
+    div[style*="gridTemplateColumns: repeat(2"] {
+        grid-template-columns: 1fr !important;
+    }
+
+    div[style*="gridTemplateColumns: 380px"] {
+        grid-template-columns: 1fr !important;
+    }
+}

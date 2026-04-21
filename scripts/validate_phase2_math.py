@@ -4,7 +4,7 @@ import os
 import pandas as pd
 import numpy as np
 from research.edge_generator import EdgeGenerator
-from engines.engine_d_research.regime_detector import RegimeDetector
+from engines.engine_e_regime.regime_detector import RegimeDetector
 
 def test_phase2_math():
     print("--- 1. Generating Strategy with New Math ---")

@@ -29,7 +29,7 @@ def main():
     
     if not candidates:
         print("[DARWIN] No 'candidate' edges found. Run discovery engine first!")
-        print("Hint: python -m engines.engine_d_research.discovery")
+        print("Hint: python -m engines.engine_d_discovery.discovery")
         return
 
     print(f"[DARWIN] Found {len(candidates)} candidates awaiting validation.")

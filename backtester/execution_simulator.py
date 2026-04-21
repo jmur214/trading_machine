@@ -213,6 +213,11 @@ class ExecutionSimulator:
             fill["edge_category"] = order["edge_category"]
         if "edge_group" in order:
             fill["edge_group"] = order["edge_group"]
+        # Preserve stop/take_profit for position initialization
+        if "stop" in order:
+            fill["stop"] = order["stop"]
+        if "take_profit" in order:
+            fill["take_profit"] = order["take_profit"]
         # Set trigger default if not present
         if "trigger" not in order:
             if side in {"long", "short"}:

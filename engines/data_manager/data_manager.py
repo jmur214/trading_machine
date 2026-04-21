@@ -88,6 +88,28 @@ class DataManager:
             print(f"[DATA_MANAGER][ERROR] yfinance failed for {ticker}: {e}")
             return pd.DataFrame()
 
+    def _fundamentals_cache_path(self, ticker: str) -> Path:
+        return self.cache_dir / "parquet" / f"{ticker}_fundamentals.parquet"
+
+    def prefetch_fundamentals(self, tickers, force=False, max_age_days=7):
+        """Batch-fetch and cache fundamentals for all tickers. Call during data loading.
+        Re-fetches if cache is older than max_age_days (default 7 for quarterly data)."""
+        import time as _time
+        for t in tickers:
+            if t.startswith("SYNTH-") or t in ("SPY", "QQQ", "IWM", "TLT", "GLD"):
+                continue
+            cache_path = self._fundamentals_cache_path(t)
+            if cache_path.exists() and not force:
+                age_days = (_time.time() - cache_path.stat().st_mtime) / 86400
+                if age_days < max_age_days:
+                    continue
+            try:
+                df = self.fetch_historical_fundamentals(t)
+                # fetch_historical_fundamentals already caches to parquet internally
+            except Exception as e:
+                if is_debug_enabled("DATA_MANAGER") or is_info_enabled():
+                    print(f"[DATA_MANAGER][WARN] Failed to prefetch fundamentals for {t}: {e}")
+
     def fetch_historical_fundamentals(self, ticker: str) -> pd.DataFrame:
         """
         Reconstructs DEEP historical fundamental time-series.
@@ -97,9 +119,22 @@ class DataManager:
           - Health: Debt_to_Equity, Current_Ratio
           - Growth: Revenue_Growth (YoY), EPS_Growth (YoY)
         Indexed by Date (Daily, forward filled from reporting date + 45 days lag).
+        Results are cached to parquet for subsequent runs.
         """
+        # Check parquet cache first (persists across runs)
+        cache_path = self._fundamentals_cache_path(ticker)
+        if cache_path.exists():
+            try:
+                df = pd.read_parquet(cache_path)
+                if not df.empty:
+                    if is_debug_enabled("DATA_MANAGER") or is_info_enabled():
+                        print(f"[DATA_MANAGER][INFO] Loaded cached fundamentals for {ticker} ({len(df)} rows)")
+                    return df
+            except Exception:
+                pass  # fall through to fetch
+
         if ticker.startswith("SYNTH-"):
-            from engines.engine_d_research.synthetic_market import SyntheticMarketGenerator
+            from engines.engine_d_discovery.synthetic_market import SyntheticMarketGenerator
             try:
                 seed = int(ticker.split("-")[1])
             except: seed = 42
@@ -283,10 +318,22 @@ class DataManager:
                                 "Debt_to_Equity", "Market_Cap", "EPS_TTM"] if c in final.columns]
                                 
             final_df = final[cols].dropna(how='all') # Keep if at least one data point exists
-            
+
             if is_debug_enabled("DATA_MANAGER") or is_info_enabled():
                 print(f"[DATA_MANAGER][INFO] Deep fundamentals for {ticker}: {len(final_df)} days. Vars: {cols}")
-                
+
+            # Cache to parquet for subsequent runs
+            if not final_df.empty:
+                try:
+                    cache_path = self._fundamentals_cache_path(ticker)
+                    cache_path.parent.mkdir(parents=True, exist_ok=True)
+                    final_df.to_parquet(cache_path, index=True)
+                    if is_debug_enabled("DATA_MANAGER") or is_info_enabled():
+                        print(f"[DATA_MANAGER][INFO] Cached fundamentals for {ticker} to {cache_path}")
+                except Exception as ce:
+                    if is_debug_enabled("DATA_MANAGER"):
+                        print(f"[DATA_MANAGER][WARN] Failed to cache fundamentals for {ticker}: {ce}")
+
             return final_df
 
         except Exception as e:
@@ -573,7 +620,7 @@ class DataManager:
         """
         Generates synthetic data on the fly.
         """
-        from engines.engine_d_research.synthetic_market import SyntheticMarketGenerator
+        from engines.engine_d_discovery.synthetic_market import SyntheticMarketGenerator
         
         # Parse days approx
         start_dt = pd.to_datetime(start)

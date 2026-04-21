@@ -138,6 +138,7 @@ class PortfolioEngine:
 
             realized = (price - pos.avg_price) * (exit_qty * sign)
             self.realized_pnl += realized
+            fill["pnl"] = round(realized, 2)  # Stamp PnL onto fill — single source of truth
             self._log_info(f"Realized PnL from closing: {realized:.2f}")
             self.cash -= commission
 
@@ -301,11 +302,12 @@ class PortfolioEngine:
         signals: Dict[str, float],
         price_data: Dict[str, pd.DataFrame],
         equity: float,
+        regime_meta: Optional[Dict] = None,
     ) -> Dict[str, float]:
         """
         Wrapper around PortfolioPolicy.allocate() that stores and returns weights.
         """
-        weights = self.policy.allocate(signals, price_data, equity)
+        weights = self.policy.allocate(signals, price_data, equity, regime_meta=regime_meta)
         self.current_target_weights = weights
         self._log_debug(f"Computed target allocations from signals: {signals} -> weights: {weights}")
         return weights

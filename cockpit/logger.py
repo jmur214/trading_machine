@@ -48,6 +48,7 @@ class CockpitLogger:
         "edge_id",
         "edge_category",
         "run_id",
+        "regime_label",
     ]
 
     SNAPSHOT_COLUMNS = [
@@ -166,69 +167,14 @@ class CockpitLogger:
     # -------------------------------------------------------------------- #
     def _calc_realized_pnl(self, fill: dict) -> Optional[float]:
         """
-        Improved: Compute realized PnL for exits and covers using portfolio reference.
-        For entry fills, realized PnL is None.
-        If portfolio info is missing, fallback to estimate using prior close or fill meta.
-        The computed PnL is also stored directly into the fill dict for downstream compatibility.
+        Return pre-computed PnL from fill dict.
+        PnL is computed by PortfolioEngine.apply_fill() — the single source of truth.
+        For entry fills (long/short), returns None.
         """
-        tkr = fill.get("ticker")
         side = str(fill.get("side", "")).lower()
-        qty = float(fill.get("qty", 0))
-        # accept either key; normalize to float if possible
-        px_raw = fill.get("price", fill.get("fill_price", 0.0))
-        try:
-            px = float(px_raw)
-        except Exception:
-            px = 0.0
-
-        # Only compute PnL for exit/cover (i.e., closing trades)
         if side not in ("exit", "cover"):
-            fill["pnl"] = None
             return None
-
-        # Try to use portfolio for best accuracy
-        pnl = None
-        if self.portfolio:
-            pos = self.portfolio.positions.get(tkr)
-            # If position exists and has avg_price and side, compute realized PnL
-            if pos and getattr(pos, "avg_price", None) is not None and hasattr(pos, "side"):
-                avg = float(pos.avg_price)
-                # Figure out what side the position was (long/short)
-                pos_side = str(getattr(pos, "side", "")).lower()
-                # For exit: closing a long (sell), realized = (fill_px - avg_px) * qty
-                # For cover: closing a short (buy), realized = (avg_px - fill_px) * qty
-                if side == "exit" and pos_side == "long":
-                    pnl = round((px - avg) * qty, 2)
-                elif side == "cover" and pos_side == "short":
-                    pnl = round((avg - px) * qty, 2)
-                else:
-                    # Defensive: fallback to sign logic
-                    sign = 1 if side == "exit" else -1
-                    pnl = round((px - avg) * qty * sign, 2)
-        # Fallback: try to estimate from prior close or fill meta
-        if pnl is None:
-            # Try to use PrevClose if available in fill meta or fill itself
-            prev_close = None
-            meta = fill.get("meta", {})
-            if isinstance(meta, dict):
-                prev_close = meta.get("PrevClose")
-            if prev_close is None:
-                prev_close = fill.get("PrevClose")
-            try:
-                prev_close = float(prev_close)
-            except Exception:
-                prev_close = None
-            # If both fill price and prev_close are available, estimate
-            if prev_close is not None and px:
-                if side == "exit":
-                    pnl = round((px - prev_close) * qty, 2)
-                elif side == "cover":
-                    pnl = round((prev_close - px) * qty, 2)
-            else:
-                # As last resort, set to zero
-                pnl = 0.0
-        fill["pnl"] = pnl
-        return pnl
+        return fill.get("pnl")
 
     # -------------------------------------------------------------------- #
     def log_fill(self, fill: Dict[str, Any], timestamp: Any) -> None:
@@ -261,6 +207,8 @@ class CockpitLogger:
             "meta": str(fill.get("meta", {})) if fill.get("meta") else None,
             "edge_id": fill.get("edge_id"),
             "edge_category": fill.get("edge_category"),
+            "run_id": self.run_id or "",
+            "regime_label": fill.get("regime_label", ""),
         }
 
         self._append_to_csv(self.trade_path, row)
@@ -291,50 +239,17 @@ class CockpitLogger:
 
     # -------------------------------------------------------------------- #
     def log_snapshot(self, snap: Dict[str, Any]) -> None:
-        """Append a portfolio snapshot per bar (timestamp required). Refreshes cash, market_value, realized/unrealized_pnl, equity from live portfolio if available."""
+        """Append a portfolio snapshot per bar. Logger records as-is — no recomputation.
+        Callers (BacktestController, PaperTradeController) are responsible for providing
+        complete snapshots via PortfolioEngine.snapshot()."""
         if not is_logger_enabled():
             return
 
         if not isinstance(snap, dict):
             return
 
-        # Ensure timestamp and base fields exist
         snap = dict(snap)
         snap["timestamp"] = pd.to_datetime(snap.get("timestamp", datetime.utcnow()))
-        # --- NEW: Recompute snapshot fields directly from live portfolio if available ---
-        # FIX: "Vanity Metrics Bug" - Only use live portfolio fallback if snapshot is empty/missing data.
-        # BacktestController sends authoritative snapshot with correct MTM prices. 
-        # Portfolio object usually has stale prices (last fill or tick), causing false PnL.
-        has_data = (snap.get("market_value", 0.0) != 0.0 or snap.get("equity", 0.0) != 0.0)
-        
-        if self.portfolio and not has_data:
-            try:
-                live_cash = float(getattr(self.portfolio, "cash", snap.get("cash", 0.0)))
-                realized = float(getattr(self.portfolio, "realized_pnl", snap.get("realized_pnl", 0.0)))
-                unreal = float(getattr(self.portfolio, "unrealized_pnl", snap.get("unrealized_pnl", 0.0)))
-
-                # Compute market_value from open positions
-                mv = 0.0
-                for t, pos in getattr(self.portfolio, "positions", {}).items():
-                    if hasattr(pos, "qty") and pos.qty != 0:
-                        last_px = getattr(pos, "last_price", getattr(pos, "avg_price", 0.0))
-                        mv += float(pos.qty) * float(last_px)
-
-                snap["cash"] = float(live_cash)
-                snap["realized_pnl"] = float(realized)
-                snap["unrealized_pnl"] = float(unreal)
-                snap["market_value"] = float(mv)
-                snap["equity"] = float(live_cash + mv)
-            except Exception:
-                pass
-        # Note: run_id is injected in _append_to_csv to keep schema consistent
-        # DEBUG: see what logger receives and where it's going to write
-        try:
-            from debug_config import is_debug_enabled
-            if is_debug_enabled("COCKPIT_LOGGER"):
-                print(f"[DEBUG_LOGGER_SNAPSHOT_INPUT] snap={snap}, snap_path={self.snap_path}")
-        except Exception:
-            pass
         self._append_to_csv(self.snap_path, snap)
 
         # Clear debug print with timestamp, cash, equity

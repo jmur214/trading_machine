@@ -4,53 +4,72 @@
 from __future__ import annotations
 from dash import dcc, html
 
-# Reuse design tokens
-CARD_STYLE = {
-    "background": "rgba(15, 20, 26, 0.85)",
-    "backdropFilter": "blur(20px)",
-    "border": "1px solid rgba(56, 68, 77, 0.4)",
-    "borderRadius": "16px",
-    "padding": "16px 24px",
-    "boxShadow": "0 4px 12px rgba(0, 0, 0, 0.4)",
-    "marginBottom": "24px",
-    "display": "flex",
-    "alignItems": "center",
-    "justifyContent": "space-between"
-}
+from ..utils.styles import CARD_STYLE, COLORS, SUB_TAB_STYLE, SUB_TAB_SELECTED_STYLE
+
 
 def analytics_parent_layout():
-    """Layout containing the sub-navigation dropdown and content area."""
+    """Layout containing sub-tab navigation and content area."""
+    nav_bar_style = {
+        **CARD_STYLE,
+        "padding": "16px 24px",
+        "marginBottom": "24px",
+        "display": "flex",
+        "alignItems": "center",
+        "justifyContent": "space-between",
+    }
+
     return html.Div(
         children=[
             # Sub-navigation Bar
             html.Div(
-                style=CARD_STYLE,
+                style=nav_bar_style,
                 children=[
                     html.Div(
                         children=[
-                            html.H3("Analytics Hub", style={"margin": "0 0 4px 0", "color": "#f0f6fc", "fontSize": "18px"}),
-                            html.P("Select a module to view detailed intelligence.", style={"margin": "0", "color": "#8b949e", "fontSize": "13px"}),
+                            html.H3("Analytics Hub", style={
+                                "margin": "0 0 4px 0",
+                                "color": COLORS["text_primary"],
+                                "fontSize": "18px",
+                            }),
+                            html.P("Deep performance analysis and system intelligence.", style={
+                                "margin": "0",
+                                "color": COLORS["text_muted"],
+                                "fontSize": "13px",
+                            }),
                         ]
                     ),
                     html.Div(
-                        style={"width": "250px"},
                         children=[
-                            dcc.Dropdown(
-                                id="analytics_sub_tab_selector",
-                                options=[
-                                    {"label": "Performance & Attribution", "value": "performance"},
-                                    {"label": "Governor Intelligence", "value": "governor"},
-                                    {"label": "Evolutionary Research", "value": "evolution"},
-                                ],
+                            dcc.Tabs(
+                                id="analytics-sub-tabs",
                                 value="performance",
-                                clearable=False,
-                                className="dark-dropdown" # Ensure CSS picks this up if defined, or rely on dcc defaults
+                                children=[
+                                    dcc.Tab(
+                                        label="Performance & Attribution",
+                                        value="performance",
+                                        style=SUB_TAB_STYLE,
+                                        selected_style=SUB_TAB_SELECTED_STYLE,
+                                    ),
+                                    dcc.Tab(
+                                        label="Governor Intelligence",
+                                        value="governor",
+                                        style=SUB_TAB_STYLE,
+                                        selected_style=SUB_TAB_SELECTED_STYLE,
+                                    ),
+                                    dcc.Tab(
+                                        label="Evolutionary Research",
+                                        value="evolution",
+                                        style=SUB_TAB_STYLE,
+                                        selected_style=SUB_TAB_SELECTED_STYLE,
+                                    ),
+                                ],
+                                className="analytics-sub-tabs",
                             ),
-                        ]
+                        ],
                     ),
                 ]
             ),
-            
+
             # Content Area
             html.Div(id="analytics_sub_content"),
         ]

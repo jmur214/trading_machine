@@ -18,7 +18,7 @@ import argparse
 from pathlib import Path
 import pandas as pd
 
-from engines.engine_d_research.evaluator import EdgeEvaluator, EvaluatorConfig
+from engines.engine_f_governance.evaluator import EdgeEvaluator, EvaluatorConfig
 
 
 def main() -> int:

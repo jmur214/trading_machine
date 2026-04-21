@@ -16,18 +16,8 @@ EDGE_RESULTS_JSON = Path("data/research/edge_results.json")
 # We also check for the summary log or other artifacts since parquet might be missing
 GENOME_REGISTRY_PATH = Path("data/governor/edges.yml") # Updated from genome_registry.json
 
-# Design tokens
-CARD_STYLE = {
-    "background": "rgba(15, 20, 26, 0.85)",
-    "backdropFilter": "blur(20px)",
-    "border": "1px solid rgba(56, 68, 77, 0.4)",
-    "borderRadius": "16px",
-    "padding": "20px",
-    "boxShadow": "0 4px 12px rgba(0, 0, 0, 0.4)",
-    "textAlign": "center",
-    "position": "relative",
-    "overflow": "hidden",
-}
+from ..utils.styles import CARD_STYLE, KPI_CARD_STYLE, COLORS
+from ..utils.chart_helpers import get_chart_layout, empty_chart
 
 
 def register_evolution_callbacks(app):
@@ -35,7 +25,7 @@ def register_evolution_callbacks(app):
 
     @app.callback(
         Output("evo_stats_row", "children"),
-        Input("analytics_sub_tab_selector", "value"),
+        Input("analytics-sub-tabs", "value"),
     )
     def update_stats_row(sub_tab):
         """Generate stats cards from edge results."""
@@ -65,7 +55,7 @@ def register_evolution_callbacks(app):
     # ... (Keep Heatmap and Dist logic similar, or stub if data missing)
     @app.callback(
         Output("evo_wfo_heatmap", "figure"),
-        Input("analytics_sub_tab_selector", "value"),
+        Input("analytics-sub-tabs", "value"),
     )
     def update_wfo_heatmap(sub_tab):
         if sub_tab != "evolution":
@@ -74,7 +64,7 @@ def register_evolution_callbacks(app):
 
     @app.callback(
         Output("evo_performance_dist", "figure"),
-        Input("analytics_sub_tab_selector", "value"),
+        Input("analytics-sub-tabs", "value"),
     )
     def update_performance_distribution(sub_tab):
         if sub_tab != "evolution":
@@ -83,7 +73,7 @@ def register_evolution_callbacks(app):
 
     @app.callback(
         Output("evo_registry_container", "children"),
-        Input("analytics_sub_tab_selector", "value"),
+        Input("analytics-sub-tabs", "value"),
     )
     def update_genome_registry(sub_tab):
         """Load and display the genome registry table."""

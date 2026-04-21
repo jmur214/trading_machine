@@ -10,7 +10,7 @@ from pathlib import Path
 # Setup paths
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from engines.engine_d_research.discovery import DiscoveryEngine
+from engines.engine_d_discovery.discovery import DiscoveryEngine
 from scripts.run_evolution_cycle import AutonomousEvolution
 from scripts.update_data import update_all_data
 from scripts.run_shadow_paper import run_shadow_session

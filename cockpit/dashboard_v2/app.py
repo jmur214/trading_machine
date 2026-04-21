@@ -13,17 +13,21 @@ ALPACA_API_KEY = os.environ.get("APCA_API_KEY_ID", "")
 ALPACA_API_SECRET = os.environ.get("APCA_API_SECRET_KEY", "")
 
 # --- Tabs (layouts) ---
-# --- Tabs (layouts) ---
-# --- Tabs (layouts) ---
 from .tabs.dashboard_tab import dashboard_layout
 from .tabs.analytics_parent_tab import analytics_parent_layout
 from .tabs.settings_tab import settings_layout
 from .tabs.intel_tab import create_intel_layout
+from .tabs.backtest_tab import backtest_layout
+from .tabs.trading_tab import trading_layout
+from .tabs.command_tab import command_layout
 
-# --- Sub-Tabs Imports (for shared callback mapping if needed, though parent handles it) ---
+# --- Sub-Tabs Imports ---
 from .tabs.performance_tab import performance_layout
 from .tabs.governor_tab import governor_layout
 from .tabs.evolution_tab import evolution_layout
+
+# --- Shared styles ---
+from .utils.styles import TAB_STYLE, TAB_SELECTED_STYLE
 
 # --- Callbacks ---
 from .callbacks.shared_callbacks import register_shared_callbacks
@@ -34,6 +38,9 @@ from .callbacks.governor_callbacks import register_governor_callbacks
 from .callbacks.mode_callbacks import register_mode_callbacks
 from .callbacks.intel_callbacks import register_intel_callbacks
 from .callbacks.evolution_callbacks import register_evolution_callbacks
+from .callbacks.backtest_callbacks import register_backtest_callbacks
+from .callbacks.trading_callbacks import register_trading_callbacks
+from .callbacks.command_callbacks import register_command_callbacks
 
 
 def create_dash_app(live: bool = False) -> dash.Dash:
@@ -47,26 +54,8 @@ def create_dash_app(live: bool = False) -> dash.Dash:
     app.config.suppress_callback_exceptions = True
 
     # ---------- Global Layout ----------
-    # Professional tab styling
-    tab_style = {
-        "padding": "12px 24px",
-        "backgroundColor": "rgba(15, 20, 26, 0.85)",
-        "border": "1px solid rgba(56, 68, 77, 0.4)",
-        "borderRadius": "10px",
-        "color": "#8b949e",
-        "fontWeight": "500",
-        "fontSize": "13px",
-        "marginRight": "8px",
-        "transition": "all 0.25s ease",
-    }
-    
-    selected_tab_style = {
-        **tab_style,
-        "background": "linear-gradient(135deg, rgba(88, 166, 255, 0.15), rgba(88, 166, 255, 0.05))",
-        "borderColor": "#58a6ff",
-        "color": "#58a6ff",
-        "boxShadow": "0 0 20px rgba(88, 166, 255, 0.15)",
-    }
+    tab_style = TAB_STYLE
+    selected_tab_style = TAB_SELECTED_STYLE
 
     app.layout = html.Div(
         style={
@@ -122,7 +111,10 @@ def create_dash_app(live: bool = False) -> dash.Dash:
                         className="custom-tabs",
                         children=[
                             dcc.Tab(label="Dashboard", value="tab-dashboard", style=tab_style, selected_style=selected_tab_style),
+                            dcc.Tab(label="Backtest", value="tab-backtest", style=tab_style, selected_style=selected_tab_style),
+                            dcc.Tab(label="Trading", value="tab-trading", style=tab_style, selected_style=selected_tab_style),
                             dcc.Tab(label="Analytics", value="tab-analytics-parent", style=tab_style, selected_style=selected_tab_style),
+                            dcc.Tab(label="Command Center", value="tab-command", style=tab_style, selected_style=selected_tab_style),
                             dcc.Tab(label="Intel", value="tab-intel", style=tab_style, selected_style=selected_tab_style),
                             dcc.Tab(label="Settings", value="tab-settings", style=tab_style, selected_style=selected_tab_style),
                         ],
@@ -147,7 +139,10 @@ def create_dash_app(live: bool = False) -> dash.Dash:
         live=live,
         layouts={
             "tab-dashboard": dashboard_layout,
+            "tab-backtest": backtest_layout,
+            "tab-trading": trading_layout,
             "tab-analytics-parent": analytics_parent_layout,
+            "tab-command": command_layout,
             "tab-intel": create_intel_layout,
             "tab-settings": settings_layout,
         },
@@ -156,13 +151,16 @@ def create_dash_app(live: bool = False) -> dash.Dash:
     # Register sub-nav handler
     register_analytics_navigation_callbacks(app)
 
-    # Register functional callbacks (they work when their components appear in DOM)
+    # Register functional callbacks
     register_dashboard_callbacks(app)
     register_performance_callbacks(app)
     register_governor_callbacks(app)
     register_mode_callbacks(app)
     register_intel_callbacks(app)
     register_evolution_callbacks(app)
+    register_backtest_callbacks(app)
+    register_trading_callbacks(app)
+    register_command_callbacks(app)
 
     return app
 

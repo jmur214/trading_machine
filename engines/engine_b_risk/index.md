@@ -2,6 +2,14 @@
 **Purpose:** This engine acts as the gatekeeper. It takes the rough raw signals from Engine A and applies sizing, sector constraints, correlation penalties, and volatility standardization (ATR).
 **Architectural Role:** Sits between Alpha and Portfolio. Translates raw `-1.0 to 1.0` signals into concrete position sizing targets.
 
+**Regime-Adaptive Constraints (via Engine E Advisory):**
+- `prepare_order()` accepts `regime_meta` and extracts advisory constraints:
+  - `suggested_max_positions` — dynamic cap (can only tighten, never loosen beyond config)
+  - `suggested_exposure_cap` — dynamic gross exposure limit
+  - `risk_scalar` — multiplied into ATR position sizing budget
+  - `correlation_regime` — drives dynamic sector limits: dispersed → 40%, elevated/spike → 20%
+- All advisory-driven limits default to config values when `regime_meta` is absent (backward compatible).
+
 **Known Issues & Quirks:**
 - *State Mutation Violation:* For trailing stops, the `RiskEngine` explicitly reaches into `PortfolioEngine`'s internal state to mutate the stop positions because the simulator struggles with "update" orders via standard messaging. This must be refactored eventually.
 

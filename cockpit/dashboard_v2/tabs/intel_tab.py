@@ -1,39 +1,17 @@
-# cockpit/dashboard/tabs/intel_tab.py
+# cockpit/dashboard_v2/tabs/intel_tab.py
 """Intel tab - Market intelligence and news summary."""
 from __future__ import annotations
 from dash import html, dcc
 
-# ============================================
-# DESIGN TOKENS
-# ============================================
-CARD_STYLE = {
-    "background": "rgba(15, 20, 26, 0.85)",
-    "backdropFilter": "blur(20px)",
-    "border": "1px solid rgba(56, 68, 77, 0.4)",
-    "borderRadius": "16px",
-    "padding": "24px",
-    "boxShadow": "0 4px 12px rgba(0, 0, 0, 0.4)",
-}
-
-SECTION_HEADER = {
-    "display": "flex",
-    "alignItems": "center",
-    "gap": "12px",
-    "marginBottom": "16px",
-    "paddingBottom": "12px",
-    "borderBottom": "1px solid rgba(56, 68, 77, 0.4)",
-}
+from ..utils.styles import CARD_STYLE, SECTION_HEADER, COLORS, BUTTON_SECONDARY
 
 
 def create_intel_layout():
-    """Intel tab with market news and intelligence summary."""
-    try:
-        from intelligence.news_summarizer import NewsSummarizer
-        ns = NewsSummarizer()
-        summary_text = ns.summarize()
-    except Exception as e:
-        summary_text = f"[INTEL] News summarizer unavailable: {e}"
+    """Intel tab with market news and intelligence summary.
 
+    NewsSummarizer is loaded lazily in the callback — not at layout time —
+    to avoid blocking the UI or erroring on missing dependencies.
+    """
     return html.Div(
         style={"minHeight": "70vh"},
         children=[
@@ -41,10 +19,13 @@ def create_intel_layout():
             html.Div(
                 style=SECTION_HEADER,
                 children=[
-                    html.H3("Market Intelligence", style={"margin": "0", "color": "#f0f6fc"}),
+                    html.H3("Market Intelligence", style={
+                        "margin": "0",
+                        "color": COLORS["text_primary"],
+                    }),
                     html.Span("AI-Powered News Analysis", style={
                         "background": "rgba(163, 113, 247, 0.15)",
-                        "color": "#a371f7",
+                        "color": COLORS["accent_purple"],
                         "fontSize": "11px",
                         "fontWeight": "600",
                         "padding": "4px 12px",
@@ -52,7 +33,7 @@ def create_intel_layout():
                     }),
                 ]
             ),
-            
+
             # Controls
             html.Div(
                 style={"marginBottom": "24px"},
@@ -61,19 +42,24 @@ def create_intel_layout():
                         "Refresh Intel",
                         id="intel_refresh_button",
                         n_clicks=0,
+                        style=BUTTON_SECONDARY,
                     ),
                 ],
             ),
-            
+
             # Intel Summary Card
             html.Div(
                 style=CARD_STYLE,
                 children=[
                     html.Div(style=SECTION_HEADER, children=[
-                        html.H4("News Summary", style={"margin": "0", "color": "#f0f6fc", "fontSize": "14px"}),
+                        html.H4("News Summary", style={
+                            "margin": "0",
+                            "color": COLORS["text_primary"],
+                            "fontSize": "14px",
+                        }),
                     ]),
                     html.Pre(
-                        summary_text,
+                        "Click 'Refresh Intel' to load the latest market intelligence.",
                         id="intel_summary_box",
                         style={
                             "whiteSpace": "pre-wrap",
@@ -81,9 +67,9 @@ def create_intel_layout():
                             "fontFamily": "'SF Mono', 'Fira Code', 'Consolas', monospace",
                             "padding": "20px",
                             "backgroundColor": "rgba(10, 14, 20, 0.6)",
-                            "color": "#c9d1d9",
+                            "color": COLORS["text_secondary"],
                             "borderRadius": "10px",
-                            "border": "1px solid rgba(56, 68, 77, 0.3)",
+                            "border": f"1px solid {COLORS['border_subtle']}",
                             "lineHeight": "1.6",
                             "maxHeight": "600px",
                             "overflowY": "auto",

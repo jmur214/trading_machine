@@ -1,6 +1,13 @@
-# Engine C: Portfolio Accounting
-**Purpose:** The core ledger of the trading system. It maintains the absolute accounting identity: `equity = cash + market_value`.
+# Engine C: Portfolio Accounting & Allocation
+**Purpose:** The core ledger of the trading system. It maintains the absolute accounting identity: `equity = cash + market_value`. The allocation layer determines target portfolio weights using regime-aware, vol-targeted strategies.
 **Architectural Role:** It receives target portfolio states from Risk or the ModeController and explicitly executes the theoretical paper trades.
+
+**Regime-Adaptive Allocation:**
+- `PortfolioPolicy.allocate()` accepts `regime_meta` for regime-conditional behavior:
+  - **Vol Targeting:** Estimates portfolio-level vol via `w @ cov @ w` and scales weights to match `target_volatility` (scalar clamped 0.3-2.0).
+  - **Advisory Exposure Cap:** Enforces `suggested_exposure_cap` from Engine E advisory, scaling all weights proportionally when gross exposure exceeds the cap.
+  - **Regime-Specific Config Overrides:** Loads per-regime allocation recommendations from `AllocationEvaluator` (mode, max_weight, target_vol, rebalance_threshold) and temporarily applies them during allocation.
+- `AllocationEvaluator` (new) autonomously tests 384 parameter combinations and finds optimal configs per regime. Integrated into Governor's `update_from_trade_log()` feedback loop. Recommendations saved to `data/research/allocation_recommendations.json`.
 
 **Known Issues & Quirks:**
 - *The Vanity Bug Fix:* Contains workarounds to mark missing assets to `0.0` or last explicit price during data gaps.

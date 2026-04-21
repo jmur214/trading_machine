@@ -9,13 +9,18 @@ class BollingerReversionEdge(EdgeBase):
 
     def compute_signals(self, data_map, as_of):
         scores = {}
+        min_zscore = float(self.params.get("min_zscore", 1.0))
         for t, df in data_map.items():
             if len(df) < 20: continue
             close = df["Close"]
             ma = close.rolling(20).mean()
             std = close.rolling(20).std()
             zscore = (close.iloc[-1] - ma.iloc[-1]) / (std.iloc[-1] + 1e-9)
-            scores[t] = float(np.tanh(-zscore / 2))  # revert toward mean
+            # Only fire when price is at least min_zscore std devs from mean
+            if abs(zscore) < min_zscore:
+                scores[t] = 0.0
+            else:
+                scores[t] = float(np.tanh(-zscore / 2))  # revert toward mean
         return scores
 
     def generate_signals(self, data_map, as_of):

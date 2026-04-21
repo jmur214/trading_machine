@@ -7,11 +7,19 @@ import numpy as np
 from dash import html
 from dash.dependencies import Output, Input
 
-# Import helper functions from v2 or fallback to dashboard.py
-try:
-    from cockpit.dashboard.utils import safe_read_csv, compute_trade_pnl_fifo, summarize_period, _summary_kpi_cards
-except ImportError:
-    from cockpit.dashboard.dashboard import safe_read_csv, compute_trade_pnl_fifo, summarize_period, _summary_kpi_cards
+# Import helper functions from v2 callbacks
+from .dashboard_callbacks import compute_trade_pnl_fifo, summarize_period, _summary_kpi_cards
+
+
+def safe_read_csv(path: str) -> pd.DataFrame:
+    """Safely read a CSV file, returning empty DataFrame on failure."""
+    try:
+        p = Path(path)
+        if p.exists() and p.stat().st_size > 0:
+            return pd.read_csv(p)
+    except Exception:
+        pass
+    return pd.DataFrame()
 
 try:
     from cockpit.metrics import PerformanceMetrics

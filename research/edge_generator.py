@@ -71,7 +71,7 @@ class {class_name}(EdgeBase, EdgeTemplate):
         self.dm = DataManager()
         self.fundamental_cache = {{}}
         # Internal Regime Detector
-        from engines.engine_d_research.regime_detector import RegimeDetector
+        from engines.engine_e_regime.regime_detector import RegimeDetector
         self.regime_detector = RegimeDetector()
         self.regime_cache = {{}}
 

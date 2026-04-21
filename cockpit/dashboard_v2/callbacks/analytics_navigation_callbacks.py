@@ -8,7 +8,7 @@ from ..tabs.evolution_tab import evolution_layout
 def register_analytics_navigation_callbacks(app):
     @app.callback(
         Output("analytics_sub_content", "children"),
-        Input("analytics_sub_tab_selector", "value"),
+        Input("analytics-sub-tabs", "value"),
         prevent_initial_call=False  # Fire on load to show default
     )
     def render_analytics_sub_content(selected_tab):

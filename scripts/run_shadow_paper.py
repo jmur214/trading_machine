@@ -10,8 +10,8 @@ from typing import Dict, Any
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from brokers.shadow_broker import ShadowBroker
-from engines.engine_d_research.feature_engineering import FeatureEngineer
-from engines.engine_d_research.discovery import DiscoveryEngine
+from engines.engine_d_discovery.feature_engineering import FeatureEngineer
+from engines.engine_d_discovery.discovery import DiscoveryEngine
 from engines.engine_a_alpha.edges.rule_based_edge import RuleBasedEdge
 from engines.data_manager.fundamentals.loader import FundamentalLoader
 

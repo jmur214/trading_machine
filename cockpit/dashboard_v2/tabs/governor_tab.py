@@ -1,28 +1,9 @@
-# cockpit/dashboard/tabs/governor_tab.py
+# cockpit/dashboard_v2/tabs/governor_tab.py
 """Governor tab - Strategy weights and recommendations visualization."""
 from __future__ import annotations
 from dash import dcc, html
 
-# ============================================
-# DESIGN TOKENS
-# ============================================
-CARD_STYLE = {
-    "background": "rgba(15, 20, 26, 0.85)",
-    "backdropFilter": "blur(20px)",
-    "border": "1px solid rgba(56, 68, 77, 0.4)",
-    "borderRadius": "16px",
-    "padding": "24px",
-    "boxShadow": "0 4px 12px rgba(0, 0, 0, 0.4)",
-}
-
-SECTION_HEADER = {
-    "display": "flex",
-    "alignItems": "center",
-    "gap": "12px",
-    "marginBottom": "16px",
-    "paddingBottom": "12px",
-    "borderBottom": "1px solid rgba(56, 68, 77, 0.4)",
-}
+from ..utils.styles import CARD_STYLE, SECTION_HEADER, COLORS
 
 
 def governor_layout():

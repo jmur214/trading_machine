@@ -6,6 +6,7 @@ import plotly.graph_objects as go
 from dash import Input, Output
 
 from ..utils.datamanager import DataManager
+from ..utils.chart_helpers import get_chart_layout
 
 
 def register_governor_callbacks(app):
@@ -32,12 +33,10 @@ def register_governor_callbacks(app):
             edges = list(weights.keys())
             wvals = [weights[e] for e in edges]
             w_fig.add_trace(go.Bar(x=edges, y=wvals, name="Weight"))
-        w_fig.update_layout(
-            title=f"Edge Weights" + (f" — Updated {last_ts}" if last_ts else ""),
-            template="plotly_dark",
-            xaxis_title="Edge",
-            yaxis_title="Weight",
-        )
+        w_fig.update_layout(get_chart_layout(
+            f"Edge Weights" + (f" — Updated {last_ts}" if last_ts else ""),
+            xaxis_title="Edge", yaxis_title="Weight",
+        ))
 
         # ---- 2) SR vs Weight scatter ----
         sr_fig = go.Figure()
@@ -55,12 +54,10 @@ def register_governor_callbacks(app):
                 ys.append(float(w))
                 labels.append(edge)
             sr_fig.add_trace(go.Scatter(x=xs, y=ys, mode="markers+text", text=labels, textposition="top center"))
-        sr_fig.update_layout(
-            title="Sharpe vs Weight",
-            template="plotly_dark",
-            xaxis_title="Sharpe (SR)",
-            yaxis_title="Weight",
-        )
+        sr_fig.update_layout(get_chart_layout(
+            "Sharpe vs Weight",
+            xaxis_title="Sharpe (SR)", yaxis_title="Weight",
+        ))
 
         # ---- 3) Recommendations chart ----
         rec_fig = go.Figure()
@@ -89,12 +86,10 @@ def register_governor_callbacks(app):
                 vals.append(val)
             colors = ["limegreen" if (isinstance(v, (int, float)) and v >= 0.5) else "firebrick" for v in vals]
             rec_fig.add_trace(go.Bar(x=edges, y=vals, marker_color=colors))
-        rec_fig.update_layout(
-            title="Governor Recommendations",
-            template="plotly_dark",
-            xaxis_title="Edge",
-            yaxis_title="Suggested Weight",
-        )
+        rec_fig.update_layout(get_chart_layout(
+            "Governor Recommendations",
+            xaxis_title="Edge", yaxis_title="Suggested Weight",
+        ))
 
         # ---- 4) Weight evolution from history ----
         hist = dm.get_weight_history()
@@ -102,11 +97,9 @@ def register_governor_callbacks(app):
         if not hist.empty:
             for edge, g in hist.groupby("edge"):
                 ew_fig.add_trace(go.Scatter(x=g["timestamp"], y=g["weight"], mode="lines", name=str(edge)))
-        ew_fig.update_layout(
-            title="Weight Evolution",
-            template="plotly_dark",
-            xaxis_title="Time",
-            yaxis_title="Weight",
-        )
+        ew_fig.update_layout(get_chart_layout(
+            "Weight Evolution",
+            xaxis_title="Time", yaxis_title="Weight",
+        ))
 
         return w_fig, sr_fig, rec_fig, ew_fig

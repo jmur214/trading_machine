@@ -101,6 +101,7 @@ class BacktestController:
         bt_params: Optional[BacktestParams] = None,
         batch_flush_interval: int = 500,
         portfolio_cfg: Optional[Any] = None,
+        regime_detector=None,
     ):
         # Normalize data
         self.data_map: Dict[str, pd.DataFrame] = {}
@@ -161,10 +162,11 @@ class BacktestController:
 
         self.cfg = bt_params or BacktestParams()
         self.batch_flush_interval = batch_flush_interval
+        self.regime_detector = regime_detector
         
         # Load Signal Gate (AI Brain)
         try:
-             from engines.engine_d_research.learning.signal_gate import SignalGate
+             from engines.engine_a_alpha.learning.signal_gate import SignalGate
              self.signal_gate = SignalGate()
              self.signal_gate.load()
         except Exception as e:
@@ -243,10 +245,12 @@ class BacktestController:
             "edge_id": fill.get("edge_id", ""),
             "edge_category": fill.get("edge_category", ""),
             "run_id": getattr(self, "run_id", None) or getattr(self.logger, "run_id", None) or "",
+            "regime_label": fill.get("regime_label", ""),
         }
         header = [
             "timestamp", "ticker", "side", "qty", "fill_price", "commission", "pnl",
-            "edge", "edge_group", "trigger", "meta", "edge_id", "edge_category", "run_id"
+            "edge", "edge_group", "trigger", "meta", "edge_id", "edge_category", "run_id",
+            "regime_label"
         ]
         # Check if file exists
         write_header = not os.path.exists(trades_path)
@@ -272,18 +276,467 @@ class BacktestController:
                 print("[BACKTEST_CONTROLLER][DEBUG] PortfolioEngine has no 'capital' attribute; falling back to 'cash'.")
             return getattr(self.portfolio, "cash", 0.0)
 
-    # ------------------------------- run ------------------------------- #
+    # ----------------------- side normalization map ---------------------- #
+    SIDE_MAP = {
+        "buy": "long",
+        "sell": "exit",
+        "sell_short": "short",
+        "short": "short",
+        "buy_to_cover": "cover",
+        "cover": "cover",
+    }
 
-    def run(self, start: str, end: str):
-        import gc
+    # ----------------------- extracted private methods ------------------- #
+
+    def _detect_regime(self, ts, slice_map):
+        """[ENGINE E] Regime detection -- once per bar, before Alpha and Risk."""
+        regime_meta = None
+        if self.regime_detector is not None:
+            try:
+                benchmark_ticker = getattr(self.regime_detector, 'cfg', None)
+                benchmarks = getattr(benchmark_ticker, 'benchmarks', ['SPY']) if benchmark_ticker else ['SPY']
+                bm_ticker = benchmarks[0] if benchmarks else 'SPY'
+                bm_df = slice_map.get(bm_ticker)
+                if bm_df is not None and not bm_df.empty:
+                    regime_meta = self.regime_detector.detect_regime(
+                        bm_df, data_map=slice_map, now=str(ts)
+                    )
+            except Exception as e:
+                if is_debug_enabled("BACKTEST_CONTROLLER"):
+                    print(f"[BACKTEST][WARN] Regime detection failed at {ts}: {e}")
+
+        # Inject learned edge affinity from Governor's regime tracker
+        if regime_meta and hasattr(self, 'alpha') and self.alpha is not None:
+            governor = getattr(self.alpha, 'governor', None)
+            if governor is not None:
+                tracker = getattr(governor, 'regime_tracker', None)
+                if tracker is not None:
+                    macro = regime_meta.get("macro_regime")
+                    if isinstance(macro, dict):
+                        label = macro.get("label", "transitional")
+                    elif isinstance(macro, str):
+                        label = macro
+                    else:
+                        label = "transitional"
+                    learned = tracker.get_learned_affinity(label)
+                    if learned:
+                        regime_meta.setdefault("advisory", {})["learned_edge_affinity"] = learned
+
+        return regime_meta
+
+    def _update_trailing_stops(self, slice_map, regime_meta):
+        """[SMART SHIELD] Manage existing positions (Trailing Stops)."""
+        if hasattr(self.risk, "manage_positions"):
+            try:
+                # Construct current price map for risk manager
+                # We use 'ts' (current bar close) as the reference price
+                current_prices = {}
+                for t, df_slice in slice_map.items():
+                    if not df_slice.empty:
+                        current_prices[t] = float(df_slice.iloc[-1]["Close"])
+
+                updates = self.risk.manage_positions(current_prices, regime_meta=regime_meta, data_map=slice_map)
+                for upd in updates:
+                    tkr = upd.get("ticker")
+                    new_stop = upd.get("new_stop")
+                    if tkr and new_stop is not None:
+                        pos = self.portfolio.positions.get(tkr)
+                        if pos:
+                            old_stop = pos.stop
+                            pos.stop = new_stop
+                            if is_debug_enabled("BACKTEST_CONTROLLER"):
+                                print(f"[SMART_SHIELD] Trailing Stop Update for {tkr}: {old_stop} -> {new_stop}")
+            except Exception as e:
+                if is_debug_enabled("BACKTEST_CONTROLLER"):
+                    print(f"[BACKTEST][WARN] Trailing stop update failed: {e}")
+
+    def _generate_signals(self, ts, slice_map, regime_meta, BACKTEST_DEBUG):
+        """Engine A: signal generation + signal gate + bagholder protection."""
+        # ------------- Engine A: signals at time ts -------------
+        signals = []
+        try:
+            # Attempt to create unified price matrix for cross-sectional edges
+            combined_prices = pd.DataFrame({t: df["Close"] for t, df in slice_map.items() if not df.empty})
+            if hasattr(self.alpha, "compute_signals"):
+                signals = self.alpha.compute_signals(combined_prices, ts) or []
+                # fallback if compute_signals returns nothing
+                if not signals:
+                    signals = self.alpha.generate_signals(slice_map, ts, regime_meta=regime_meta) or []
+            else:
+                signals = self.alpha.generate_signals(slice_map, ts, regime_meta=regime_meta) or []
+        except Exception as e:
+            signals = []
+            if is_debug_enabled("BACKTEST_CONTROLLER"):
+                print(f"[DEBUG][{ts}] Alpha signal generation error: {e}")
+
+        if BACKTEST_DEBUG and signals:
+            print(f"[DEBUG_BACKTEST][{ts}] Raw signals: {signals[:3]}")
+
+        if self.cfg.verbose and is_debug_enabled("BACKTEST_CONTROLLER"):
+            print(f"[DEBUG][{ts}] Generated signals: {signals}")
+
+        # [SIGNAL GATE] AI Filter based on trained regime model
+        # This applies "learned" wisdom to block bad signals
+        if hasattr(self, "signal_gate") and self.signal_gate and signals:
+             try:
+                 # We need a data interface for the gate. It expects {ticker: dataframe_history}
+                 # slice_map is exactly that.
+                 filtered_signals = self.signal_gate.predict(signals, slice_map)
+                 if len(filtered_signals) < len(signals):
+                     if is_debug_enabled("BACKTEST_CONTROLLER"):
+                         print(f"[SIGNAL_GATE] Blocked {len(signals) - len(filtered_signals)} signals at {ts}")
+                 signals = filtered_signals
+             except Exception as e:
+                 pass # Fail open if gate errors
+
+
+        # [BAGHOLDER FIX] Data Gap Protection
+        # If we hold a position but data is missing today, AlphaEngine didn't see it (likely).
+        # We must injected a "Neutral/Exit" signal to allow RiskEngine to manage the exit (if possible).
+        # And we must provide 'stale' history so RiskEngine doesn't crash.
+        held_tickers = []
+        if hasattr(self.portfolio, "positions"):
+            held_tickers = [t for t, p in self.portfolio.positions.items() if p.qty != 0]
+
+        for t in held_tickers:
+            if t not in slice_map:
+                # 1. Fetch stale history (up to ts)
+                if t in self.data_map:
+                    try:
+                        # Safe get up to ts
+                        stale_hist = self.data_map[t].loc[:ts]
+                        if not stale_hist.empty:
+                            slice_map[t] = stale_hist
+                            # 2. Inject Panic/Zero Signal
+                            # Signal 0.0 usually implies "Exit" or "No Edge" depending on Alpha/Risk logic.
+                            # We rely on RiskEngine to treat 0.0 as "Close Long/Cover Short" if position exists.
+                            signals.append({
+                                "ticker": t,
+                                "signal": 0.0,
+                                "weight": 0.0,
+                                "meta": {"note": "DATA_GAP_PROTECTION_EXIT", "edges_triggered": []}
+                            })
+                            if is_debug_enabled("BACKTEST_CONTROLLER"):
+                                print(f"[CONTROLLER][PROBE] 🛡️ Injecting GAP EXIT signal for {t} (stale data).")
+                    except Exception:
+                        pass
+
+        return signals
+
+    def _prepare_orders(self, signals, ts, slice_map, equity_cache, close_prices_df, tickers, BACKTEST_DEBUG, regime_meta=None):
+        """Prepare orders from signals through risk engine. Returns (orders, top_edge_by_ticker)."""
+        # Top edge attribution per ticker (if provided via meta.edges_triggered)
+        top_edge_by_ticker: Dict[str, str] = {}
+        for s in signals:
+            try:
+                if not isinstance(s, dict) or "ticker" not in s:
+                    continue
+                contrib = (s.get("meta", {}) or {}).get("edges_triggered", [])
+                if contrib:
+                    # strongest by |signal*weight|
+                    top = max(
+                        contrib,
+                        key=lambda c: abs(float(c.get("signal", 0.0)) * float(c.get("weight", 0.0)))
+                    )
+                    top_edge_by_ticker[s["ticker"]] = str(top.get("edge", "Unknown"))
+                else:
+                    top_edge_by_ticker[s["ticker"]] = "Unknown"
+            except Exception:
+                continue
+
+        # ---- Engine C: Portfolio Optimization ---------------------------
+        # Convert signals list to dict {ticker: score} for optimizer
+        signal_map = {}
+        for s in signals:
+            # Generic signal parsing: look for 'strength', then 'confidence', then 'signal'
+            # AlphaEngine typically returns 'strength' (0.0 to 1.0) and 'side'
+            if "ticker" not in s:
+                continue
+
+            raw_score = s.get("strength", s.get("confidence", s.get("signal", 0.0)))
+            side = s.get("side", "none").lower()
+
+            if side == "none":
+                continue
+
+            side_mult = 1.0 if side == "long" else -1.0
+            if side == "short":
+                side_mult = -1.0
+
+            score = float(raw_score) * side_mult
+            signal_map[s["ticker"]] = score
+
+        # Compute portfolio equity (cached or raw)
+        if ts in equity_cache:
+            equity = equity_cache[ts]
+        else:
+            # Quick equity calc
+            mv = 0.0
+            for t_pos, p_pos in self.portfolio.positions.items():
+                 if p_pos.qty != 0 and t_pos in close_prices_df.columns:
+                     mv += p_pos.qty * close_prices_df.at[ts, t_pos]
+            equity = self.get_portfolio_capital() + mv
+            equity_cache[ts] = equity
+
+        # Call Policy (Engine C)
+        # Note: 'slice_map' contains recent history for Volatility estimation
+        target_weights = self.portfolio.compute_target_allocations(
+            signals=signal_map,
+            price_data=slice_map,
+            equity=equity,
+            regime_meta=regime_meta,
+        )
+
+        # ---- Engine B: Risk / Orders ------------------------------------
+        orders: List[dict] = []
+        # target_weights is now populated
+
+        # Vectorized equity calculation: use cached if available
+        if ts in equity_cache:
+            equity = equity_cache[ts]
+        else:
+            # Compute portfolio equity at ts efficiently
+            try:
+                pos_qtys = {tkr: int(self.portfolio.positions.get(tkr).qty) if self.portfolio.positions.get(tkr) else 0 for tkr in tickers}
+                pos_values = []
+                for tkr, qty in pos_qtys.items():
+                    price = close_prices_df.at[ts, tkr] if tkr in close_prices_df.columns else np.nan
+                    if pd.isna(price):
+                        price = 0.0
+                    pos_values.append(qty * price)
+                equity = self.get_portfolio_capital() + sum(pos_values)
+            except Exception:
+                equity = self.get_portfolio_capital()
+            equity_cache[ts] = equity
+
+        for sig in signals:
+            try:
+                tkr = sig.get("ticker")
+                if not tkr or tkr not in slice_map:
+                    continue
+
+                pos = self.portfolio.positions.get(tkr)
+                curr_qty = 0 if pos is None else int(pos.qty)
+
+                order = self.risk.prepare_order(
+                    signal=sig,
+                    equity=equity,
+                    df_hist=slice_map[tkr],
+                    current_qty=curr_qty,
+                    target_weights=target_weights,
+                    regime_meta=regime_meta,
+                )
+
+                # --- Skip logic & debug tracing ---
+                if not order:
+                    reason = getattr(self.risk, "last_skip_by_ticker", {}).get(tkr)
+                    if reason:
+                        if is_debug_enabled("RISK"):
+                            print(f"[RISK][{ts}] {tkr} skipped → {reason}")
+                    else:
+                        if is_debug_enabled("RISK"):
+                            print(f"[RISK][{ts}] {tkr} skipped (no order).")
+                    continue
+
+                # --- Prevent duplicates / double entries ---
+                if order.get("side") in ("long", "short") and curr_qty != 0:
+                    if is_debug_enabled("RISK") or is_info_enabled("RISK"):
+                        print(f"[RISK][{ts}] {tkr} already in position; skipping duplicate entry.")
+                    continue
+
+                # --- Edge attribution ---
+                if tkr in top_edge_by_ticker:
+                    order["edge"] = top_edge_by_ticker[tkr]
+                if "edge_id" in sig:
+                    order["edge_id"] = sig.get("edge_id")
+                if "category" in sig:
+                    order["edge_category"] = sig.get("category")
+
+                orders.append(order)
+            except Exception as e:
+                if is_debug_enabled("BACKTEST_CONTROLLER"):
+                    print(f"[CONTROLLER][ERROR] Risk processing error for {sig.get('ticker')}: {e}")
+                continue
+
+        if BACKTEST_DEBUG and orders:
+            print(f"[DEBUG_BACKTEST][{ts}] Risk orders: {orders[:3]}")
+        if BACKTEST_DEBUG and not orders and signals:
+            first_sig = signals[0]
+            forced_ticker = first_sig.get("ticker", list(slice_map.keys())[0])
+            forced_order = {
+                "ticker": forced_ticker,
+                "side": "long",
+                "qty": 10,
+                "fill_price": float(slice_map[forced_ticker]["Close"].iloc[-1]),
+                "edge": first_sig.get("edge", "debug_forced"),
+                "edge_group": first_sig.get("edge_group", "debug"),
+                "edge_id": first_sig.get("edge_id", "debug_v1"),
+                "edge_category": first_sig.get("edge_category", "debug"),
+                "meta": {"note": "forced_debug_order"},
+            }
+            print(f"[DEBUG_BACKTEST][{ts}] Injecting forced debug order: {forced_order}")
+            orders.append(forced_order)
+
+        if not orders:
+            if is_debug_enabled("BACKTEST_CONTROLLER"):
+                print(f"[DEBUG][{ts}] No executable orders this bar.")
+        else:
+            if is_debug_enabled("BACKTEST_CONTROLLER"):
+                print(f"[DEBUG][{ts}] Orders ready for execution: {orders}")
+
+        return orders, top_edge_by_ticker
+
+    def _execute_fills(self, orders, next_rows, nxt, regime_meta=None):
+        """Execute fill loop for entries/exits on next bar."""
+        for order in orders:
+            try:
+                tkr = order["ticker"]
+                row_next = next_rows.get(tkr)
+                if row_next is None:
+                    continue
+                # Carry PrevClose into order meta for downstream PnL estimation
+                try:
+                    prev_close_val = float(row_next.get("PrevClose")) if "PrevClose" in row_next else None
+                except Exception:
+                    prev_close_val = None
+                if prev_close_val is not None and math.isfinite(prev_close_val):
+                    order.setdefault("meta", {})
+                    order["meta"]["PrevClose"] = prev_close_val
+                fill = self.exec.fill_at_next_open(order, row_next)
+                # --- Normalize side/price/commission for engine & logger compatibility ---
+                if fill:
+                    try:
+                        s = str(fill.get("side", "")).lower()
+                        fill["side"] = self.SIDE_MAP.get(s, s)
+                    except Exception:
+                        pass
+                    # ensure both keys exist for downstream consumers
+                    if "fill_price" not in fill and "price" in fill:
+                        fill["fill_price"] = fill["price"]
+                    if "price" not in fill and "fill_price" in fill:
+                        fill["price"] = fill["fill_price"]
+                    # default commission
+                    fill.setdefault("commission", float(getattr(self.exec, "commission", 0.0)))
+                if fill:
+                    # --- Ensure required numeric fields ---
+                    try:
+                        fill["qty"] = int(fill.get("qty", 0))
+                    except Exception:
+                        fill["qty"] = 0
+                    try:
+                        fill["fill_price"] = float(fill.get("fill_price", row_next.get("Open", np.nan)))
+                    except Exception:
+                        fill["fill_price"] = float("nan")
+
+                    # PnL is computed by PortfolioEngine.apply_fill() — no pre-computation needed
+
+                    # --- Propagate edge attribution into the fill ---
+                    fill["edge"] = order.get("edge", "Unknown")
+                    fill["edge_group"] = order.get("edge_group", None)
+                    fill["edge_id"] = order.get("edge_id") if "edge_id" in order else None
+                    fill["edge_category"] = order.get("edge_category") if "edge_category" in order else None
+
+                    # --- Regime label for regime-conditional governance ---
+                    if regime_meta:
+                        macro = regime_meta.get("macro_regime")
+                        if isinstance(macro, dict):
+                            fill["regime_label"] = macro.get("label", "unknown")
+                        elif isinstance(macro, str):
+                            fill["regime_label"] = macro
+                        else:
+                            fill["regime_label"] = "unknown"
+                    else:
+                        fill["regime_label"] = "unknown"
+
+                    print(f"[DEBUG_BACKTEST_FILL_CREATED] {fill}")
+                    self.portfolio.apply_fill(fill)
+                    if hasattr(self.logger, "set_portfolio"):
+                        self.logger.set_portfolio(self.portfolio)
+                    # Ensure edge attribution keys are present for logger schema
+                    fill.setdefault("edge", order.get("edge", "Unknown"))
+                    fill.setdefault("edge_group", order.get("edge_group"))
+                    fill.setdefault("edge_id", order.get("edge_id"))
+                    fill.setdefault("edge_category", order.get("edge_category"))
+                    self._log_fill_compat(fill, nxt)
+            except Exception:
+                continue
+
+    def _evaluate_stops(self, next_rows, nxt):
+        """Evaluate SL/TP on next bar."""
+        if self.cfg.eval_stops_after_entry_on_next_bar:
+            for tkr, pos in list(self.portfolio.positions.items()):
+                try:
+                    if pos.qty == 0:
+                        continue
+                    row_next = next_rows.get(tkr)
+                    if row_next is None:
+                        continue
+                    stop_or_tp = self.exec.check_stops_and_targets(tkr, pos, row_next)
+                    # Normalize SL/TP fill for engine & logger
+                    if stop_or_tp:
+                        s2 = str(stop_or_tp.get("side", "")).lower()
+                        stop_or_tp["side"] = self.SIDE_MAP.get(s2, s2)
+                        if "fill_price" not in stop_or_tp and "price" in stop_or_tp:
+                            stop_or_tp["fill_price"] = stop_or_tp["price"]
+                        if "price" not in stop_or_tp and "fill_price" in stop_or_tp:
+                            stop_or_tp["price"] = stop_or_tp["fill_price"]
+                        stop_or_tp.setdefault("commission", float(getattr(self.exec, "commission", 0.0)))
+                    if stop_or_tp:
+                        # PnL is computed by PortfolioEngine.apply_fill()
+                        self.portfolio.apply_fill(stop_or_tp)
+                        if hasattr(self.logger, "set_portfolio"):
+                            self.logger.set_portfolio(self.portfolio)
+                        self._log_fill_compat(stop_or_tp, nxt)
+                except Exception:
+                    continue
+
+    def _log_snapshot(self, next_rows, nxt):
+        """Snapshot at nxt (using Close map)."""
+        try:
+            close_map_next = {t: _scalar_close(row) for t, row in next_rows.items()}
+            snap = self.portfolio.snapshot(nxt, close_map_next)
+
+            # DEBUG: full snapshot dict before we touch it further
+            print(f"[DEBUG_SNAPSHOT_PAYLOAD_PRE_LOG] t={nxt}, snap={snap}")
+
+            print(f"[DEBUG_SNAPSHOT_CHECK] Snapshot at {nxt}: cash={self.portfolio.cash}, positions={{t: p.qty for t,p in self.portfolio.positions.items()}}, realized_pnl={self.portfolio.realized_pnl}")
+            # Ensure snapshot reflects live portfolio state using close prices for this bar
+            snap["positions"] = sum(1 for p in self.portfolio.positions.values() if p.qty != 0)
+            try:
+                live_cash = float(getattr(self.portfolio, "cash", snap.get("cash", 0.0)))
+                live_mv = 0.0
+                for _tkr, _pos in getattr(self.portfolio, "positions", {}).items():
+                    if hasattr(_pos, "qty") and _pos.qty != 0:
+                        px = close_map_next.get(_tkr)
+                        if px is None:
+                            px = getattr(_pos, "last_price", getattr(_pos, "avg_price", 0.0))
+                        if px is None:
+                            continue
+                        live_mv += float(_pos.qty) * float(px)
+                snap["cash"] = live_cash
+                snap["market_value"] = live_mv
+                snap["equity"] = live_cash + live_mv
+            except Exception as e:
+
+                if is_debug_enabled("BACKTEST_CONTROLLER"):
+                    print(f"[BACKTEST_CONTROLLER][DEBUG] Failed to sync live portfolio state for snapshot: {e}")
+            # Tag snapshot with current run_id and persist into portfolio history
+            snap["run_id"] = self.run_id
+            self.logger.log_snapshot(snap)
+            try:
+                self.portfolio.history.append(snap)
+            except Exception:
+                pass
+        except Exception:
+            pass
+
+    def _post_run(self, start_time, total_bars, BACKTEST_DEBUG):
+        """Post-run logic: final flush, regime history save, edge feedback, metrics export, CSV promotion."""
         import threading
-        import sys
         import os
-        BACKTEST_DEBUG = bool(int(os.getenv("BACKTEST_DEBUG", "0")))
-        if BACKTEST_DEBUG:
-            print("[BACKTEST_CONTROLLER] Running in debug mode.")
 
-        # Non-blocking flush helper for logger
+        # Non-blocking flush helper for logger (duplicated here for post-run use;
+        # the identical closure lives inside run() for the main-loop path)
         def flush_logger_with_timeout(logger, timeout=5.0):
             """Flush logger, but do not block indefinitely (prevent deadlocks)."""
             result = {"done": False}
@@ -299,615 +752,6 @@ class BacktestController:
             if not result["done"]:
                 if is_debug_enabled("BACKTEST_CONTROLLER"):
                     print("[BACKTEST_CONTROLLER][WARN] Logger flush timed out, continuing anyway.")
-
-        start_dt = pd.to_datetime(start).tz_localize(None)
-        end_dt = pd.to_datetime(end).tz_localize(None)
-        # Check for empty data_map or all empty DataFrames
-        if not self.data_map or all(df.empty for df in self.data_map.values()):
-            print("[BACKTEST_CONTROLLER][DEBUG] Entered run() with empty data_map or all empty DataFrames.")
-            raise ValueError("[BACKTEST] No data available for backtest — data_map is empty or failed to load. Check data sources or API keys.")
-        ts_vec = [ts for ts in self.timestamps if (start_dt <= ts <= end_dt)]
-
-        if not ts_vec:
-            print("[BACKTEST_CONTROLLER][DEBUG] Entered run() but no valid timestamps found in range.")
-            raise ValueError("[BACKTEST] No valid timestamps found within range. Check data alignment or date filters.")
-
-        # Always write an initial snapshot even if there's only one bar
-        t0 = ts_vec[0]
-        first_prices = {t: float(self.data_map[t].iloc[0]["Close"]) for t in self.data_map if not self.data_map[t].empty}
-        # Ensure portfolio capital and cash are set to initial_capital if <= 0 before first snapshot
-        if float(getattr(self.portfolio, "capital", 0.0)) <= 0.0:
-            self.portfolio.capital = self.initial_capital
-        if hasattr(self.portfolio, "cash") and float(getattr(self.portfolio, "cash", 0.0)) <= 0.0:
-            self.portfolio.cash = self.initial_capital
-        snap0 = self.portfolio.snapshot(t0, first_prices)
-        snap0["positions"] = sum(1 for p in self.portfolio.positions.values() if p.qty != 0)
-        snap0["run_id"] = self.run_id
-        # DEBUG: see exactly what initial snapshot looks like before logger touches it
-        print(f"[DEBUG_INITIAL_SNAPSHOT_PAYLOAD] {snap0}")
-        try:
-            self.logger.log_snapshot(snap0)
-        except Exception as e:
-            print(f"[BACKTEST_CONTROLLER][DEBUG] Exception logging initial snapshot: {e}")
-        self.portfolio.history = [snap0]
-
-        # Force at least one initial record into portfolio_snapshots.csv if portfolio.history is empty or snapshot could not be written
-        try:
-            pass
-        except Exception as e:
-            print(f"[BACKTEST_CONTROLLER][DEBUG] Could not write forced initial snapshot: {e}")
-
-        if len(ts_vec) < 2:
-            print("[BACKTEST_CONTROLLER][DEBUG] Only one bar of data available; recorded initial snapshot only and finishing early.")
-            return self.portfolio.history
-
-        if self.cfg.verbose and is_debug_enabled("BACKTEST_CONTROLLER"):
-            print(f"[DEBUG] Starting backtest from {t0} to {ts_vec[-1]} ({len(ts_vec)} bars)")
-
-        total_bars = len(ts_vec) - 1
-        equity_cache: Dict[pd.Timestamp, float] = {}
-
-        # Precompute a DataFrame of Close prices for all tickers and all timestamps for vectorized equity
-        tickers = list(self.data_map.keys())
-        close_price_data = {}
-        for tkr in tickers:
-            df = self.data_map[tkr]
-            # Align df Close prices to ts_vec, reindex with forward fill to handle missing bars
-            close_series = df["Close"].reindex(ts_vec, method='ffill')
-            close_price_data[tkr] = close_series
-        close_prices_df = pd.DataFrame(close_price_data, index=ts_vec)
-
-        start_time = time.time()
-        last_checkpoint = start_time
-        checkpoint_interval = max(5, self.batch_flush_interval // 2)
-
-        try:
-            # Main bar loop (lookahead one bar for fills)
-            for i, ts in enumerate(ts_vec[:-1]):
-                # Periodic progress report and timing checkpoint
-                if i % self.batch_flush_interval == 0 and is_info_enabled("BACKTEST_CONTROLLER"):
-                    print(f"[BACKTEST][INFO] Progress: {i}/{total_bars} bars processed...")
-                if self.cfg.verbose and is_debug_enabled("BACKTEST_CONTROLLER"):
-                    if i % checkpoint_interval == 0 and i > 0:
-                        now = time.time()
-                        elapsed = now - last_checkpoint
-                        print(f"[DEBUG] Loop checkpoint: bar {i}/{total_bars}, {elapsed:.2f}s since last checkpoint, {now - start_time:.2f}s total elapsed.")
-                        last_checkpoint = now
-
-                nxt = ts_vec[i + 1]
-
-                # Slice up to current bar ts using shallow slicing
-                slice_map: Dict[str, pd.DataFrame] = {}
-                for t in tickers:
-                    df = self.data_map[t]
-                    if ts in df.index:
-                        # Use slicing with iloc to avoid deep copies
-                        try:
-                            idx = df.index.get_loc(ts)
-                            slice_map[t] = df.iloc[:idx + 1]
-                        except Exception:
-                            # fallback safe get
-                            slice_map[t] = df.loc[:ts]
-
-                # [BAGHOLDER PROBE] Check for held tickers that are missing from today's data slice
-                # This explicitly visualizes the bug where we lose control of a position.
-                current_holdings = list(self.portfolio.positions.keys())
-                for held_ticker in current_holdings:
-                    if held_ticker not in self.data_map: # Use self.data_map for full data, not slice_map
-                        if is_controller_debug():
-                            print(f"[CONTROLLER][PROBE] 🚨 DATA GAP for {held_ticker} at {ts}. "
-                                  f"Position held but no price data! Logic will skip this ticker.")
-                
-                # Note: AlphaEngine only receives 'data_map' (the slice). It doesn't see tickers not in the slice.
-                if not slice_map:
-                    # Memory cleanup for unused slices
-                    if i % self.batch_flush_interval == 0:
-                        gc.collect()
-                    continue
-                    
-                # [SMART SHIELD] 1. Manage existing positions (Trailing Stops)
-                # Before generating new signals, update stops on existing positions
-                if hasattr(self.risk, "manage_positions"):
-                    try:
-                        # Construct current price map for risk manager
-                        # We use 'ts' (current bar close) as the reference price
-                        current_prices = {}
-                        for t, df_slice in slice_map.items():
-                            if not df_slice.empty:
-                                current_prices[t] = float(df_slice.iloc[-1]["Close"])
-                                
-                        updates = self.risk.manage_positions(current_prices)
-                        for upd in updates:
-                            tkr = upd.get("ticker")
-                            new_stop = upd.get("new_stop")
-                            if tkr and new_stop is not None:
-                                pos = self.portfolio.positions.get(tkr)
-                                if pos:
-                                    old_stop = pos.stop
-                                    pos.stop = new_stop
-                                    if is_debug_enabled("BACKTEST_CONTROLLER"):
-                                        print(f"[SMART_SHIELD] Trailing Stop Update for {tkr}: {old_stop} -> {new_stop}")
-                    except Exception as e:
-                        if is_debug_enabled("BACKTEST_CONTROLLER"):
-                            print(f"[BACKTEST][WARN] Trailing stop update failed: {e}")
-
-                # ------------- Engine A: signals at time ts -------------
-                signals = []
-                try:
-                    # Attempt to create unified price matrix for cross-sectional edges
-                    combined_prices = pd.DataFrame({t: df["Close"] for t, df in slice_map.items() if not df.empty})
-                    if hasattr(self.alpha, "compute_signals"):
-                        signals = self.alpha.compute_signals(combined_prices, ts) or []
-                        # fallback if compute_signals returns nothing
-                        if not signals:
-                            signals = self.alpha.generate_signals(slice_map, ts) or []
-                    else:
-                        signals = self.alpha.generate_signals(slice_map, ts) or []
-                except Exception as e:
-                    signals = []
-                    if is_debug_enabled("BACKTEST_CONTROLLER"):
-                        print(f"[DEBUG][{ts}] Alpha signal generation error: {e}")
-
-                if BACKTEST_DEBUG and signals:
-                    print(f"[DEBUG_BACKTEST][{ts}] Raw signals: {signals[:3]}")
-
-                if self.cfg.verbose and is_debug_enabled("BACKTEST_CONTROLLER"):
-                    print(f"[DEBUG][{ts}] Generated signals: {signals}")
-
-                # [SIGNAL GATE] AI Filter based on trained regime model
-                # This applies "learned" wisdom to block bad signals
-                if hasattr(self, "signal_gate") and self.signal_gate and signals:
-                     try:
-                         # We need a data interface for the gate. It expects {ticker: dataframe_history}
-                         # slice_map is exactly that.
-                         filtered_signals = self.signal_gate.predict(signals, slice_map)
-                         if len(filtered_signals) < len(signals):
-                             if is_debug_enabled("BACKTEST_CONTROLLER"):
-                                 print(f"[SIGNAL_GATE] Blocked {len(signals) - len(filtered_signals)} signals at {ts}")
-                         signals = filtered_signals
-                     except Exception as e:
-                         pass # Fail open if gate errors
-
-
-                # [BAGHOLDER FIX] Data Gap Protection
-                # If we hold a position but data is missing today, AlphaEngine didn't see it (likely).
-                # We must injected a "Neutral/Exit" signal to allow RiskEngine to manage the exit (if possible).
-                # And we must provide 'stale' history so RiskEngine doesn't crash.
-                held_tickers = []
-                if hasattr(self.portfolio, "positions"):
-                    held_tickers = [t for t, p in self.portfolio.positions.items() if p.qty != 0]
-
-                for t in held_tickers:
-                    if t not in slice_map:
-                        # 1. Fetch stale history (up to ts)
-                        if t in self.data_map:
-                            try:
-                                # Safe get up to ts
-                                stale_hist = self.data_map[t].loc[:ts]
-                                if not stale_hist.empty:
-                                    slice_map[t] = stale_hist
-                                    # 2. Inject Panic/Zero Signal
-                                    # Signal 0.0 usually implies "Exit" or "No Edge" depending on Alpha/Risk logic.
-                                    # We rely on RiskEngine to treat 0.0 as "Close Long/Cover Short" if position exists.
-                                    signals.append({
-                                        "ticker": t,
-                                        "signal": 0.0,
-                                        "weight": 0.0, 
-                                        "meta": {"note": "DATA_GAP_PROTECTION_EXIT", "edges_triggered": []}
-                                    })
-                                    if is_debug_enabled("BACKTEST_CONTROLLER"):
-                                        print(f"[CONTROLLER][PROBE] 🛡️ Injecting GAP EXIT signal for {t} (stale data).")
-                            except Exception:
-                                pass
-
-                # Top edge attribution per ticker (if provided via meta.edges_triggered)
-                top_edge_by_ticker: Dict[str, str] = {}
-                for s in signals:
-                    try:
-                        if not isinstance(s, dict) or "ticker" not in s:
-                            continue
-                        contrib = (s.get("meta", {}) or {}).get("edges_triggered", [])
-                        if contrib:
-                            # strongest by |signal*weight|
-                            top = max(
-                                contrib,
-                                key=lambda c: abs(float(c.get("signal", 0.0)) * float(c.get("weight", 0.0)))
-                            )
-                            top_edge_by_ticker[s["ticker"]] = str(top.get("edge", "Unknown"))
-                        else:
-                            top_edge_by_ticker[s["ticker"]] = "Unknown"
-                    except Exception:
-                        continue
-
-                # ---- Engine C: Portfolio Optimization ---------------------------
-                # Convert signals list to dict {ticker: score} for optimizer
-                signal_map = {}
-                for s in signals:
-                    # Generic signal parsing: look for 'strength', then 'confidence', then 'signal'
-                    # AlphaEngine typically returns 'strength' (0.0 to 1.0) and 'side'
-                    if "ticker" not in s:
-                        continue
-                        
-                    raw_score = s.get("strength", s.get("confidence", s.get("signal", 0.0)))
-                    side = s.get("side", "none").lower()
-                    
-                    if side == "none":
-                        continue
-                        
-                    side_mult = 1.0 if side == "long" else -1.0
-                    if side == "short":
-                        side_mult = -1.0
-                        
-                    score = float(raw_score) * side_mult
-                    signal_map[s["ticker"]] = score
-                
-                # Compute portfolio equity (cached or raw)
-                if ts in equity_cache:
-                    equity = equity_cache[ts]
-                else:
-                    # Quick equity calc
-                    mv = 0.0
-                    for t_pos, p_pos in self.portfolio.positions.items():
-                         if p_pos.qty != 0 and t_pos in close_prices_df.columns:
-                             mv += p_pos.qty * close_prices_df.at[ts, t_pos]
-                    equity = self.get_portfolio_capital() + mv
-                    equity_cache[ts] = equity
-
-                # Call Policy (Engine C)
-                # Note: 'slice_map' contains recent history for Volatility estimation
-                target_weights = self.portfolio.compute_target_allocations(
-                    signals=signal_map,
-                    price_data=slice_map,
-                    equity=equity
-                )
-
-                # ---- Engine B: Risk / Orders ------------------------------------
-                orders: List[dict] = []
-                # target_weights is now populated
-
-                # Vectorized equity calculation: use cached if available
-                if ts in equity_cache:
-                    equity = equity_cache[ts]
-                else:
-                    # Compute portfolio equity at ts efficiently
-                    try:
-                        pos_qtys = {tkr: int(self.portfolio.positions.get(tkr).qty) if self.portfolio.positions.get(tkr) else 0 for tkr in tickers}
-                        pos_values = []
-                        for tkr, qty in pos_qtys.items():
-                            price = close_prices_df.at[ts, tkr] if tkr in close_prices_df.columns else np.nan
-                            if pd.isna(price):
-                                price = 0.0
-                            pos_values.append(qty * price)
-                        equity = self.get_portfolio_capital() + sum(pos_values)
-                    except Exception:
-                        equity = self.get_portfolio_capital()
-                    equity_cache[ts] = equity
-
-                for sig in signals:
-                    try:
-                        tkr = sig.get("ticker")
-                        if not tkr or tkr not in slice_map:
-                            continue
-
-                        pos = self.portfolio.positions.get(tkr)
-                        curr_qty = 0 if pos is None else int(pos.qty)
-
-                        order = self.risk.prepare_order(
-                            signal=sig,
-                            equity=equity,
-                            df_hist=slice_map[tkr],
-                            current_qty=curr_qty,
-                            target_weights=target_weights,
-                        )
-
-                        # --- Skip logic & debug tracing ---
-                        if not order:
-                            reason = getattr(self.risk, "last_skip_by_ticker", {}).get(tkr)
-                            if reason:
-                                if is_debug_enabled("RISK"):
-                                    print(f"[RISK][{ts}] {tkr} skipped → {reason}")
-                            else:
-                                if is_debug_enabled("RISK"):
-                                    print(f"[RISK][{ts}] {tkr} skipped (no order).")
-                            continue
-
-                        # --- Prevent duplicates / double entries ---
-                        if order.get("side") in ("long", "short") and curr_qty != 0:
-                            if is_debug_enabled("RISK") or is_info_enabled("RISK"):
-                                print(f"[RISK][{ts}] {tkr} already in position; skipping duplicate entry.")
-                            continue
-
-                        # --- Edge attribution ---
-                        if tkr in top_edge_by_ticker:
-                            order["edge"] = top_edge_by_ticker[tkr]
-                        if "edge_id" in sig:
-                            order["edge_id"] = sig.get("edge_id")
-                        if "category" in sig:
-                            order["edge_category"] = sig.get("category")
-
-                        orders.append(order)
-                    except Exception as e:
-                        if is_debug_enabled("BACKTEST_CONTROLLER"):
-                            print(f"[CONTROLLER][ERROR] Risk processing error for {sig.get('ticker')}: {e}")
-                        continue
-
-                if BACKTEST_DEBUG and orders:
-                    print(f"[DEBUG_BACKTEST][{ts}] Risk orders: {orders[:3]}")
-                if BACKTEST_DEBUG and not orders and signals:
-                    first_sig = signals[0]
-                    forced_ticker = first_sig.get("ticker", list(slice_map.keys())[0])
-                    forced_order = {
-                        "ticker": forced_ticker,
-                        "side": "long",
-                        "qty": 10,
-                        "fill_price": float(slice_map[forced_ticker]["Close"].iloc[-1]),
-                        "edge": first_sig.get("edge", "debug_forced"),
-                        "edge_group": first_sig.get("edge_group", "debug"),
-                        "edge_id": first_sig.get("edge_id", "debug_v1"),
-                        "edge_category": first_sig.get("edge_category", "debug"),
-                        "meta": {"note": "forced_debug_order"},
-                    }
-                    print(f"[DEBUG_BACKTEST][{ts}] Injecting forced debug order: {forced_order}")
-                    orders.append(forced_order)
-
-                if not orders:
-                    if is_debug_enabled("BACKTEST_CONTROLLER"):
-                        print(f"[DEBUG][{ts}] No executable orders this bar.")
-                else:
-                    if is_debug_enabled("BACKTEST_CONTROLLER"):
-                        print(f"[DEBUG][{ts}] Orders ready for execution: {orders}")
-
-                # Build next-bar rows with shallow copy and preallocation
-                next_rows: Dict[str, pd.Series] = {}
-                for t in slice_map:
-                    try:
-                        df = self.data_map[t]
-                        if nxt not in df.index:
-                            continue
-                        idx = df.index.get_loc(nxt)
-                        if isinstance(df.index, (pd.RangeIndex, pd.DatetimeIndex)):
-                            row_next = df.iloc[idx]
-                            row_next = row_next.copy(deep=False)
-                        else:
-                            row_next = df.loc[nxt].copy(deep=False)
-                        if ts in slice_map[t].index:
-                            row_next["PrevClose"] = float(slice_map[t].loc[ts]["Close"])
-                        next_rows[t] = row_next
-                    except Exception:
-                        continue
-
-                # ------------- Execution on next bar (entries/exits) -------------
-                for order in orders:
-                    try:
-                        tkr = order["ticker"]
-                        row_next = next_rows.get(tkr)
-                        if row_next is None:
-                            continue
-                        # Carry PrevClose into order meta for downstream PnL estimation
-                        try:
-                            prev_close_val = float(row_next.get("PrevClose")) if "PrevClose" in row_next else None
-                        except Exception:
-                            prev_close_val = None
-                        if prev_close_val is not None and math.isfinite(prev_close_val):
-                            order.setdefault("meta", {})
-                            order["meta"]["PrevClose"] = prev_close_val
-                        fill = self.exec.fill_at_next_open(order, row_next)
-                        # --- Normalize side/price/commission for engine & logger compatibility ---
-                        side_map = {
-                            "buy": "long",
-                            "sell": "exit",
-                            "sell_short": "short",
-                            "short": "short",
-                            "buy_to_cover": "cover",
-                            "cover": "cover",
-                        }
-                        if fill:
-                            try:
-                                s = str(fill.get("side", "")).lower()
-                                fill["side"] = side_map.get(s, s)
-                            except Exception:
-                                pass
-                            # ensure both keys exist for downstream consumers
-                            if "fill_price" not in fill and "price" in fill:
-                                fill["fill_price"] = fill["price"]
-                            if "price" not in fill and "fill_price" in fill:
-                                fill["price"] = fill["fill_price"]
-                            # default commission
-                            fill.setdefault("commission", float(getattr(self.exec, "commission", 0.0)))
-                        if fill:
-                            # --- Ensure required numeric fields ---
-                            try:
-                                fill["qty"] = int(fill.get("qty", 0))
-                            except Exception:
-                                fill["qty"] = 0
-                            try:
-                                fill["fill_price"] = float(fill.get("fill_price", row_next.get("Open", np.nan)))
-                            except Exception:
-                                fill["fill_price"] = float("nan")
-
-                            # --- Fallback realized PnL computation BEFORE portfolio mutation ---
-                            realized = None
-                            try:
-                                if hasattr(self.logger, "_calc_realized_pnl"):
-                                    realized = self.logger._calc_realized_pnl(fill)
-                            except Exception:
-                                realized = None
-
-                            if realized is None:
-                                try:
-                                    pos_before = self.portfolio.positions.get(tkr)
-                                    if pos_before and hasattr(pos_before, "avg_price") and math.isfinite(fill["fill_price"]):
-                                        avg_px = float(getattr(pos_before, "avg_price", float("nan")))
-                                        q = abs(int(fill["qty"]))
-                                        # Determine long/short before applying the fill
-                                        side = str(fill.get("side", "")).lower()
-                                        if pos_before.qty > 0 and side in ("sell", "exit"):
-                                            realized = (fill["fill_price"] - avg_px) * q
-                                        elif pos_before.qty < 0 and side in ("cover", "buy", "exit"):
-                                            realized = (avg_px - fill["fill_price"]) * q
-                                except Exception:
-                                    realized = None
-
-                            if realized is not None and math.isfinite(realized):
-                                try:
-                                    fill["pnl"] = round(float(realized), 2)
-                                except Exception:
-                                    pass
-
-                            # --- Propagate edge attribution into the fill ---
-                            fill["edge"] = order.get("edge", "Unknown")
-                            fill["edge_group"] = order.get("edge_group", None)
-                            fill["edge_id"] = order.get("edge_id") if "edge_id" in order else None
-                            fill["edge_category"] = order.get("edge_category") if "edge_category" in order else None
-
-                            print(f"[DEBUG_BACKTEST_FILL_CREATED] {fill}")
-                            self.portfolio.apply_fill(fill)
-                            if hasattr(self.logger, "set_portfolio"):
-                                self.logger.set_portfolio(self.portfolio)
-                            # Ensure edge attribution keys are present for logger schema
-                            fill.setdefault("edge", order.get("edge", "Unknown"))
-                            fill.setdefault("edge_group", order.get("edge_group"))
-                            fill.setdefault("edge_id", order.get("edge_id"))
-                            fill.setdefault("edge_category", order.get("edge_category"))
-                            self._log_fill_compat(fill, nxt)
-                    except Exception:
-                        continue
-
-                # ------------- SL/TP evaluation on next bar -------------
-                if self.cfg.eval_stops_after_entry_on_next_bar:
-                    for tkr, pos in list(self.portfolio.positions.items()):
-                        try:
-                            if pos.qty == 0:
-                                continue
-                            row_next = next_rows.get(tkr)
-                            if row_next is None:
-                                continue
-                            stop_or_tp = self.exec.check_stops_and_targets(tkr, pos, row_next)
-                            # Normalize SL/TP fill for engine & logger
-                            if stop_or_tp:
-                                s2 = str(stop_or_tp.get("side", "")).lower()
-                                stop_or_tp["side"] = side_map.get(s2, s2) if 'side_map' in locals() else s2
-                                if "fill_price" not in stop_or_tp and "price" in stop_or_tp:
-                                    stop_or_tp["fill_price"] = stop_or_tp["price"]
-                                if "price" not in stop_or_tp and "fill_price" in stop_or_tp:
-                                    stop_or_tp["price"] = stop_or_tp["fill_price"]
-                                stop_or_tp.setdefault("commission", float(getattr(self.exec, "commission", 0.0)))
-                            if stop_or_tp:
-                                # Realized PnL fallback for SL/TP exits (compute before mutation)
-                                try:
-                                    tside = str(stop_or_tp.get("side", "")).lower()
-                                    tq = abs(int(stop_or_tp.get("qty", 0)))
-                                    tpx = float(stop_or_tp.get("fill_price", row_next.get("Open", np.nan)))
-                                except Exception:
-                                    tside, tq, tpx = "", 0, float("nan")
-                                realized_st = None
-                                try:
-                                    if hasattr(self.logger, "_calc_realized_pnl"):
-                                        realized_st = self.logger._calc_realized_pnl(stop_or_tp)
-                                except Exception:
-                                    realized_st = None
-                                if realized_st is None:
-                                    try:
-                                        pos_before = self.portfolio.positions.get(tkr)
-                                        if pos_before and hasattr(pos_before, "avg_price") and math.isfinite(tpx):
-                                            avg_px = float(getattr(pos_before, "avg_price", float("nan")))
-                                            if pos_before.qty > 0 and tside in ("sell", "exit"):
-                                                realized_st = (tpx - avg_px) * tq
-                                            elif pos_before.qty < 0 and tside in ("cover", "buy", "exit"):
-                                                realized_st = (avg_px - tpx) * tq
-                                    except Exception:
-                                        realized_st = None
-                                if realized_st is not None and math.isfinite(realized_st):
-                                    stop_or_tp["pnl"] = round(float(realized_st), 2)
-
-                                self.portfolio.apply_fill(stop_or_tp)
-                                if hasattr(self.logger, "set_portfolio"):
-                                    self.logger.set_portfolio(self.portfolio)
-                                self._log_fill_compat(stop_or_tp, nxt)
-                        except Exception:
-                            continue
-
-                # ------------- Snapshot at nxt (using Close map) -------------
-                try:
-                    close_map_next = {t: _scalar_close(row) for t, row in next_rows.items()}
-                    snap = self.portfolio.snapshot(nxt, close_map_next)
-
-                    # DEBUG: full snapshot dict before we touch it further
-                    print(f"[DEBUG_SNAPSHOT_PAYLOAD_PRE_LOG] t={nxt}, snap={snap}")
-
-                    print(f"[DEBUG_SNAPSHOT_CHECK] Snapshot at {nxt}: cash={self.portfolio.cash}, positions={{t: p.qty for t,p in self.portfolio.positions.items()}}, realized_pnl={self.portfolio.realized_pnl}")
-                    # Ensure snapshot reflects live portfolio state using close prices for this bar
-                    snap["positions"] = sum(1 for p in self.portfolio.positions.values() if p.qty != 0)
-                    try:
-                        live_cash = float(getattr(self.portfolio, "cash", snap.get("cash", 0.0)))
-                        live_mv = 0.0
-                        for _tkr, _pos in getattr(self.portfolio, "positions", {}).items():
-                            if hasattr(_pos, "qty") and _pos.qty != 0:
-                                px = close_map_next.get(_tkr)
-                                if px is None:
-                                    px = getattr(_pos, "last_price", getattr(_pos, "avg_price", 0.0))
-                                if px is None:
-                                    continue
-                                live_mv += float(_pos.qty) * float(px)
-                        snap["cash"] = live_cash
-                        snap["market_value"] = live_mv
-                        snap["equity"] = live_cash + live_mv
-                    except Exception as e:
-
-                        if is_debug_enabled("BACKTEST_CONTROLLER"):
-                            print(f"[BACKTEST_CONTROLLER][DEBUG] Failed to sync live portfolio state for snapshot: {e}")
-                    # Tag snapshot with current run_id and persist into portfolio history
-                    snap["run_id"] = self.run_id
-                    self.logger.log_snapshot(snap)
-                    try:
-                        self.portfolio.history.append(snap)
-                    except Exception:
-                        pass
-                except Exception:
-                    pass
-
-                if self.cfg.verbose and is_debug_enabled("BACKTEST_CONTROLLER"):
-                    print(f"[DEBUG][{nxt}] Active positions: {self.portfolio.positions}")
-
-                # Periodic flush of logger and portfolio to reduce memory usage
-                if (i + 1) % self.batch_flush_interval == 0:
-                    try:
-                        flush_logger_with_timeout(self.logger, timeout=5.0)
-                    except Exception as e:
-                        if is_debug_enabled("BACKTEST_CONTROLLER"):
-                            print(f"[BACKTEST_CONTROLLER][WARN] Failed to flush logger at bar {i+1}: {e}")
-                    # Periodic memory cleanup and yield CPU
-                    gc.collect()
-                    if hasattr(time, "sleep"):
-                        time.sleep(0)  # Yield CPU time to other threads/processes
-                elif (i + 1) % (self.batch_flush_interval // 4) == 0:
-                    # More frequent lightweight memory cleanup
-                    gc.collect()
-                    if hasattr(time, "sleep"):
-                        time.sleep(0)
-
-        except KeyboardInterrupt:
-            if is_info_enabled("BACKTEST_CONTROLLER"):
-                print("[BACKTEST] Backtest interrupted by user. Flushing and exiting cleanly...")
-            try:
-                flush_logger_with_timeout(self.logger, timeout=10.0)
-            except Exception:
-                pass
-            try:
-                self.logger.close()
-            except Exception:
-                pass
-            # Attempt to join flush threads if any
-            for thread in threading.enumerate():
-                if thread is not threading.current_thread() and thread.daemon:
-                    try:
-                        thread.join(timeout=2.0)
-                    except Exception:
-                        pass
-            return self.portfolio.history
-        except Exception as e:
-            if is_debug_enabled("BACKTEST_CONTROLLER"):
-                print(f"[BACKTEST] Unexpected error during backtest: {e}")
 
         # Final flush and summary
         try:
@@ -929,6 +773,25 @@ class BacktestController:
         if BACKTEST_DEBUG:
             print("[DEBUG_BACKTEST] Run complete, check trades.csv for forced fills.")
 
+        # --- Save regime history if available ---
+        if self.regime_detector is not None and hasattr(self.regime_detector, 'history'):
+            try:
+                history = self.regime_detector.history
+                if len(history) > 0:
+                    logger_out_dir = getattr(self.logger, "out_dir", None)
+                    if logger_out_dir:
+                        regime_path = os.path.join(str(logger_out_dir), "regime_history.csv")
+                    else:
+                        root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+                        run_id = getattr(self.logger, "run_id", "default")
+                        regime_path = os.path.join(root, "data", "trade_logs", str(run_id), "regime_history.csv")
+                    history.save_csv(regime_path)
+                    if is_info_enabled("BACKTEST_CONTROLLER"):
+                        print(f"[BACKTEST][INFO] Saved regime history ({len(history)} bars) to {regime_path}")
+            except Exception as e:
+                if is_debug_enabled("BACKTEST_CONTROLLER"):
+                    print(f"[BACKTEST][WARN] Could not save regime history: {e}")
+
         # --- Feedback loop: update edge weights from latest trades (safe call) ---
         try:
             from analytics.edge_feedback import update_edge_weights_from_latest_trades
@@ -941,7 +804,6 @@ class BacktestController:
         try:
             from cockpit.metrics import PerformanceMetrics
             import json
-            import os
             import pandas as _pd
 
             # Prefer cockpit logger's resolved files (run-scoped) if available
@@ -1070,4 +932,215 @@ class BacktestController:
                 print(f"[BACKTEST][PATHS] trades={trade_path}")
         except Exception:
             pass
+
+    # ------------------------------- run ------------------------------- #
+
+    def run(self, start: str, end: str):
+        import gc
+        import threading
+        import sys
+        import os
+        BACKTEST_DEBUG = bool(int(os.getenv("BACKTEST_DEBUG", "0")))
+        if BACKTEST_DEBUG:
+            print("[BACKTEST_CONTROLLER] Running in debug mode.")
+
+        # Non-blocking flush helper for logger
+        def flush_logger_with_timeout(logger, timeout=5.0):
+            """Flush logger, but do not block indefinitely (prevent deadlocks)."""
+            result = {"done": False}
+            def flush_fn():
+                try:
+                    logger.flush()
+                    result["done"] = True
+                except Exception:
+                    pass
+            t = threading.Thread(target=flush_fn, daemon=True)
+            t.start()
+            t.join(timeout)
+            if not result["done"]:
+                if is_debug_enabled("BACKTEST_CONTROLLER"):
+                    print("[BACKTEST_CONTROLLER][WARN] Logger flush timed out, continuing anyway.")
+
+        start_dt = pd.to_datetime(start).tz_localize(None)
+        end_dt = pd.to_datetime(end).tz_localize(None)
+        # Check for empty data_map or all empty DataFrames
+        if not self.data_map or all(df.empty for df in self.data_map.values()):
+            print("[BACKTEST_CONTROLLER][DEBUG] Entered run() with empty data_map or all empty DataFrames.")
+            raise ValueError("[BACKTEST] No data available for backtest — data_map is empty or failed to load. Check data sources or API keys.")
+        ts_vec = [ts for ts in self.timestamps if (start_dt <= ts <= end_dt)]
+
+        if not ts_vec:
+            print("[BACKTEST_CONTROLLER][DEBUG] Entered run() but no valid timestamps found in range.")
+            raise ValueError("[BACKTEST] No valid timestamps found within range. Check data alignment or date filters.")
+
+        # Always write an initial snapshot even if there's only one bar
+        t0 = ts_vec[0]
+        first_prices = {t: float(self.data_map[t].iloc[0]["Close"]) for t in self.data_map if not self.data_map[t].empty}
+        # Ensure portfolio capital and cash are set to initial_capital if <= 0 before first snapshot
+        if float(getattr(self.portfolio, "capital", 0.0)) <= 0.0:
+            self.portfolio.capital = self.initial_capital
+        if hasattr(self.portfolio, "cash") and float(getattr(self.portfolio, "cash", 0.0)) <= 0.0:
+            self.portfolio.cash = self.initial_capital
+        snap0 = self.portfolio.snapshot(t0, first_prices)
+        snap0["positions"] = sum(1 for p in self.portfolio.positions.values() if p.qty != 0)
+        snap0["run_id"] = self.run_id
+        # DEBUG: see exactly what initial snapshot looks like before logger touches it
+        print(f"[DEBUG_INITIAL_SNAPSHOT_PAYLOAD] {snap0}")
+        try:
+            self.logger.log_snapshot(snap0)
+        except Exception as e:
+            print(f"[BACKTEST_CONTROLLER][DEBUG] Exception logging initial snapshot: {e}")
+        self.portfolio.history = [snap0]
+
+        # Force at least one initial record into portfolio_snapshots.csv if portfolio.history is empty or snapshot could not be written
+        try:
+            pass
+        except Exception as e:
+            print(f"[BACKTEST_CONTROLLER][DEBUG] Could not write forced initial snapshot: {e}")
+
+        if len(ts_vec) < 2:
+            print("[BACKTEST_CONTROLLER][DEBUG] Only one bar of data available; recorded initial snapshot only and finishing early.")
+            return self.portfolio.history
+
+        if self.cfg.verbose and is_debug_enabled("BACKTEST_CONTROLLER"):
+            print(f"[DEBUG] Starting backtest from {t0} to {ts_vec[-1]} ({len(ts_vec)} bars)")
+
+        total_bars = len(ts_vec) - 1
+        equity_cache: Dict[pd.Timestamp, float] = {}
+
+        # Precompute a DataFrame of Close prices for all tickers and all timestamps for vectorized equity
+        tickers = list(self.data_map.keys())
+        close_price_data = {}
+        for tkr in tickers:
+            df = self.data_map[tkr]
+            # Align df Close prices to ts_vec, reindex with forward fill to handle missing bars
+            close_series = df["Close"].reindex(ts_vec, method='ffill')
+            close_price_data[tkr] = close_series
+        close_prices_df = pd.DataFrame(close_price_data, index=ts_vec)
+
+        start_time = time.time()
+        last_checkpoint = start_time
+        checkpoint_interval = max(5, self.batch_flush_interval // 2)
+
+        try:
+            # Main bar loop (lookahead one bar for fills)
+            for i, ts in enumerate(ts_vec[:-1]):
+                # Periodic progress report and timing checkpoint
+                if i % self.batch_flush_interval == 0 and is_info_enabled("BACKTEST_CONTROLLER"):
+                    print(f"[BACKTEST][INFO] Progress: {i}/{total_bars} bars processed...")
+                if self.cfg.verbose and is_debug_enabled("BACKTEST_CONTROLLER"):
+                    if i % checkpoint_interval == 0 and i > 0:
+                        now = time.time()
+                        elapsed = now - last_checkpoint
+                        print(f"[DEBUG] Loop checkpoint: bar {i}/{total_bars}, {elapsed:.2f}s since last checkpoint, {now - start_time:.2f}s total elapsed.")
+                        last_checkpoint = now
+
+                nxt = ts_vec[i + 1]
+
+                # Slice up to current bar ts using shallow slicing
+                slice_map: Dict[str, pd.DataFrame] = {}
+                for t in tickers:
+                    df = self.data_map[t]
+                    if ts in df.index:
+                        # Use slicing with iloc to avoid deep copies
+                        try:
+                            idx = df.index.get_loc(ts)
+                            slice_map[t] = df.iloc[:idx + 1]
+                        except Exception:
+                            # fallback safe get
+                            slice_map[t] = df.loc[:ts]
+
+                # [BAGHOLDER PROBE] Check for held tickers that are missing from today's data slice
+                # This explicitly visualizes the bug where we lose control of a position.
+                current_holdings = list(self.portfolio.positions.keys())
+                for held_ticker in current_holdings:
+                    if held_ticker not in self.data_map: # Use self.data_map for full data, not slice_map
+                        if is_controller_debug():
+                            print(f"[CONTROLLER][PROBE] 🚨 DATA GAP for {held_ticker} at {ts}. "
+                                  f"Position held but no price data! Logic will skip this ticker.")
+
+                # Note: AlphaEngine only receives 'data_map' (the slice). It doesn't see tickers not in the slice.
+                if not slice_map:
+                    # Memory cleanup for unused slices
+                    if i % self.batch_flush_interval == 0:
+                        gc.collect()
+                    continue
+
+                regime_meta = self._detect_regime(ts, slice_map)
+
+                self._update_trailing_stops(slice_map, regime_meta)
+
+                signals = self._generate_signals(ts, slice_map, regime_meta, BACKTEST_DEBUG)
+
+                orders, top_edge_by_ticker = self._prepare_orders(signals, ts, slice_map, equity_cache, close_prices_df, tickers, BACKTEST_DEBUG, regime_meta=regime_meta)
+
+                # Build next-bar rows with shallow copy and preallocation
+                next_rows: Dict[str, pd.Series] = {}
+                for t in slice_map:
+                    try:
+                        df = self.data_map[t]
+                        if nxt not in df.index:
+                            continue
+                        idx = df.index.get_loc(nxt)
+                        if isinstance(df.index, (pd.RangeIndex, pd.DatetimeIndex)):
+                            row_next = df.iloc[idx]
+                            row_next = row_next.copy(deep=False)
+                        else:
+                            row_next = df.loc[nxt].copy(deep=False)
+                        if ts in slice_map[t].index:
+                            row_next["PrevClose"] = float(slice_map[t].loc[ts]["Close"])
+                        next_rows[t] = row_next
+                    except Exception:
+                        continue
+
+                self._execute_fills(orders, next_rows, nxt, regime_meta=regime_meta)
+
+                self._evaluate_stops(next_rows, nxt)
+
+                self._log_snapshot(next_rows, nxt)
+
+                if self.cfg.verbose and is_debug_enabled("BACKTEST_CONTROLLER"):
+                    print(f"[DEBUG][{nxt}] Active positions: {self.portfolio.positions}")
+
+                # Periodic flush of logger and portfolio to reduce memory usage
+                if (i + 1) % self.batch_flush_interval == 0:
+                    try:
+                        flush_logger_with_timeout(self.logger, timeout=5.0)
+                    except Exception as e:
+                        if is_debug_enabled("BACKTEST_CONTROLLER"):
+                            print(f"[BACKTEST_CONTROLLER][WARN] Failed to flush logger at bar {i+1}: {e}")
+                    # Periodic memory cleanup and yield CPU
+                    gc.collect()
+                    if hasattr(time, "sleep"):
+                        time.sleep(0)  # Yield CPU time to other threads/processes
+                elif (i + 1) % (self.batch_flush_interval // 4) == 0:
+                    # More frequent lightweight memory cleanup
+                    gc.collect()
+                    if hasattr(time, "sleep"):
+                        time.sleep(0)
+
+        except KeyboardInterrupt:
+            if is_info_enabled("BACKTEST_CONTROLLER"):
+                print("[BACKTEST] Backtest interrupted by user. Flushing and exiting cleanly...")
+            try:
+                flush_logger_with_timeout(self.logger, timeout=10.0)
+            except Exception:
+                pass
+            try:
+                self.logger.close()
+            except Exception:
+                pass
+            # Attempt to join flush threads if any
+            for thread in threading.enumerate():
+                if thread is not threading.current_thread() and thread.daemon:
+                    try:
+                        thread.join(timeout=2.0)
+                    except Exception:
+                        pass
+            return self.portfolio.history
+        except Exception as e:
+            if is_debug_enabled("BACKTEST_CONTROLLER"):
+                print(f"[BACKTEST] Unexpected error during backtest: {e}")
+
+        self._post_run(start_time, total_bars, BACKTEST_DEBUG)
         return self.portfolio.history

@@ -82,7 +82,9 @@ DIRS_TO_SYNC = [
     "engines/engine_a_alpha",
     "engines/engine_b_risk",
     "engines/engine_c_portfolio",
-    "engines/engine_d_research",
+    "engines/engine_d_discovery",
+    "engines/engine_e_regime",
+    "engines/engine_f_governance",
     "engines/data_manager",
     "orchestration",
     "scripts"

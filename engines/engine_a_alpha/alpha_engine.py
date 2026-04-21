@@ -53,7 +53,7 @@ from .signal_processor import SignalProcessor, RegimeSettings, HygieneSettings, 
 from .signal_formatter import SignalFormatter
 
 from typing import Optional
-from engines.engine_d_research.governor import StrategyGovernor
+from engines.engine_f_governance.governor import StrategyGovernor
 
 from debug_config import is_debug_enabled
 
@@ -514,6 +514,7 @@ class AlphaEngine:
         self,
         data_map: Dict[str, pd.DataFrame],
         now: pd.Timestamp,
+        regime_meta: Optional[dict] = None,
     ) -> List[dict]:
         """
         Main entry point (used by BacktestController / PaperTradeController / LiveTradeController).
@@ -538,22 +539,21 @@ class AlphaEngine:
         # ----------------------------------------------------------------
         # 🧠 COGNITIVE GOVERNOR: Detect Regime
         # ----------------------------------------------------------------
-        from engines.engine_d_research.regime_detector import RegimeDetector
-        regime_meta = {"regime": "unknown", "trend": "unknown", "volatility": "unknown"}
-        
-        try:
-            spy_df = self._get_spy_history(now, data_map)
-            if not spy_df.empty:
-                detector = RegimeDetector()
-                regime_meta = detector.detect_regime(spy_df)
-                if is_debug_enabled("ALPHA"):
-                    print(f"[ALPHA][COGNITION] Market State: {regime_meta['regime']} (Trend={regime_meta['trend']}, Vol={regime_meta['volatility']})")
-        except Exception as e:
-            if is_debug_enabled("ALPHA"):
-                print(f"[ALPHA][WARN] Cognition Error: {e}")
+        if regime_meta is None:
+            regime_meta = {
+                "regime": "unknown", "trend": "unknown", "volatility": "unknown",
+                "regime_int": 0, "details": {},
+            }
+        if is_debug_enabled("ALPHA"):
+            print(f"[ALPHA][COGNITION] Market State: {regime_meta.get('regime', 'unknown')} (Trend={regime_meta.get('trend', 'unknown')}, Vol={regime_meta.get('volatility', 'unknown')})")
 
         # Normalize incoming data from any source (Alpaca, yfinance, CSV)
         data_map = {t: self._normalize_dataframe(df) for t, df in data_map.items()}
+
+        # Propagate regime_meta to edges so they don't self-detect
+        for edge_obj in self.edges.values():
+            if hasattr(edge_obj, "regime_meta"):
+                edge_obj.regime_meta = regime_meta
 
         if self.cfg.debug and (self._debug_env or is_debug_enabled("ALPHA")):
             print(f"[ALPHA][DEBUG] cfg_source={self._cfg_source} enter={self.cfg.enter_threshold} exit={self.cfg.exit_threshold} min_hist={self.cfg.hygiene.min_history} min_edge_contrib={self.cfg.min_edge_contribution} force_signals={self._force_signals}")
@@ -768,9 +768,9 @@ class AlphaEngine:
         if hasattr(self, "signal_gate"):
             signals = self.signal_gate.predict(signals, data_map)
 
-        # Governor adjustment (if present)
+        # Governor adjustment (if present) — regime-conditional weights
         if self.governor and signals:
-            weights = self.governor.get_edge_weights()
+            weights = self.governor.get_edge_weights(regime_meta=regime_meta)
             for sig in signals:
                 # Get the list of edges that fired for this ticker
                 triggered_edges = sig.get("meta", {}).get("edges_triggered", [])

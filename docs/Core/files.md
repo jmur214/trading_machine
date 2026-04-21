@@ -7,8 +7,10 @@ This is a high-level, quick-reference guide to the primary directories of the Tr
 |-----------|---------|
 | `engines/engine_a_alpha/` | Alpha Generation — signal collection, edge evaluation, ensemble aggregation |
 | `engines/engine_b_risk/` | Risk Management — ATR sizing, exposure caps, trailing stops, liquidity checks |
-| `engines/engine_c_portfolio/` | Portfolio Management — accounting ledger, allocation policies, equity tracking |
-| `engines/engine_d_research/` | Strategy Governance & Research — edge weight governance, performance scoring, discovery/evolution pipeline, regime detection (future Engine E), metrics engine |
+| `engines/engine_c_portfolio/` | Portfolio Management — accounting ledger, allocation policies, equity tracking, vol targeting, regime-adaptive allocation, autonomous allocation discovery (`allocation_evaluator.py`) |
+| `engines/engine_d_discovery/` | Discovery & Evolution — two-stage ML scanning (LightGBM + DTree), GA evolution (selection/crossover/mutation), 4-gate validation (backtest/PBO/WFO/significance), 40+ feature engineering |
+| `engines/engine_e_regime/` | Regime Intelligence — market state detection (trend, volatility), advisory policy hints |
+| `engines/engine_f_governance/` | Governance — edge lifecycle management, weight updates, performance scoring, edge promotion, regime-conditional edge weighting (`regime_tracker.py`), allocation evaluation orchestration |
 | `engines/data_manager/` | Data Pipeline — OHLCV ingestion (Alpaca), caching (Parquet/CSV), normalization |
 
 ## Orchestration & Execution
@@ -43,7 +45,7 @@ This is a high-level, quick-reference guide to the primary directories of the Tr
 | `debug_config.py` | **Root-level** — Global debug flag system (`DEBUG_LEVELS` dict) used by all engines for conditional logging |
 | `scripts/` | CLI tools — run_backtest, run_diagnostics, fetch_data, sync_docs, etc. |
 | `config/` | Configuration — universe definitions, edge configs, backtest settings |
-| `core/` | Shared utilities and base classes used across engines |
+| `core/` | Shared utilities and base classes — includes `metrics_engine.py` (MetricsEngine used by Discovery + Governance) |
 | `utils/` | General-purpose helper functions |
 | `storage/` | State persistence — system state management between runs |
 | `tests/` | Test suite — edge output tests, pipeline tests, portfolio accounting tests |
@@ -54,8 +56,8 @@ This is a high-level, quick-reference guide to the primary directories of the Tr
 | Directory | Purpose |
 |-----------|---------|
 | `data/trade_logs/` | Backtest/paper trade CSVs (trades, portfolio snapshots) |
-| `data/governor/` | Edge weight JSON files managed by Engine D |
-| `data/research/` | Edge research results (Parquet) |
+| `data/governor/` | Edge weight JSON, `edges.yml` registry, `ga_population.yml` (GA state), `regime_edge_performance.json` (per-edge per-regime stats) |
+| `data/research/` | Edge research results (Parquet), `discovery_log.jsonl` (discovery audit trail), `allocation_recommendations.json` (per-regime optimal allocation configs) |
 | `data/intel/` | News snapshots and sentiment history |
 | `data/processed/` | Cached OHLCV data files |
 

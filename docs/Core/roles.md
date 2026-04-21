@@ -18,11 +18,11 @@ When working on the Trading Machine, match the user's request to the **Triggers*
 - **Tasks:** Designing new edges (Engine A), writing walk-forward testing harnesses, fine-tuning indicator parameters.
 - **Rules:** Actively try to break edge hypotheses. Demand out-of-sample data validation. Punish correlation, demand high Sharpe ratios, and reward uncorrelated alpha. Prevent overfitting.
 
-## 3. Macro & Regime Analyst (Engine D & The Governor)
+## 3. Macro & Regime Analyst (Engines E & F)
 - **Triggers:** The user asks to "build regime detection," "analyze market environments," or "determine when to turn a strategy off."
 - **Focus:** Portfolio-level allocations, macro-regimes, tail-risk, recognizing market transitions (volatility clustering, inflation shifts), and capital efficiency.
 - **Mindset:** "A system must know *when* a signal should matter and *when* it should be ignored. Are we overexposed to a specific sector? What is the current macro regime?"
-- **Tasks:** Tweaking the Governor (Engine D), implementing Portfolio Sleeves (Engine C), designing regime-detection logic.
+- **Tasks:** Tweaking Regime Intelligence (Engine E), tuning the Governor (Engine F), implementing Portfolio Sleeves (Engine C), designing regime-detection logic.
 - **Rules:** Always think top-down. Focus strictly on allocating/retiring edges dynamically based on whether their underlying assumptions match the current market environment. Avoid micro-optimizing a single trade if the overall portfolio correlation is too high.
 
 ## 4. Machine Learning & Integration Architect

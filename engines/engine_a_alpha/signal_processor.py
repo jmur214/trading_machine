@@ -24,6 +24,8 @@ from typing import Dict, List, Tuple
 import numpy as np
 import pandas as pd
 
+from engines.engine_f_governance.regime_tracker import EDGE_CATEGORY_MAP
+
 
 # ----------------------------- Settings ----------------------------- #
 
@@ -42,7 +44,10 @@ class RegimeSettings:
 class HygieneSettings:
     min_history: int = 60
     dedupe_last_n: int = 1
-    clamp: float = 6.0  # clamp raw score to +/- this before normalization
+    clamp: float = 1.5  # clamp raw score to +/- this before normalization
+    # NOTE: All edges produce scores in [-1, +1]. clamp must match this range
+    # so tanh(raw/clamp) gives meaningful spread. clamp=6.0 compressed everything
+    # to ~[-0.16, +0.16], causing single-edge positive signals to die at threshold.
 
 
 @dataclass
@@ -53,6 +58,24 @@ class EnsembleSettings:
 
 
 # ----------------------------- Processor ----------------------------- #
+
+EDGE_AFFINITY_MAP = {
+    "momentum": "momentum",
+    "atr_breakout": "momentum",
+    "atr_breakout_v1": "momentum",
+    "xsec_momentum": "momentum",
+    "mean_reversion": "mean_reversion",
+    "rsi_bounce": "mean_reversion",
+    "rsi_mean_reversion": "mean_reversion",
+    "bollinger_reversion": "mean_reversion",
+    "trend_following": "trend_following",
+    "fundamental": "fundamental",
+    "fundamental_ratio": "fundamental",
+    "fundamental_value": "fundamental",
+    "news_sentiment_edge": "fundamental",
+    "news_sentiment_boost": "fundamental",
+}
+
 
 class SignalProcessor:
     def __init__(
@@ -151,8 +174,6 @@ class SignalProcessor:
 
                 norm = self._normalize_score(raw_f, self.hygiene.clamp)
 
-                norm = self._normalize_score(raw_f, self.hygiene.clamp)
-
                 # regime shrink if any regime off (Micro-Regime per ticker)
                 if not (trend_ok and vol_ok):
                     old_norm = norm
@@ -160,27 +181,59 @@ class SignalProcessor:
                     if self.debug:
                         print(f"[REGIME] {ticker} {now} Micro-Regime blocked (Trend={trend_ok} Vol={vol_ok}). Shrinking {old_norm:.3f} -> {norm:.3f}")
 
-                # --- NEW: Macro Regime Override (Global Market State) ---
-                if regime_meta:
+                # --- Macro Regime Scaling (Engine E Advisory) ---
+                # Strategy: use risk_scalar as a brake in stressed/crisis regimes.
+                # Edge affinity boost is deferred until edges have proven regime-
+                # conditional profitability via Governance (F). With 26% win rate,
+                # amplifying losing edges is counterproductive.
+                advisory = regime_meta.get("advisory") if regime_meta else None
+                if advisory:
+                    regime_summary = advisory.get("regime_summary", "benign")
+                    if regime_summary in ("stressed", "crisis"):
+                        risk_scalar = float(advisory.get("risk_scalar", 1.0))
+                        old_norm = norm
+                        norm *= risk_scalar
+                        if self.debug:
+                            print(f"[REGIME] {ticker} {now} Engine E brake: summary={regime_summary} risk_scalar={risk_scalar:.2f} norm {old_norm:.3f} -> {norm:.3f}")
+                elif regime_meta:
+                    # Fallback: legacy binary cuts when advisory not available
                     market_trend = regime_meta.get("trend", "unknown")
                     market_vol = regime_meta.get("volatility", "unknown")
-                    
-                    # Bear Market Defense: Cut long signals in half, or stronger
                     if market_trend == "bear" and norm > 0:
                         norm *= 0.5
-                        if self.debug:
-                             print(f"[MACRO] {ticker} {now} Global Bear Market. Cutting LONG signal strength by 50%.")
-                    
-                    # High Volatility Defense: Shrink everything to reduce sizing
                     if market_vol == "high":
                         norm *= 0.75
-                        if self.debug:
-                             print(f"[MACRO] {ticker} {now} Global High Volatility. Shrinking signal by 25%.")
+
+                # --- Learned Edge Affinity (from Governor regime tracker) ---
+                if advisory:
+                    learned_affinity = advisory.get("learned_edge_affinity", {})
+                    if learned_affinity:
+                        edge_lower = edge_name.lower()
+                        edge_cat = "fundamental"  # default
+                        for pattern, category in EDGE_CATEGORY_MAP.items():
+                            if pattern in edge_lower:
+                                edge_cat = category
+                                break
+                        affinity_mult = float(np.clip(learned_affinity.get(edge_cat, 1.0), 0.3, 1.5))
+                        if affinity_mult != 1.0:
+                            old_norm = norm
+                            norm *= affinity_mult
+                            if self.debug:
+                                print(f"[AFFINITY] {ticker} {now} edge={edge_name} cat={edge_cat} mult={affinity_mult:.2f} norm {old_norm:.3f} -> {norm:.3f}")
+
+                # --- Directional Regime Bias ---
+                # DISABLED: Regime detection misclassifies 2023-2024 bull markets
+                # as "cautious_decline", causing suppression of longs in bull markets.
+                # Until regime detection reliably distinguishes bull/bear, directional
+                # suppression does more harm than good.
 
                 w = float(self.edge_weights.get(edge_name, 1.0))
                 details.append({"edge": edge_name, "raw": raw_f, "norm": norm, "weight": w})
                 weighted_sum += (norm * w)
-                weight_total += abs(w)
+                # Only count edges with actual signal in denominator —
+                # edges with norm ≈ 0 (no opinion or regime-suppressed) abstain.
+                if abs(norm) > 1e-6:
+                    weight_total += abs(w)
 
             if weight_total <= 0.0:
                 continue

@@ -14,7 +14,7 @@
     "hygiene": {
         "min_history": 20,
         "dedupe_last_n": 2,
-        "clamp": 4.0
+        "clamp": 1.5
     },
     "ensemble": {
         "enable_shrink": true,

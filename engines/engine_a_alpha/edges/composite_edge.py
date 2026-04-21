@@ -43,27 +43,14 @@ class CompositeEdge(EdgeBase, EdgeTemplate):
         self.genes = self.params.get("genes", [])
         self.direction = self.params.get("direction", "long") # long | short
         
-        # Internal Regime Detector for context-aware genes
-        from engines.engine_d_research.regime_detector import RegimeDetector
-        self.regime_detector = RegimeDetector()
-        self.regime_cache = {} # Cache regime per day to avoid recalculation
-
     def compute_signals(self, data_map, as_of):
         scores = {}
-        
-        # 1. Detect Regime (Context)
-        spy_df = data_map.get("SPY")
-        current_regime = {"trend": "unknown", "volatility": "unknown"}
-        if spy_df is not None:
-            spy_last = spy_df.index[-1]
-            if spy_last in self.regime_cache:
-                current_regime = self.regime_cache[spy_last]
-            else:
-                slice_spy = spy_df.loc[:as_of]
-                if not slice_spy.empty:
-                    current_regime = self.regime_detector.detect_regime(slice_spy)
-                    self.regime_cache[spy_last] = current_regime
-                    self.regime_cache["spy_df_ref"] = slice_spy
+
+        # Store data_map reference for inter-market gene evaluation
+        self._current_data_map = data_map
+
+        # 1. Regime context (provided by AlphaEngine via regime_meta attribute)
+        current_regime = self.regime_meta or {"trend": "unknown", "volatility": "unknown"}
 
         # 2. Calculation Phase: Collect all raw values
         # ticker_gene_vals[ticker] = {gene_idx: raw_value}
@@ -144,13 +131,13 @@ class CompositeEdge(EdgeBase, EdgeTemplate):
     def _calc_raw_value(self, ticker, df, as_of, gene, regime_ctx):
         """Calculates the raw numeric value or boolean (for regime)"""
         g_type = gene.get("type")
-        
+
         if g_type == "regime":
             target = gene.get("is")
             trend = regime_ctx.get("trend", "unknown")
             vol = regime_ctx.get("volatility", "unknown")
             op = gene.get("operator", "is")
-            
+
             match = (target in [trend, vol])
             if op == "is_not":
                 return not match
@@ -160,7 +147,13 @@ class CompositeEdge(EdgeBase, EdgeTemplate):
             return self._calc_technical_val(df, gene)
         elif g_type == "fundamental":
             return self._calc_fundamental_val(ticker, as_of, gene)
-            
+        elif g_type == "calendar":
+            return self._calc_calendar_val(df, as_of, gene)
+        elif g_type == "microstructure":
+            return self._calc_microstructure_val(df, gene)
+        elif g_type == "intermarket":
+            return self._calc_intermarket_val(df, as_of, gene)
+
         return None
 
     def _calc_technical_val(self, df, gene):
@@ -269,19 +262,160 @@ class CompositeEdge(EdgeBase, EdgeTemplate):
 
     def _calc_fundamental_val(self, ticker, as_of, gene):
         metric = gene.get("metric")
-        
+
         if ticker not in self.fundamental_cache:
              self.fundamental_cache[ticker] = self.dm.fetch_historical_fundamentals(ticker)
-        
+
         fund_df = self.fundamental_cache[ticker]
         if fund_df.empty or metric not in fund_df.columns:
             return None
-            
-        # Point in time lookup
-        # ... (Same logic as FundamentalRatioEdge) ...
+
         try:
             idx_loc = fund_df.index.get_indexer([as_of], method='pad')[0]
-            if idx_loc == -1: return None
+            if idx_loc == -1:
+                return None
             return fund_df.iloc[idx_loc][metric]
-        except:
+        except Exception:
+            return None
+
+    # ------------------------------------------------------------------
+    # Calendar gene evaluation
+    # ------------------------------------------------------------------
+
+    def _calc_calendar_val(self, df, as_of, gene):
+        """Evaluate calendar/seasonality gene conditions."""
+        indicator = gene.get("indicator")
+
+        if not isinstance(as_of, pd.Timestamp):
+            return None
+
+        if indicator == "day_of_week_sin":
+            # Cyclical encoding: sin(2*pi*dow/5)
+            return float(np.sin(2 * np.pi * as_of.dayofweek / 5.0))
+
+        elif indicator == "month_sin":
+            return float(np.sin(2 * np.pi * as_of.month / 12.0))
+
+        elif indicator == "quarter_end_proximity":
+            # Trading days until quarter end
+            q_month = ((as_of.month - 1) // 3 + 1) * 3
+            q_year = as_of.year
+            if q_month > 12:
+                q_month = 3
+                q_year += 1
+            q_end = pd.Timestamp(year=q_year, month=q_month, day=1) + pd.offsets.MonthEnd(0)
+            delta = np.busday_count(as_of.date(), q_end.date())
+            return float(max(delta, 0))
+
+        elif indicator == "opex_proximity":
+            # Trading days until next options expiration (third Friday)
+            year, month = as_of.year, as_of.month
+            first = pd.Timestamp(year=year, month=month, day=1)
+            days_to_friday = (4 - first.dayofweek) % 7
+            third_friday = first + pd.Timedelta(days=days_to_friday + 14)
+            if as_of.date() > third_friday.date():
+                if month == 12:
+                    year, month = year + 1, 1
+                else:
+                    month += 1
+                first = pd.Timestamp(year=year, month=month, day=1)
+                days_to_friday = (4 - first.dayofweek) % 7
+                third_friday = first + pd.Timedelta(days=days_to_friday + 14)
+            delta = np.busday_count(as_of.date(), third_friday.date())
+            return float(max(delta, 0))
+
+        return None
+
+    # ------------------------------------------------------------------
+    # Microstructure gene evaluation
+    # ------------------------------------------------------------------
+
+    def _calc_microstructure_val(self, df, gene):
+        """Evaluate price-action microstructure gene conditions."""
+        indicator = gene.get("indicator")
+
+        if len(df) < 2:
+            return None
+
+        close = df["Close"]
+
+        if indicator == "overnight_gap":
+            if "Open" not in df.columns:
+                return None
+            # (Open_today - Close_yesterday) / Close_yesterday
+            prev_close = close.iloc[-2]
+            curr_open = df["Open"].iloc[-1]
+            return float((curr_open - prev_close) / (prev_close + 1e-9))
+
+        elif indicator == "close_location":
+            if not all(c in df.columns for c in ["High", "Low"]):
+                return None
+            # Where in the bar did the close occur? 0=low, 1=high
+            h, l, c = df["High"].iloc[-1], df["Low"].iloc[-1], close.iloc[-1]
+            bar_range = h - l
+            if bar_range < 1e-9:
+                return 0.5
+            return float(np.clip((c - l) / bar_range, 0.0, 1.0))
+
+        elif indicator == "intraday_range":
+            if not all(c in df.columns for c in ["High", "Low"]):
+                return None
+            h, l, c = df["High"].iloc[-1], df["Low"].iloc[-1], close.iloc[-1]
+            return float((h - l) / (c + 1e-9))
+
+        return None
+
+    # ------------------------------------------------------------------
+    # Inter-market gene evaluation
+    # ------------------------------------------------------------------
+
+    def _calc_intermarket_val(self, df, as_of, gene):
+        """Evaluate inter-market gene conditions using data_map context."""
+        indicator = gene.get("indicator")
+        window = gene.get("window", 5)
+
+        # Access the full data_map via the edge's context
+        # CompositeEdge receives data_map in compute_signals, but individual
+        # gene evaluation only gets per-ticker df. We store a reference to
+        # data_map during compute_signals for inter-market lookups.
+        data_map = getattr(self, "_current_data_map", None)
+        if data_map is None:
+            return None
+
+        if indicator == "spy_return_5d":
+            return self._get_asset_return(data_map, "SPY", df.index, window)
+
+        elif indicator == "tlt_return_5d":
+            return self._get_asset_return(data_map, "TLT", df.index, window)
+
+        elif indicator == "gld_return_5d":
+            return self._get_asset_return(data_map, "GLD", df.index, window)
+
+        elif indicator == "spy_tlt_corr":
+            spy_df = data_map.get("SPY")
+            tlt_df = data_map.get("TLT")
+            if spy_df is None or tlt_df is None:
+                return None
+            try:
+                spy_ret = spy_df["Close"].reindex(df.index).ffill().pct_change()
+                tlt_ret = tlt_df["Close"].reindex(df.index).ffill().pct_change()
+                corr = spy_ret.rolling(60).corr(tlt_ret)
+                val = corr.iloc[-1]
+                return float(val) if not pd.isna(val) else None
+            except Exception:
+                return None
+
+        return None
+
+    def _get_asset_return(self, data_map, ticker, index, window):
+        """Helper: get rolling return of an asset aligned to the current index."""
+        asset_df = data_map.get(ticker)
+        if asset_df is None or "Close" not in asset_df.columns:
+            return None
+        try:
+            aligned = asset_df["Close"].reindex(index).ffill()
+            ret = aligned.pct_change(window)
+            val = ret.iloc[-1]
+            return float(val) if not pd.isna(val) else None
+        except Exception:
             return None

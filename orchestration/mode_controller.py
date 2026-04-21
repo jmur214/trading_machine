@@ -9,11 +9,14 @@ Orchestrates the end-to-end trading pipeline in three modes:
 - LIVE: same pipeline, but execution routes to a broker adapter interface (dry_run by default)
 
 This module keeps strict separation between components:
-    Engine A (Alpha)     -> signal generation
-    Engine B (Risk)      -> sizing & order constraints
-    Engine C (Portfolio) -> accounting (cash + positions = equity)
-    Execution            -> simulator or live adapter
-    Cockpit              -> logging snapshots & trades to CSV (mode-aware if logger supports it)
+    Engine A (Alpha)       -> signal generation
+    Engine B (Risk)        -> sizing & order constraints
+    Engine C (Portfolio)   -> accounting (cash + positions = equity)
+    Engine D (Discovery)   -> edge hunting & evolution (offline)
+    Engine E (Regime)      -> market state detection (called once per bar by ModeController)
+    Engine F (Governance)  -> edge lifecycle & weight management
+    Execution              -> simulator or live adapter
+    Cockpit                -> logging snapshots & trades to CSV (mode-aware if logger supports it)
 
 Assumptions / Notes
 -------------------
@@ -57,6 +60,13 @@ from engines.engine_c_portfolio.portfolio_engine import PortfolioEngine, Positio
 from backtester.execution_simulator import ExecutionSimulator
 from backtester.backtest_controller import BacktestController
 from cockpit.logger import CockpitLogger
+from cockpit.metrics import PerformanceMetrics
+# --- Engine E: Regime Intelligence ---
+from engines.engine_e_regime.regime_detector import RegimeDetector
+# --- EdgeRegistry for dynamic edge loading ---
+from engines.engine_a_alpha.edge_registry import EdgeRegistry
+# --- StrategyGovernor ---
+from engines.engine_f_governance.governor import StrategyGovernor
 # --- NEW: Alpaca broker adapter ---
 from brokers.alpaca_broker import AlpacaBroker
 from analytics.edge_feedback import update_edge_weights_from_latest_trades
@@ -314,17 +324,35 @@ class PaperTradeController:
                     if hasattr(self.logger, "log_fill"):
                         self.logger.log_fill(fill, fill_ts)
 
-            # (Optional) simulate exit logic here if you want paper mode to auto-exit like backtest.
-            # For parity with your BacktestController, we’ll close positions if no new order for ticker this turn.
+            # --- Trailing stop management (parity with BacktestController) ---
+            if hasattr(self.risk, "manage_positions"):
+                try:
+                    current_prices = {t: self._close_scalar(df.loc[now]) for t, df in slice_map.items()}
+                    updates = self.risk.manage_positions(current_prices, data_map=slice_map)
+                    for upd in updates:
+                        tkr = upd.get("ticker")
+                        new_stop = upd.get("new_stop")
+                        if tkr and new_stop is not None:
+                            pos = self.portfolio.positions.get(tkr)
+                            if pos:
+                                pos.stop = new_stop
+                except Exception:
+                    pass
+
+            # --- SL/TP evaluation on fill bar (parity with BacktestController) ---
             for ticker, pos in list(self.portfolio.positions.items()):
-                if ticker not in next_rows:
+                if pos.qty == 0 or ticker not in next_rows:
                     continue
-                if not any(o["ticker"] == ticker for o in orders):
-                    exit_fill = self.exec.exit_position(ticker, pos, next_rows[ticker])
-                    if exit_fill:
-                        if hasattr(self.logger, "log_fill"):
-                            self.portfolio.apply_fill(exit_fill)
-                            self.logger.log_fill(exit_fill, fill_ts)
+                stop_or_tp = self.exec.check_stops_and_targets(ticker, pos, next_rows[ticker])
+                if stop_or_tp:
+                    if "fill_price" not in stop_or_tp and "price" in stop_or_tp:
+                        stop_or_tp["fill_price"] = stop_or_tp["price"]
+                    if "price" not in stop_or_tp and "fill_price" in stop_or_tp:
+                        stop_or_tp["price"] = stop_or_tp["fill_price"]
+                    stop_or_tp.setdefault("commission", float(getattr(self.exec, "commission", 0.0)))
+                    self.portfolio.apply_fill(stop_or_tp)
+                    if hasattr(self.logger, "log_fill"):
+                        self.logger.log_fill(stop_or_tp, fill_ts)
 
             # Snapshot on the fill bar
             px_map = {t: self._close_scalar(next_rows[t]) for t in next_rows}
@@ -485,13 +513,13 @@ class ModeController:
     High-level orchestrator that prepares data, wires engines, and runs the chosen mode.
     """
 
-    def __init__(self, project_root: Path):
+    def __init__(self, project_root: Path, env: str = "prod"):
         self.root = Path(project_root)
+        self.env = env
 
         # --- Load configuration files ---
         self.cfg_bt = load_json(str(self.root / "config" / "backtest_settings.json"))
-        self.cfg_risk = load_json(str(self.root / "config" / "risk_settings.json"))
-        self.cfg_edges = load_json(str(self.root / "config" / "edge_config.json"))
+        self.cfg_risk = load_json(str(self.root / f"config/risk_settings.{env}.json"))
         self.cfg_portfolio = load_json(str(self.root / "config" / "portfolio_settings.json"))
 
         # --- Core run params ---
@@ -508,20 +536,39 @@ class ModeController:
         }
 
         # --- Prepare data manager ---
-        self.dm = DataManager(cache_dir=str(self.root / "data" / "processed"))
+        import os as _os
+        self.dm = DataManager(
+            cache_dir=str(self.root / "data" / "processed"),
+            api_key=_os.getenv("ALPACA_API_KEY"),
+            secret_key=_os.getenv("ALPACA_SECRET_KEY"),
+            base_url=_os.getenv("ALPACA_BASE_URL"),
+        )
 
-        # --- Load edges dynamically ---
-        self.edges = self._load_edges()
-        self.edge_weights = self.cfg_edges.get("edge_weights", {})
+        # --- Default edge loading for paper/live modes ---
+        # run_backtest() creates its own per-call edges with full override support;
+        # paper/live modes use this default set loaded from the registry.
+        default_edges = self._load_edges_via_registry()
+        cfg_alpha = load_json(str(self.root / f"config/alpha_settings.{self.env}.json"))
+        config_ew = cfg_alpha.get("edge_weights", {})
+        default_edge_weights = {eid: float(config_ew.get(eid, 1.0))
+                                for eid in default_edges}
+        self.alpha = AlphaEngine(
+            edges=default_edges,
+            edge_weights=default_edge_weights,
+            config=cfg_alpha,
+            debug=True,
+        )
 
-        # --- Engines ---
-        self.alpha = AlphaEngine(edges=self.edges, edge_weights=self.edge_weights, debug=True)
+        # --- Risk Engine ---
         self.risk = RiskEngine(self.cfg_risk)
-        
+
         # --- Portfolio Config Object ---
         from engines.engine_c_portfolio.policy import PortfolioPolicyConfig
-        pp_cfg = PortfolioPolicyConfig(**{k:v for k,v in self.cfg_portfolio.items() if k in PortfolioPolicyConfig.__annotations__})
+        pp_cfg = PortfolioPolicyConfig(**{k: v for k, v in self.cfg_portfolio.items() if k in PortfolioPolicyConfig.__annotations__})
         self.portfolio_cfg = pp_cfg
+
+        # --- Engine E: Regime Intelligence ---
+        self.regime_detector = RegimeDetector()
 
         # --- Cockpit ---
         self.cockpit = CockpitLogger(out_dir=str(self.root / "data" / "trade_logs"), flush_each_fill=True)
@@ -530,47 +577,377 @@ class ModeController:
 
     # ---------------------------- Helpers ---------------------------- #
 
-    def _load_edges(self) -> Dict[str, object]:
-        edges: Dict[str, object] = {}
-        active_edges = self.cfg_edges.get("active_edges", [])
-        # Load edge parameters from edge_config if present
-        edge_params = self.cfg_edges.get("edge_params", {})
-        for edge_name in active_edges:
-            try:
-                mod = importlib.import_module(f"engines.engine_a_alpha.edges.{edge_name}")
-                # If the module has set_params and config exists, call it
-                params = edge_params.get(edge_name)
-                if params and hasattr(mod, "set_params") and callable(getattr(mod, "set_params")):
-                    try:
-                        mod.set_params(params)
-                    except Exception as e:
-                        print(f"[ALPHA][WARN] Could not set params for edge '{edge_name}': {e}")
-                edges[edge_name] = mod
-            except Exception as e:
-                print(f"[ALPHA][ERROR] Could not import edge '{edge_name}': {e}")
-        print(f"[ALPHA] Loaded {len(edges)} edges: {list(edges.keys())}")
-        return edges
+    def _load_edges_via_registry(
+        self,
+        override_params: Optional[Dict] = None,
+        exact_edge_ids: Optional[List[str]] = None,
+        alpha_debug: bool = False,
+    ) -> Dict[str, object]:
+        """
+        Load edges using EdgeRegistry (new approach).
+        Supports isolation mode (exact_edge_ids) and override_params injection.
+        """
+        registry = EdgeRegistry()
+        loaded_edges: Dict[str, object] = {}
+        specs_to_load: Dict[str, object] = {}
 
-    def _ensure_data_map(self) -> Dict[str, pd.DataFrame]:
-        return self.dm.ensure_data(self.tickers, self.start, self.end, timeframe=self.timeframe)
+        if exact_edge_ids and len(exact_edge_ids) > 0:
+            print(f"[RUN_BACKTEST] Isolation Mode: Loading exact edges {exact_edge_ids}")
+            for eid in exact_edge_ids:
+                spec = registry.get(eid)
+                if spec:
+                    specs_to_load[eid] = spec
+                else:
+                    print(f"[RUN_BACKTEST] Edge ID {eid} not found in registry.")
+        else:
+            # Default Mode: Load Active
+            active_specs = registry.list(status="active")
+            for spec in active_specs:
+                specs_to_load[spec.edge_id] = spec
+
+            # Also load any edge implied by override_params keys, even if candidate
+            if override_params:
+                for edge_id_or_module_name in override_params.keys():
+                    # Avoid trying to load "alpha" or config keys as edges
+                    if edge_id_or_module_name in ["alpha", "risk", "portfolio"]:
+                        continue
+
+                    spec = registry.get(edge_id_or_module_name)
+                    if not spec:
+                        # Try to find by module name matching
+                        for s in registry.get_all_specs():
+                            if s.module == edge_id_or_module_name:
+                                spec = s
+                                break
+
+                    if spec and spec.edge_id not in specs_to_load:
+                        print(f"[RUN_BACKTEST] Injecting candidate/override edge {spec.edge_id} for testing.")
+                        specs_to_load[spec.edge_id] = spec
+
+        print(f"[RUN_BACKTEST] Loading {len(specs_to_load)} edges: {list(specs_to_load.keys())}")
+
+        # Import and register
+        for edge_id, spec in specs_to_load.items():
+            mod_name = spec.module
+            params = spec.params.copy() if spec.params else {}
+
+            # INJECT OPTIMIZATION PARAMS
+            if override_params:
+                if edge_id in override_params:
+                    if isinstance(override_params[edge_id], dict):
+                        params.update(override_params[edge_id])
+                        if alpha_debug:
+                            print(f"[RUN_BACKTEST] Overriding {edge_id} params: {override_params[edge_id]}")
+                # Fallback for module-level overrides if needed
+                elif mod_name in override_params and isinstance(override_params[mod_name], dict):
+                    params.update(override_params[mod_name])
+
+            try:
+                if "." in mod_name:
+                    mod = importlib.import_module(mod_name)
+                else:
+                    mod = importlib.import_module(f"engines.engine_a_alpha.edges.{mod_name}")
+
+                # Check if the module defines a subclassed Edge class with params
+                edge_class = None
+                for attr in dir(mod):
+                    if attr.lower().endswith("edge") and attr not in ["BaseEdge"]:
+                        # Avoid importing imported classes like EdgeBase
+                        val = getattr(mod, attr)
+                        if hasattr(val, "__module__") and val.__module__ == mod.__name__:
+                            edge_class = val
+                            break
+
+                # Fallback check if strict module match failed
+                if edge_class is None:
+                    for attr in dir(mod):
+                        if attr.lower().endswith("edge") and attr not in ["BaseEdge"]:
+                            edge_class = getattr(mod, attr)
+                            break
+
+                if edge_class is not None:
+                    try:
+                        loaded_edges[edge_id] = edge_class(params=params)
+                    except TypeError:
+                        loaded_edges[edge_id] = edge_class()
+                else:
+                    # Fallback if no specific Edge class is found, assume module itself is the edge
+                    loaded_edges[edge_id] = mod
+
+                print(f"[ALPHA] Loaded edge '{edge_id}' with params: {params}")
+
+            except Exception as e:
+                print(f"[ALPHA][ERROR] Could not import edge module '{mod_name}': {e}")
+
+        return loaded_edges
+
+    def _ensure_data_map(self, fetch_start: Optional[str] = None) -> Dict[str, pd.DataFrame]:
+        start = fetch_start or self.start
+        return self.dm.ensure_data(self.tickers, start, self.end, timeframe=self.timeframe)
 
     # ---------------------------- Mode Runners ---------------------------- #
 
-    def run_backtest(self) -> List[dict]:
-        data_map = self._ensure_data_map()
+    def run_backtest(
+        self,
+        mode: str = "prod",
+        fresh: bool = False,
+        no_governor: bool = False,
+        alpha_debug: bool = False,
+        override_start: Optional[str] = None,
+        override_end: Optional[str] = None,
+        override_params: Optional[Dict] = None,
+        exact_edge_ids: Optional[List[str]] = None,
+        discover: bool = False,
+        override_capital: Optional[float] = None,
+    ) -> dict:
+        """
+        Full backtest orchestration with all features previously in run_backtest_logic().
+        Returns a performance summary dict.
+        """
+        import os
+        import json
+        import shutil
+        from datetime import datetime, timedelta
+
+        if alpha_debug:
+            os.environ["ALPHA_DEBUG"] = "1"
+
+        # --- Optional: Clear previous trade and snapshot logs (--fresh) ---
+        if fresh:
+            log_dir = self.root / "data" / "trade_logs"
+            backup_dir = log_dir / "backup"
+            backup_dir.mkdir(parents=True, exist_ok=True)
+            for fn in ["trades.csv", "portfolio_snapshots.csv"]:
+                fpath = log_dir / fn
+                if fpath.exists() and fpath.stat().st_size > 0:
+                    ts = int(time.time())
+                    shutil.copy(fpath, backup_dir / f"{fn}_{ts}.bak")
+                    fpath.write_text("")
+            print("[RUN_BACKTEST] Cleared previous logs (fresh run mode).")
+
+        # --- Apply overrides to config ---
+        if override_start:
+            self.cfg_bt["start_date"] = override_start
+        if override_end:
+            self.cfg_bt["end_date"] = override_end
+        if override_capital:
+            self.cfg_bt["initial_capital"] = override_capital
+
+        start = self.cfg_bt.get("start_date", "2024-01-01")
+        end = self.cfg_bt.get("end_date", "2024-01-01")
+        tickers = self.cfg_bt.get("tickers", ["AAPL"])
+        timeframe = self.cfg_bt["timeframe"]
+        init_cap = float(self.cfg_bt.get("initial_capital", 100000.0))
+
+        # Update instance state so other helpers stay consistent
+        self.start = start
+        self.end = end
+        self.tickers = tickers
+        self.timeframe = timeframe
+        self.init_cap = init_cap
+
+        # --- 365-day warmup calculation ---
+        try:
+            sim_start_dt = pd.to_datetime(start)
+        except Exception:
+            sim_start_dt = pd.to_datetime("2024-01-01")
+
+        fetch_start_dt = sim_start_dt - timedelta(days=365)
+        fetch_start_str = fetch_start_dt.strftime("%Y-%m-%d")
+        print(f"[RUN_BACKTEST] Warmup: Fetching data from {fetch_start_str} to enable indicators.")
+
+        # --- Load data with warmup ---
+        data_map = self.dm.ensure_data(tickers, fetch_start_str, end, timeframe=timeframe)
+        self.dm.prefetch_fundamentals(tickers)
+
+        # --- Load edges via EdgeRegistry ---
+        loaded_edges = self._load_edges_via_registry(
+            override_params=override_params,
+            exact_edge_ids=exact_edge_ids,
+            alpha_debug=alpha_debug,
+        )
+
+        # --- Governor initialization ---
+        governor_state_path = self.root / "data" / "governor"
+        if mode == "sandbox":
+            governor_state_path = governor_state_path / "sandbox"
+        governor_state_path.mkdir(parents=True, exist_ok=True)
+
+        governor = StrategyGovernor(
+            config_path=str(self.root / "config" / "governor_settings.json"),
+            state_path=str(governor_state_path / "edge_weights.json"),
+        )
+
+        # --- Alpha config with override injection ---
+        cfg_alpha = load_json(str(self.root / f"config/alpha_settings.{self.env}.json"))
+        if override_params and "alpha" in override_params:
+            for k, v in override_params["alpha"].items():
+                cfg_alpha[k] = v
+            print(f"[OPTIMIZER] Injected Alpha Config: {override_params['alpha']}")
+
+        # --- Initialize engines ---
+        # Use config edge_weights (from alpha_settings); default to 1.0 only for
+        # edges not mentioned in config.  Previously this hardcoded 1.0 for every
+        # edge, overriding config weights and keeping disabled edges (weight=0) active.
+        config_edge_weights = cfg_alpha.get("edge_weights", {})
+        edge_weights = {eid: float(config_edge_weights.get(eid, 1.0))
+                        for eid in loaded_edges}
+        alpha = AlphaEngine(
+            edges=loaded_edges,
+            edge_weights=edge_weights,
+            config=cfg_alpha,
+            debug=True,
+            governor=governor,
+        )
+        risk = RiskEngine(self.cfg_risk)
+
+        cockpit = CockpitLogger(out_dir=str(self.root / "data" / "trade_logs"))
+
+        exec_params = {
+            "slippage_bps": float(self.cfg_bt.get("slippage_bps", 10.0)),
+            "commission": float(self.cfg_bt.get("commission", 0.0)),
+        }
+
+        # --- Engine E: Regime ---
+        regime_detector = RegimeDetector()
+
         controller = BacktestController(
             data_map=data_map,
-            alpha_engine=self.alpha,
-            risk_engine=self.risk,
-            cockpit_logger=self.cockpit,
-            exec_params=self.exec_params,
-            initial_capital=self.init_cap,
+            alpha_engine=alpha,
+            risk_engine=risk,
+            cockpit_logger=cockpit,
+            exec_params=exec_params,
+            initial_capital=init_cap,
+            regime_detector=regime_detector,
             portfolio_cfg=self.portfolio_cfg,
         )
-        history = controller.run(self.start, self.end)
-        print(f"[BACKTEST] Complete. Snapshots: {len(history)}")
-        self.cockpit.close()
-        return history
+
+        history = controller.run(start, end)
+
+        # Flush Logger
+        controller.logger.flush()
+        controller.logger.close()
+
+        # --- Calculate Metrics ---
+        metrics = None
+        try:
+            metrics = PerformanceMetrics(
+                snapshots_path=str(self.root / "data" / "trade_logs" / "portfolio_snapshots.csv"),
+                trades_path=str(self.root / "data" / "trade_logs" / "trades.csv"),
+            )
+            if not no_governor:
+                governor.update_from_trades(metrics.trades, metrics.snapshots)
+                governor.save_weights()
+        except Exception as e:
+            print(f"[GOVERNOR][WARN] Could not update governor: {e}")
+
+        # --- POST-BACKTEST DISCOVERY CYCLE (Engine D) ---
+        if discover:
+            self._run_discovery_cycle(data_map, regime_detector)
+
+        # --- Return summary stats ---
+        summary: dict = {}
+        if metrics:
+            summary = metrics.summary_dict if hasattr(metrics, "summary_dict") else metrics.summary()
+
+        # Persist performance summary to file
+        try:
+            perf_path = self.root / "data" / "research" / "performance_summary.json"
+            perf_path.parent.mkdir(parents=True, exist_ok=True)
+            summary["timestamp"] = datetime.utcnow().isoformat() + "Z"
+            with open(perf_path, "w") as f:
+                json.dump(summary, f, indent=2)
+        except Exception:
+            pass
+
+        return summary
+
+    def _run_discovery_cycle(self, data_map: Dict[str, pd.DataFrame], regime_detector: RegimeDetector) -> None:
+        """
+        Post-backtest discovery cycle (Engine D).
+        Hunts for new edge candidates, validates them, promotes winners.
+        """
+        try:
+            from engines.engine_d_discovery.discovery import DiscoveryEngine
+            from engines.engine_d_discovery.discovery_logger import DiscoveryLogger
+
+            discovery = DiscoveryEngine(registry_path=str(self.root / "data" / "governor" / "edges.yml"))
+            disc_logger = DiscoveryLogger(log_path=str(self.root / "data" / "research" / "discovery_log.jsonl"))
+            print("\n[DISCOVERY] Starting post-backtest discovery cycle...")
+
+            # Step 1: REGIME -- get current regime context from Engine E
+            regime_meta = None
+            try:
+                spy_df = data_map.get("SPY")
+                if spy_df is not None and not spy_df.empty:
+                    regime_meta = regime_detector.detect(spy_df)
+                    print(f"[DISCOVERY] Regime context: {regime_meta}")
+            except Exception as re_err:
+                print(f"[DISCOVERY] Regime detection skipped: {re_err}")
+
+            # Step 2: HUNT -- TreeScanner with expanded features + regime context
+            hunt_candidates = discovery.hunt(
+                data_map,
+                regime_meta=regime_meta,
+            )
+            print(f"[DISCOVERY] Hunt found {len(hunt_candidates)} rule-based candidates.")
+
+            # Step 3: EVOLVE -- GA cycle + template mutations
+            mutation_candidates = discovery.generate_candidates(n_mutations=3)
+            print(f"[DISCOVERY] Generated {len(mutation_candidates)} mutation/GA candidates.")
+
+            all_candidates = hunt_candidates + mutation_candidates
+            if all_candidates:
+                discovery.save_candidates(all_candidates)
+
+            # Step 4: VALIDATE -- 4-gate pipeline (backtest -> PBO -> WFO -> significance)
+            queued = discovery.get_queued_candidates(status="candidate")
+            print(f"[DISCOVERY] {len(queued)} candidates queued for validation.")
+
+            promoted = 0
+            failed = 0
+            for cand in queued[:10]:  # Cap at 10 per cycle to limit compute
+                cand_id = cand.get("edge_id", "unknown")
+                print(f"[DISCOVERY] Validating {cand_id}...")
+                try:
+                    result = discovery.validate_candidate(cand, data_map)
+
+                    # Store validation Sharpe for GA fitness tracking
+                    if "params" not in cand:
+                        cand["params"] = {}
+                    cand["params"]["validation_sharpe"] = result.get("sharpe", 0.0)
+
+                    if result.get("passed_all_gates", False):
+                        cand["status"] = "active"
+                        promoted += 1
+                        print(
+                            f"[DISCOVERY] PROMOTED {cand_id} "
+                            f"(Sharpe={result['sharpe']:.2f}, "
+                            f"survival={result['robustness_survival']:.0%}, "
+                            f"p={result['significance_p']:.3f})"
+                        )
+                    else:
+                        cand["status"] = "failed"
+                        failed += 1
+
+                    disc_logger.log_validation(cand_id, result, promoted=result.get("passed_all_gates", False))
+                    discovery.save_candidates([cand])
+                except Exception as ve:
+                    print(f"[DISCOVERY] Validation error for {cand_id}: {ve}")
+                    cand["status"] = "failed"
+                    discovery.save_candidates([cand])
+                    failed += 1
+
+            disc_logger.log_cycle_summary(
+                n_hunt_candidates=len(hunt_candidates),
+                n_mutation_candidates=len(mutation_candidates),
+                n_validated=min(len(queued), 10),
+                n_promoted=promoted,
+                n_failed=failed,
+            )
+            print(f"[DISCOVERY] Cycle complete: {promoted} promoted, {failed} failed.")
+        except Exception as e:
+            print(f"[DISCOVERY][WARN] Discovery cycle failed: {e}")
 
     def run_paper(self, fill_bar_delay: int = 1, sleep_seconds: float = 0.0) -> List[dict]:
         """

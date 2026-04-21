@@ -1,7 +1,8 @@
 # 📥 NEW INBOX (Unprocessed)
 1. I now added the claude code extension, so I can use that for coding and planning as well. I also mentioned ChatGPT previously, I wonder if that could be tied in. But really I want to figure out the best workflow that plays on Claud vs. Antigravity's Strength's. 
 2. Tracking my input and ideas that I directly chat with the AI's about and adding that to a file in docs
-
+3. I think this largely is tied in with engine A, but finding stocks that actually could be hypothetically profitable like defense stocks or oil with a war 
+4. An information pipeline - could be for the machine to make better trades like info about markets, either from papers or online sources, or could be for the machine itself to improve
 ---
 # 🗄️ PROCESSED ARCHIVE
 

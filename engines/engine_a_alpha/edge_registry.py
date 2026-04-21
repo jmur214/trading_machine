@@ -104,6 +104,10 @@ class EdgeRegistry:
     def get(self, edge_id: str) -> Optional[EdgeSpec]:
         return self._specs.get(edge_id)
 
+    def get_all_specs(self) -> List[EdgeSpec]:
+        """Returns all registered edge specs regardless of status."""
+        return list(self._specs.values())
+
     # Convenience to ensure a spec exists (idempotent upsert)
     def ensure(self, spec: EdgeSpec) -> None:
         if spec.edge_id not in self._specs:

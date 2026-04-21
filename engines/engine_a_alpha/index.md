@@ -1,10 +1,23 @@
 # Engine A: Alpha Generation
-**Purpose:** This engine is responsible for computing trading signals (-1.0 to 1.0) using technical, fundamental, and alternative edges. 
+**Purpose:** This engine is responsible for computing trading signals (-1.0 to 1.0) using technical, fundamental, statistical, behavioral, and evolutionary edges.
 **Architectural Role:** It acts as the signal factory. The monolith class `AlphaEngine` handles config loading, instantiates edge instances, dynamically normalizes data, and scores the asset universe.
+
+**Active Edge Classes (15+):**
+- **Technical:** `RSIBounceEdge`, `ATRBreakoutEdge`, `BollingerReversionEdge`, `MomentumEdge`, `XSecMomentumEdge`
+- **Fundamental:** `FundamentalRatioEdge`, `ValueTrapEdge`
+- **Stat/Quant:** `SeasonalityEdge` (calendar patterns), `GapEdge` (overnight gap fill), `VolumeAnomalyEdge` (spike reversal / dry-up breakout)
+- **Behavioral:** `PanicEdge` (extreme reversion), `HerdingEdge` (cross-sectional contrarian), `EarningsVolEdge` (pre/post-earnings vol)
+- **Evolutionary:** `CompositeEdge` (GA-evolved multi-gene genomes), `RuleBasedEdge` (tree-discovered rules)
+- **Sentiment:** `NewsSentimentEdge`
+
+**Regime-Conditional Features:**
+- `get_edge_weights(regime_meta)` passes current regime to Governor, which returns blended regime-conditional weights.
+- `SignalProcessor` applies **learned edge affinity** multipliers (0.3-1.5x) per edge category from Governor's `RegimePerformanceTracker`, replacing the static `MACRO_EDGE_AFFINITY` table. Categories: momentum, trend_following, mean_reversion, fundamental.
+- Uses `EDGE_CATEGORY_MAP` from `regime_tracker.py` for edge-to-category mapping.
 
 **Known Issues & Quirks:**
 - *The God Class Problem:* `AlphaEngine` is an 800+ line monolith doing too much.
-- *Strict Separation Violations:* It currently imports `RegimeDetector` from Engine D (Research).
+- *Strict Separation (Resolved):* `RegimeDetector` import removed. Regime data now flows via `regime_meta` parameter from `BacktestController`.
 - *Math Crashes:* The input arrays supplied by `DataManager` currently cause pandas-related TypeErrors deep inside Edge math when testing the live execution pipeline.
 
 <!-- AUTO-GENERATED: DO NOT EDIT BELOW -->

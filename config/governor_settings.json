@@ -9,5 +9,10 @@
   "sr_weight_ceil": 1.0,
   "min_trades_in_window": 10,
   "max_turnover_per_month": 100.0,
-  "penalize_negative_correlation": false
+  "penalize_negative_correlation": false,
+  "regime_conditional_enabled": true,
+  "min_trades_per_regime": 8,
+  "regime_weight_blend_alpha": 0.7,
+  "allocation_evaluation_enabled": true,
+  "auto_apply_allocation": false
 }

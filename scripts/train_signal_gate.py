@@ -9,7 +9,7 @@ from pathlib import Path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from engines.data_manager.data_manager import DataManager
-from engines.engine_d_research.learning.signal_gate import SignalGate
+from engines.engine_a_alpha.learning.signal_gate import SignalGate
 
 def train_gate():
     root = Path(__file__).resolve().parents[1]

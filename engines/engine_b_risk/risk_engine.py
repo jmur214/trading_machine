@@ -1,7 +1,7 @@
 # engines/engine_b_risk/risk_engine.py
 from __future__ import annotations
 from dataclasses import dataclass
-from typing import Optional, Dict, Any
+from typing import List, Optional, Dict, Any
 import math
 import pandas as pd
 import numpy as np
@@ -136,42 +136,52 @@ class RiskEngine:
         
     # ------------------------------------------------------------------ #
     # Lifecycle Management (Trailing Stops)
-    def manage_positions(self, current_prices: Dict[str, float], regime_meta: Dict[str, Any] = None) -> List[Dict[str, Any]]:
+    def manage_positions(self, current_prices: Dict[str, float], regime_meta: Dict[str, Any] = None, data_map: Optional[Dict[str, pd.DataFrame]] = None) -> List[Dict[str, Any]]:
         """
         Check all open positions and generate 'update' orders (e.g. moving stops).
         Shared logic for Backtest and Live.
+
+        Parameters
+        ----------
+        data_map : optional dict of {ticker: DataFrame} with ATR column
+            When provided, trailing stops use real ATR instead of a price-based estimate.
         """
         if not self.portfolio or not self.cfg.enable_trailing:
             return []
-            
+
         updates = []
-        
+
         # Default regime if missing
         if not regime_meta:
             regime_meta = {"volatility": "normal"}
-            
+
         vol_state = regime_meta.get("volatility", "normal")
-        
-        # Adapt trailing distance based on regime? (Optional advanced feature, stick to config for now)
-        trail_dist_mult = self.cfg.trailing_stop_dist_atr
-        
+
+        # Regime-adaptive trailing distance (matches entry stop behavior)
+        if vol_state == "high":
+            trail_dist_mult = self.cfg.high_vol_stop_mult
+        elif vol_state == "low":
+            trail_dist_mult = self.cfg.low_vol_stop_mult
+        else:
+            trail_dist_mult = self.cfg.trailing_stop_dist_atr
+
         for ticker, pos in self.portfolio.positions.items():
             if pos.qty == 0:
                 continue
-                
+
             curr_price = current_prices.get(ticker)
             if not curr_price:
                 continue
-                
+
             # -- update state --
             is_long = pos.qty > 0
-            
+
             # Initial State Init (if new position)
             if pos.highest_high < 0 and is_long:
                  pos.highest_high = pos.avg_price
-            if pos.lowest_low > 1e8 and not is_long: # Assuming price < 100M
+            if pos.lowest_low > 1e8 and not is_long:
                  pos.lowest_low = pos.avg_price
-                 
+
             # Track Extremes
             if is_long:
                 if curr_price > pos.highest_high:
@@ -179,41 +189,33 @@ class RiskEngine:
             else:
                 if curr_price < pos.lowest_low:
                      pos.lowest_low = curr_price
-            
+
+            # -- Compute ATR for this ticker --
+            # Use real ATR from data_map when available; fall back to price estimate
+            estimated_atr = curr_price * 0.015  # fallback
+            if data_map and ticker in data_map:
+                df = data_map[ticker]
+                if "ATR" in df.columns and not df["ATR"].dropna().empty:
+                    real_atr = float(df["ATR"].dropna().iloc[-1])
+                    estimated_atr = self._effective_atr(curr_price, real_atr)
+
             # -- Check Activation --
-            # R-Multiple = (Current - Avg) / Initial_Risk (approx)
-            # We don't track initial_risk perfectly here, so we estimate 1R ~ 1.5 ATR (default stop)
-            # Or simplified: if Price moved X% in favor.
-            # Let's use the configured 'trailing_stop_activation_r' assuming 1R was the initial stop distance.
-            
-            # If we don't know the initial stop dist, we can't calculate R perfectly.
-            # Fallback: Use ATR logic if available in price stream? 
-            # Limitation: 'current_prices' is just float.
-            # Simplified Logic: Activate if profit > 3 * commission? No, that's scalping.
-            # Better: If PnL > 1% ? 
-            # Best architectural fix: RiskEngine needs ATR. For now, let's assume Activation is immediate 
-            # OR rely on a percentage move if ATR unavailable.
-            
-            # Let's use a simpler Trailing Trigger: If price improved by X% from entry.
-            # Proxy 1R as 2 * Daily Vol (assume 1-2%).
-            threshold_pct = 0.015 # 1.5% move activates trailing
-            
+            # Activate trailing when price moves 1R in favor (1R ≈ stop_mult * ATR)
+            activation_dist = estimated_atr * trail_dist_mult
+            threshold_pct = activation_dist / curr_price if curr_price > 0 else 0.015
+
             dist_from_entry = (curr_price - pos.avg_price) / pos.avg_price if pos.avg_price else 0
             if not is_long: dist_from_entry = -dist_from_entry
-            
+
             if dist_from_entry > threshold_pct:
                 pos.trailing_active = True
-                
+
             if not pos.trailing_active:
                 continue
-                
+
             # -- Calculate Trailing Stop Level --
-            # Long: High - K*ATR. Short: Low + K*ATR.
-            # We need ATR! 'current_prices' doesn't have it.
-            # We will use a % estimate for ATR if not passed, say 1.5% of price.
-            estimated_atr = curr_price * 0.015 
             trail_dist = estimated_atr * trail_dist_mult
-            
+
             new_stop = None
             if is_long:
                 proposed = pos.highest_high - trail_dist
@@ -225,23 +227,16 @@ class RiskEngine:
                 # Only move DOWN
                 if pos.stop is None or proposed < pos.stop:
                     new_stop = proposed
-                    
+
             if new_stop is not None:
-                # Generate Update Order
-                # In simulation, we just update the position directly or return an instruction?
-                # The 'ExecutionSimulator' doesn't handle 'UpdateOrder' types usually.
-                # It handles 'fills'.
-                # But 'RiskEngine' in Live Mode sends 'replace_order'.
-                # For Backtest, we can just mutate the position.stop directly for simplicity?
-                # User asked for 'manage_positions -> List[Order]'.
-                # Let's stick to that pattern for Live compatibility.
                 updates.append({
                     "ticker": ticker,
                     "action": "update_stop",
                     "new_stop": new_stop,
-                    "meta": {"reason": "trailing_stop", "regime": vol_state} 
+                    "meta": {"reason": "trailing_stop", "regime": vol_state,
+                             "atr": estimated_atr, "trail_mult": trail_dist_mult}
                 })
-                
+
         return updates
 
     # ------------------------------------------------------------------ #
@@ -333,6 +328,7 @@ class RiskEngine:
         price_data: Optional[Dict[str, pd.DataFrame]] = None,
         current_qty: int = 0,
         target_weights: Optional[Dict[str, float]] = None,
+        regime_meta: Optional[Dict[str, Any]] = None,
     ) -> Optional[Dict[str, Any]]:
         """
         Build an order dict or return None if constraints block it.
@@ -461,11 +457,41 @@ class RiskEngine:
                 print(f"[RISK][DEBUG] Rejected signal for {ticker} — reason={self.last_skip_by_ticker.get(ticker)}")
             return None
 
-        # Portfolio constraints
-        if self._positions_count() >= self.cfg.max_positions and current_qty == 0:
+        # --- Advisory-driven dynamic constraints (from Engine E) ---
+        advisory = (regime_meta or {}).get("advisory", {}) if regime_meta else {}
+        effective_max_positions = self.cfg.max_positions
+        effective_max_gross = self.cfg.max_gross_exposure
+        effective_sector_cap = self.cfg.max_sector_exposure_pct
+        advisory_risk_scalar = 1.0
+
+        if advisory:
+            # Dynamic max positions (can only tighten, never loosen)
+            suggested_max_pos = advisory.get("suggested_max_positions")
+            if suggested_max_pos is not None:
+                effective_max_positions = min(int(suggested_max_pos), self.cfg.max_positions)
+
+            # Dynamic gross exposure cap
+            suggested_exposure_cap = advisory.get("suggested_exposure_cap")
+            if suggested_exposure_cap is not None:
+                effective_max_gross = min(float(suggested_exposure_cap), self.cfg.max_gross_exposure)
+
+            # Risk scalar applied to ATR sizing
+            rs = advisory.get("risk_scalar")
+            if rs is not None:
+                advisory_risk_scalar = float(rs)
+
+            # Correlation regime → dynamic sector limits
+            corr_regime = advisory.get("correlation_regime", "normal")
+            if corr_regime == "dispersed":
+                effective_sector_cap = min(0.40, self.cfg.max_sector_exposure_pct * 1.33)
+            elif corr_regime in ("elevated", "spike"):
+                effective_sector_cap = min(0.20, self.cfg.max_sector_exposure_pct * 0.67)
+
+        # Portfolio constraints (using advisory-adjusted limits)
+        if self._positions_count() >= effective_max_positions and current_qty == 0:
             self._fail(ticker, "max_positions_reached")
             if is_debug_enabled("RISK"):
-                print(f"[RISK][DEBUG] Rejected signal for {ticker} — reason={self.last_skip_by_ticker.get(ticker)}")
+                print(f"[RISK][DEBUG] Rejected signal for {ticker} — reason={self.last_skip_by_ticker.get(ticker)} (effective_max={effective_max_positions})")
             return None
 
         # Price & ATR
@@ -574,44 +600,39 @@ class RiskEngine:
                 
             stop_dist = max(stop_mult * atr, 1e-9)
             
-            # --- Dynamic Sizing (AI Confidence) ---
-            # Default Risk (Config)
+            # --- Dynamic Sizing ---
             base_risk_pct = self.cfg.risk_per_trade_pct
-            
-            # Modifiers
             risk_scaler = 1.0
-            
-            # 1. Gate Confidence (AI Brain)
-            gate_conf = float(signal.get("gate_confidence", 0.5))
-            if gate_conf > 0.0:
-                 # Scale: 50% prob -> 1.0x, 90% -> 1.5x?
-                 # Or: 50% is low. 
-                 # Let's say: 
-                 # 0.0-0.5: 0.0x (Should be blocked by Gate, but if not, 0 size)
-                 # 0.5-0.6: 0.5x
-                 # 0.6-0.8: 1.0x
-                 # 0.8-1.0: 1.5x
-                 if gate_conf < 0.5: risk_scaler = 0.0
-                 elif gate_conf < 0.6: risk_scaler = 0.5
-                 elif gate_conf < 0.8: risk_scaler = 1.0
-                 else: risk_scaler = 1.5
-                 
-            # 2. Strategy Strength (Raw Alpha)
-            # If gate_confidence absent, maybe use signal strength
-            elif "strength" in signal:
-                strength = float(signal.get("strength", 0.0))
-                # Map 0..1 to 0.5..1.5
-                risk_scaler = 0.5 + strength 
-            
+
+            # 1. ML Gate Confidence (if explicitly set by SignalGate/MLPredictor)
+            gate_conf = signal.get("gate_confidence")
+            if gate_conf is not None:
+                gate_conf = float(gate_conf)
+                if gate_conf < 0.5: risk_scaler = 0.0
+                elif gate_conf < 0.6: risk_scaler = 0.5
+                elif gate_conf < 0.8: risk_scaler = 1.0
+                else: risk_scaler = 1.5
+            else:
+                # 2. Signal strength (from Alpha aggregation)
+                strength = float(signal.get("strength", 0.5))
+                risk_scaler = 0.5 + strength  # Maps [0,1] to [0.5, 1.5]
+
+            # 3. Governor edge-quality weight (learned from realized performance)
+            governor_weight = float(meta.get("governor_weight", 1.0))
+            risk_scaler *= governor_weight
+
+            # 4. Advisory risk scalar (Engine E regime brake on sizing)
+            risk_scaler *= advisory_risk_scalar
+
             adjusted_risk_pct = base_risk_pct * risk_scaler
-            
+
             # Cap extreme risk (max 2x base)
             adjusted_risk_pct = min(adjusted_risk_pct, base_risk_pct * 2.0)
-            
+
             risk_budget = max(0.0, float(equity) * adjusted_risk_pct)
-            
+
             if is_debug_enabled("RISK") and risk_scaler != 1.0:
-                 print(f"[RISK] Dynamic Sizing: {ticker} (Conf={gate_conf:.2f}) -> Scaler {risk_scaler:.2f} -> Risk {adjusted_risk_pct*100:.2f}%")
+                 print(f"[RISK] Dynamic Sizing: {ticker} (strength={signal.get('strength', 'N/A')}, gov_w={governor_weight:.2f}) -> Scaler {risk_scaler:.2f} -> Risk {adjusted_risk_pct*100:.2f}%")
 
             if risk_budget <= 0:
                 self._fail(ticker, "non_positive_risk_budget")
@@ -727,21 +748,21 @@ class RiskEngine:
                     if p.last_price:
                         sector_price_map[t] = p.last_price
                         
-            # 1. Sector Constraint Check
+            # 1. Sector Constraint Check (using advisory-adjusted cap)
             sector = self._get_sector(ticker)
             if sector and sector != "Unknown" and add_qty > 0:
                 current_sec_exp = self._sector_exposure(sector, sector_price_map)
                 new_trade_exp = (add_qty * price) / max(float(equity), 1e-9)
-                
-                if (current_sec_exp + new_trade_exp) > self.cfg.max_sector_exposure_pct:
+
+                if (current_sec_exp + new_trade_exp) > effective_sector_cap:
                      self._fail(ticker, f"max_sector_exposure_{sector}")
                      if is_debug_enabled("RISK"):
-                        print(f"[RISK][DEBUG] Rejected signal for {ticker} — Sector {sector} exposure {current_sec_exp:.1%} + {new_trade_exp:.1%} > {self.cfg.max_sector_exposure_pct:.1%}")
+                        print(f"[RISK][DEBUG] Rejected signal for {ticker} — Sector {sector} exposure {current_sec_exp:.1%} + {new_trade_exp:.1%} > {effective_sector_cap:.1%}")
                      return None
 
-            # 2. Gross Exposure Guard
+            # 2. Gross Exposure Guard (using advisory-adjusted cap)
             gross_after = self._gross_exposure(sector_price_map) + (abs(add_qty * price) / max(float(equity), 1e-9))
-            if gross_after > float(self.cfg.max_gross_exposure):
+            if gross_after > float(effective_max_gross):
                 self._fail(ticker, "gross_exposure_limit")
                 if is_debug_enabled("RISK"):
                     print(f"[RISK][DEBUG] Rejected signal for {ticker} — reason={self.last_skip_by_ticker.get(ticker)}")

@@ -2,7 +2,7 @@
   <img src="https://img.shields.io/badge/Status-Active_Development-blue.svg" alt="Status">
   <img src="https://img.shields.io/badge/Python-3.10+-3776AB.svg?logo=python&logoColor=white" alt="Python">
   <img src="https://img.shields.io/badge/Broker-Alpaca_Markets-FFDC00.svg" alt="Broker">
-  <img src="https://img.shields.io/badge/Architecture-5_Engine_Quant_System-00C853.svg" alt="Architecture">
+  <img src="https://img.shields.io/badge/Architecture-6_Engine_Quant_System-00C853.svg" alt="Architecture">
   <img src="https://img.shields.io/badge/License-Private-lightgrey.svg" alt="License">
 </p>
 
@@ -20,11 +20,11 @@ Most algorithmic trading codebases are built around a single idea: take a signal
 
 **No single person runs a hedge fund alone.** The best-performing market organizations divide cognitive labor across specialized roles — a researcher, a risk manager, a portfolio manager, a macro analyst, and a performance reviewer — each with strict authority boundaries and clear accountability.
 
-ArchonDEX models this. It decomposes the trading process into **5 independent engines**, each mapped to a real-world market professional, communicating through explicit contracts and never overstepping their mandate.
+ArchonDEX models this. It decomposes the trading process into **6 independent engines**, each mapped to a real-world market professional, communicating through explicit contracts and never overstepping their mandate.
 
 ---
 
-## Architecture — The 5-Engine System
+## Architecture — The 6-Engine System
 
 ```
 ┌──────────────────────────────────────────────────────────────────────┐
@@ -35,26 +35,27 @@ ArchonDEX models this. It decomposes the trading process into **5 independent en
                ▼                  ▼                  ▼
 ┌──────────────────┐  ┌──────────────────┐  ┌──────────────────────────┐
 │  ENGINE E        │  │  ENGINE A        │  │  ENGINE B                │
-│  Regime Intel    │  │  Forecast        │  │  Trade Construction      │
-│  (Macro Thinker) │──│  (The Researcher)│──│  (The Risk Manager)      │
+│  Regime Intel    │─▶│  Forecast        │─▶│  Trade Construction      │
+│  (Macro Thinker) │  │  (The Researcher)│  │  (The Risk Manager)      │
 │                  │  │                  │  │                          │
 │  "What kind of   │  │  "What's a good  │  │  "How do we survive if   │
 │   market is it?" │  │   opportunity?"  │  │   the researcher is      │
 │                  │  │                  │  │   wrong?"                │
-└──────────────────┘  └──────────────────┘  └────────────┬─────────────┘
-                                                         │
-                                                         ▼
-                      ┌──────────────────┐  ┌──────────────────────────┐
-                      │  ENGINE C        │  │  ENGINE D                │
-                      │  Portfolio State  │  │  Strategy Governance     │
-                      │  (Accountant +   │  │  (Performance Reviewer)  │
-                      │   Allocator)     │  │                          │
-                      │                  │  │  "Which strategies have  │
-                      │  "What do we own │  │   earned trust over      │
-                      │   and where      │  │   time?"                 │
-                      │   should capital │  │                          │
-                      │   go?"           │  │                          │
-                      └──────────────────┘  └──────────────────────────┘
+└────────┬─────────┘  └────────▲─────────┘  └────────────┬─────────────┘
+         │                     │ weights                  │
+         │ regime context      │                          ▼
+         │                ┌────┴─────────────┐  ┌──────────────────────────┐
+         │                │  ENGINE F        │  │  ENGINE C                │
+         ▼                │  Strategy        │  │  Portfolio State          │
+┌──────────────────┐      │  Governance      │  │  (Accountant + Allocator)│
+│  ENGINE D        │      │  (Perf Reviewer) │  │                          │
+│  Discovery &     │      │                  │  │  "What do we own and     │
+│  Evolution       │─────▶│  "Which edges    │  │   where should capital   │
+│  (The Lab)       │edges │   earned trust?" │  │   go?"                   │
+│                  │      └──────────────────┘  └──────────────────────────┘
+│  "What new edges │
+│   can we find?"  │
+└──────────────────┘
 ```
 
 | Engine | Role | Core Question |
@@ -62,8 +63,9 @@ ArchonDEX models this. It decomposes the trading process into **5 independent en
 | **Engine A — Forecast** | The Researcher | *"Given market data, what is the directional forecast and how strongly do I believe it?"* |
 | **Engine B — Trade Construction** | The Risk Manager | *"How do we express this trade without risking ruin?"* |
 | **Engine C — Portfolio State** | The Accountant + PM | *"What do we actually own, and where should capital be allocated?"* |
-| **Engine D — Strategy Governance** | The Performance Reviewer | *"Which edges are earning trust, and which should be retired?"* |
+| **Engine D — Discovery & Evolution** | The Edge Hunter | *"What new patterns, strategies, and edges can we find?"* |
 | **Engine E — Regime Intelligence** | The Macro Thinker | *"What kind of market environment are we operating in?"* |
+| **Engine F — Strategy Governance** | The Performance Reviewer | *"Which edges are earning trust, and which should be retired?"* |
 
 ### The Golden Rule
 > **No engine is allowed to do another engine's job.** A identifies opportunities. B makes them safe. C tracks the books. D grades performance. E reads the weather. If A starts making risk decisions or B starts predicting returns, the system architecture has failed.
@@ -75,13 +77,14 @@ ArchonDEX models this. It decomposes the trading process into **5 independent en
 ### Edge-Based Signal Generation
 The system doesn't rely on a single strategy. It runs multiple independent "edges" — statistical, technical, fundamental, and behavioral — simultaneously. Each edge is a pluggable module that produces normalized directional scores.
 
-**6 Edge Categories:**
-- **Technical** — RSI bounces, Bollinger breakouts, mean reversion, trend following
-- **Fundamental** — DCF models, balance sheet strength, growth metrics
-- **News / Event-Driven** — Sentiment analysis, geopolitical triggers
-- **Statistical / Quant** — Seasonal patterns, overnight gap fills, option flow
-- **Behavioral** — Panic detection, herding signals, earnings vol exploitation
-- **Grey** — Politician trade tracking, non-public-but-legal information edges
+**7 Edge Categories (15+ active edges):**
+- **Technical** — RSI bounces, Bollinger breakouts, ATR breakout, momentum, SMA cross
+- **Fundamental** — PE/PS/PB/PFCF ratio screening, value trap detection
+- **News / Event-Driven** — Sentiment analysis, earnings vol compression/drift (PEAD)
+- **Statistical / Quant** — Calendar seasonality, overnight gap fill, volume spike reversal, volume dry-up breakout
+- **Behavioral** — Multi-condition panic detection, cross-sectional herding contrarian, pre/post-earnings volatility
+- **Grey** — Politician trade tracking, non-public-but-legal information edges (planned)
+- **Evolutionary** — GA-evolved composite genomes combining genes from any category above
 
 ### Institutional Risk Management
 - ATR-based dynamic position sizing
@@ -96,12 +99,20 @@ The system doesn't rely on a single strategy. It runs multiple independent "edge
 - Drift monitoring & rebalance triggers
 - Strict double-entry accounting ledger (equity always reconciles)
 
-### Autonomous Learning (The Governor)
-Engine D continuously evaluates edge performance across market regimes:
+### Autonomous Discovery & Evolution (Engine D)
+Engine D autonomously discovers new edges and evolves existing ones:
+- Two-stage ML pipeline: LightGBM feature screening -> decision tree rule extraction
+- Genetic algorithm evolution of composite edge genomes (selection, crossover, mutation, elitism)
+- 40+ engineered features across 7 categories (technical, fundamental, calendar, microstructure, inter-market, regime, cross-sectional)
+- 4-gate validation pipeline: backtest -> PBO robustness -> WFO degradation -> Monte Carlo significance
+- Discovery activity logged to JSONL for full audit trail
+
+### Autonomous Governance (Engine F)
+Engine F continuously evaluates edge performance across market regimes:
 - Rolling Sharpe, Win Rate, Max Drawdown per edge
 - Regime-conditioned attribution (was the edge bad, or just out of phase?)
 - Autonomous weight adjustment with strong hysteresis to prevent overfitting
-- Versioned weight maps with full audit trail
+- Full edge lifecycle management (candidate -> active -> paused -> retired)
 
 ### Full-Spectrum Data Pipeline
 - Alpaca Markets API integration (historical + live streaming)
@@ -135,9 +146,10 @@ archondex/
 │   ├── engine_a_alpha/       # Signal generation & edge aggregation
 │   ├── engine_b_risk/        # Position sizing, stops, exposure limits
 │   ├── engine_c_portfolio/   # Ledger, allocation policies, state
-│   ├── engine_d_research/    # Governor, edge scoring, weight management
-│   ├── engine_e_regime/      # Market regime detection & classification
-│   └── data_manager/         # OHLCV ingestion, caching, normalization
+│   ├── engine_d_discovery/    # Edge hunting (LightGBM+DTree), GA evolution, 4-gate validation
+│   ├── engine_e_regime/       # Market regime detection & classification
+│   ├── engine_f_governance/   # Edge lifecycle, weight management, performance scoring
+│   └── data_manager/          # OHLCV ingestion, caching, normalization
 │
 ├── backtester/               # Walk-forward backtesting framework
 ├── brokers/                  # Alpaca broker adapter
@@ -258,7 +270,7 @@ This project uses a structured, AI-native documentation system designed to maint
 | Data Storage | Parquet, CSV, JSON |
 | Broker API | Alpaca Markets (alpaca-py) |
 | Dashboard | Dash, Plotly |
-| ML / Statistics | scikit-learn, scipy |
+| ML / Statistics | scikit-learn, LightGBM, scipy |
 | Async / Streaming | asyncio, WebSocket |
 | Config | python-dotenv, JSON/YAML |
 

@@ -9,7 +9,7 @@ from pathlib import Path
 # Add project root to path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from engines.engine_d_research.regime_detector import RegimeDetector
+from engines.engine_e_regime.regime_detector import RegimeDetector
 
 def main():
     print("==================================================")

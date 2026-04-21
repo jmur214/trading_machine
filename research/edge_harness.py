@@ -721,7 +721,7 @@ def run_harness(spec: HarnessSpec) -> Path:
             print(f"[PROMOTE][WARN] Could not auto-promote best params: {e}")
 
     try:
-        from research.promote import promote_best_params
+        from engines.engine_f_governance.promote import promote_best_params
         valid_df = df[df["error"].isna()] if "error" in df.columns else df
         metric_cols = [
             "total_return_pct", "cagr_pct", "max_drawdown_pct",

@@ -10,8 +10,8 @@ import pandas as pd
 # Add project root
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from engines.engine_d_research.discovery import DiscoveryEngine
-from engines.engine_d_research.wfo import WalkForwardOptimizer
+from engines.engine_d_discovery.discovery import DiscoveryEngine
+from engines.engine_d_discovery.wfo import WalkForwardOptimizer
 from engines.data_manager.data_manager import DataManager
 
 # Setup Logging

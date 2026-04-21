@@ -6,10 +6,10 @@ import numpy as np
 from pathlib import Path
 
 # Engine Imports
-from engines.engine_d_research.regime_detector import RegimeDetector
+from engines.engine_e_regime.regime_detector import RegimeDetector
 from engines.engine_a_alpha.edges.composite_edge import CompositeEdge
 from engines.engine_c_portfolio.policy import PortfolioPolicy, PortfolioPolicyConfig
-from engines.engine_d_research.governor import StrategyGovernor, GovernorConfig
+from engines.engine_f_governance.governor import StrategyGovernor, GovernorConfig
 from research.edge_generator import EdgeGenerator
 
 def run_system_check():

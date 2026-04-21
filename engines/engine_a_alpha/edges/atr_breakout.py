@@ -9,6 +9,7 @@ class ATRBreakoutEdge(EdgeBase):
 
     def compute_signals(self, data_map, as_of):
         scores = {}
+        min_score = float(self.params.get("min_score", 0.3))
         for t, df in data_map.items():
             # Get dynamic params with defaults
             atr_window = int(self.params.get("lookback", 14))
@@ -24,7 +25,11 @@ class ATRBreakoutEdge(EdgeBase):
             tr = np.maximum(high - low, np.abs(high - close.shift()), np.abs(low - close.shift()))
             atr = tr.rolling(atr_window).mean()
             breakout = (close - close.rolling(breakout_window).mean()) / (atr + 1e-9)
-            scores[t] = float(np.tanh(breakout.iloc[-1] / score_scale))
+            raw = float(np.tanh(breakout.iloc[-1] / score_scale))
+            # Dead zone: ignore weak signals that are just noise
+            if abs(raw) < min_score:
+                raw = 0.0
+            scores[t] = raw
         return scores
 
     def generate_signals(self, data_map, as_of):

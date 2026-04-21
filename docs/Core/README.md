@@ -12,7 +12,7 @@ Every file in `docs/Core/` has a specific role. They are not meant to be read al
 | File | Purpose | When to Read |
 |------|---------|-------------|
 | **`GOAL.md`** | Your north star. Defines the AI's role, links to all reference docs. | First thing, every session. If you feel context drifting, re-read this. |
-| **`PROJECT_CONTEXT.md`** | The architecture bible. 4-Engine system, edge doctrine, current state table, design philosophy. | Once at the start. Re-read when touching engine-level logic. |
+| **`PROJECT_CONTEXT.md`** | The architecture bible. 6-Engine system, edge doctrine, current state table, design philosophy. | Once at the start. Re-read when touching engine-level logic. |
 
 ### Deep Onboarding (Optional — For Full Engine Understanding)
 If you need to work on engine-level logic, are reviewing the architecture, or want the complete mental model:
@@ -89,7 +89,7 @@ SESSION START
 | Location | Purpose |
 |----------|---------|
 | `docs/Audit/` | Engine design work & codebase analysis — start with its `README.md` for reading order. Key files: `engine_charters.md` (target design), `high_level-engine_function.md` (current state), `codebase_findings.md` (known issues) |
-| `docs/Audit/engine_charters.md` | Formal authority boundaries for all 5 engines (draft — will migrate to Core when finalized) |
+| `docs/Audit/engine_charters.md` | Formal authority boundaries for all 6 engines (draft — will migrate to Core when finalized) |
 | `docs/Progress_Summaries/` | Historical lessons learned and phase completion logs |
 | `docs/Archive/` | Deprecated content preserved for historical reference |
 | `.agent/workflows/` | Slash-command automation workflows (e.g., `/1_run_backtest`) |

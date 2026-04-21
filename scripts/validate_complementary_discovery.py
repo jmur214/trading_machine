@@ -1,7 +1,7 @@
 
 import sys
 import os
-from engines.engine_d_research.discovery import DiscoveryEngine
+from engines.engine_d_discovery.discovery import DiscoveryEngine
 
 def validate_discovery_vocabulary():
     print("--- Phase 3: Validating Discovery Vocabulary ---")

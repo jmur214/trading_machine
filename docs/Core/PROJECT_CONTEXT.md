@@ -7,44 +7,66 @@ The Trading Machine is a modular Python trading research and execution framework
 
 It is designed to eventually function like a "Schwab Intelligent Portfolio" (SIP) crossed with an adaptive Quant Fund. It does not just hold passive ETFs; it actively generates "signals" across different sleeves of capital (Technical, Fundamental, True Edge) and dynamically rebalances its trust in those strategies based on how well they perform in current market regimes.
 
-## The 4-Engine Architecture
-The system is built on four core pillars:
+## The 6-Engine Architecture
+The system is built on six core engines:
 
-1. **Engine A: Alpha Generation (The Brain)**
+1. **Engine A: Alpha Generation (The Brain)** — `engines/engine_a_alpha/`
    - Responsible for identifying opportunities (Signals).
    - Utilizes pluggable "Edges" (strategies based on mean reversion, momentum, sentiment, or news).
-   - Generates ranked candidate trades and emits signal dicts.
+   - Reads edge weights from Governance (F) and regime state from Regime (E) to produce ranked signals.
+   - Houses `SignalGate` (ML confidence gating) in `engine_a_alpha/learning/`.
+   - Applies True Edge combination rules (discovered by D) during ensemble aggregation.
 
-2. **Engine B: Risk & Order Placement (The Safety Net & Executor)**
+2. **Engine B: Risk & Order Placement (The Safety Net & Executor)** — `engines/engine_b_risk/`
    - Converts theoretical signals into actionable orders and executes them with the broker.
    - Enforces position sizing (e.g., ATR-based, volatility-adjusted, Kelly criterion).
    - Manages strict stop-loss, take-profit rules, and portfolio exposure limits.
+   - Reads regime state from E to adjust exposure limits in volatile regimes.
 
-3. **Engine C: Portfolio Management (The Accountant)**
-   - *Planned:* Will manage portfolio "Sleeves", breaking the single custodial account into virtual sub-accounts (e.g., specialized equity, fixed-income, or core/satellite sleeves) that can be tracked and managed independently. This will enable specialized, concurrent management of different assets, specialized accounting, and independent rebalancing.
+3. **Engine C: Portfolio Management (The Accountant)** — `engines/engine_c_portfolio/`
+   - *Planned:* Will manage portfolio "Sleeves", breaking the single custodial account into virtual sub-accounts (e.g., specialized equity, fixed-income, or core/satellite sleeves) that can be tracked and managed independently.
    - Keeps track of global account balance, equity, realized/unrealized P&L, and position states.
    - Does *not* generate signals or place orders; strictly manages the holistic portfolio picture.
 
-4. **Engine D: Strategy Governor & Research (The Meta-Brain)**
-   - **Governance:** Tracks the performance of every edge (Sharpe, Max Drawdown, Win Rate). Dynamically reweighs capital allocation and decides which edges should be active, inactive, or retired based on recent performance and market regimes. For instance, if the "Mean Reversion" edge stops working in a trending market, the Governor removes capital from it and routes it to an edge that *is* working.
-   - **Discovery & Evolution:** Autonomously hunts for new edges via Decision Tree scanning and genetic programming (composite "genome" mutation). Validates candidates through walk-forward optimization and robustness testing (Probability of Backtest Overfitting).
-   - **Research Infrastructure:** Provides centralized metrics computation (Sharpe, Sortino, Calmar, VaR, Kelly), feature engineering for ML models, and a time-decay scoring system for ranking edges across research runs.
-   - **Regime Detection:** Houses the current `RegimeDetector` (trend + volatility classification via SMA/ATR on SPY). This functionality is planned to eventually graduate into its own Engine E.
-   - Creates a continuous, autonomous learning loop where the system discovers, validates, adapts, and evolves.
+4. **Engine D: Discovery & Evolution (The Lab)** — `engines/engine_d_discovery/`
+   - Autonomously hunts for new edges via a two-stage ML pipeline: LightGBM feature importance screening followed by shallow Decision Tree rule extraction.
+   - Evolves composite edge genomes through a full genetic algorithm (tournament selection, single-point crossover, Gaussian mutation, elitism) with persistent population across cycles.
+   - Feature engineering produces 40+ features across 7 categories: technical, fundamental, calendar/seasonality, microstructure, inter-market, regime context, and cross-sectional.
+   - Validates candidates through a 4-gate pipeline: quick backtest (Sharpe > 0) -> PBO robustness (50 paths, survival > 0.7) -> WFO degradation (OOS >= 60% IS) -> Monte Carlo significance (p < 0.05).
+   - Outputs validated candidate edge specs to `edges.yml` for Governance (F) to activate.
+   - Does NOT manage live edge weights or lifecycle — that's Governance.
+
+5. **Engine E: Regime Intelligence (The Weather Station)** — `engines/engine_e_regime/`
+   - Single source of truth for market environment classification.
+   - Detects market regime (trend direction, volatility level) via SMA/ATR/Efficiency Ratio on SPY.
+   - Outputs structured regime object + non-binding advisory policy hints.
+   - Called once per bar by ModeController; regime state is passed to A, B, and F as a parameter.
+
+6. **Engine F: Governance (The Judge)** — `engines/engine_f_governance/`
+   - Fully autonomous edge lifecycle manager.
+   - Tracks per-edge performance metrics (Sharpe, Sortino, MDD, win rate) via rolling windows.
+   - Dynamically reweighs edge capital allocation via EMA-smoothed scoring.
+   - Manages edge lifecycle: candidate → active → paused → retired.
+   - Kill-switch: disables edges exceeding MDD threshold (-25%) or with Sharpe ≤ 0.
+   - Outputs `edge_weights.json` consumed by Alpha (A) at runtime.
 
 ## Supporting Infrastructure & Ecosystem
-While the 4 Engines govern trading logic, the broader system heavily relies on:
+While the 6 Engines govern trading logic, the broader system heavily relies on:
 - **Data Ingestion & Management:** Standardizes external market/alternative data into clean, highly optimized formats (e.g., Parquet).
 - **The Backtester:** A rigorous, high-fidelity historical simulator that replays data to validate edge hypotheses, built with strict cross-validation guardrails to prevent overfitting.
+- **Shared Utilities:** `core/metrics_engine.py` provides centralized metrics computation (Sharpe, Sortino, Calmar, VaR, Kelly) used by both Discovery and Governance.
 
 ## Orchestration Layer
-The `ModeController` (`orchestration/mode_controller.py`) binds the engines together. It allows the exact same logic pipeline to run in:
+The `ModeController` (`orchestration/mode_controller.py`) binds the engines together. It calls Engine E once per bar and passes the regime state to downstream engines. It allows the exact same logic pipeline to run in:
 - **Backtest Mode:** Slices data bar-by-bar locally.
 - **Paper Mode:** Streams data via websockets and simulates execution.
 - **Live Mode:** Plumbs the final Portfolio engine diffs straight to Broker REST APIs.
 
-## Planned: Engine E — Regime Intelligence
-> A 5th engine (Regime Intelligence) has been formally chartered but **not yet implemented**. It is designed to be the system's single official source of macro/environmental truth — classifying market regimes (trending, mean-reverting, high volatility, crisis) so other engines can condition their behavior. See `docs/Audit/engine_charters.md` for the full charter.
+## Shared State: `edges.yml` Write Contract
+Both Discovery (D) and Governance (F) write to `data/governor/edges.yml`:
+- **D writes:** New entries (candidate specs, params, metadata, source info)
+- **F writes:** `status` field changes (candidate → active → paused → retired), weight assignments
+- Neither engine deletes the other's fields.
 
 ## Current State
 
@@ -53,8 +75,9 @@ The `ModeController` (`orchestration/mode_controller.py`) binds the engines toge
 | Engine A (Alpha) | ✅ Functional | Signal filtering may need to be loosened |
 | Engine B (Risk) | ✅ Functional | ATR sizing, exposure caps, trailing stops |
 | Engine C (Portfolio) | ✅ Functional | Ledger/Allocation wall not yet enforced |
-| Engine D (Governor & Research) | ✅ Functional | Autonomous governance + edge discovery/evolution pipeline |
-| Engine E (Regime) | 📋 Chartered | `RegimeDetector` exists in Engine D as a module; not yet a standalone engine |
+| Engine D (Discovery) | ✅ Functional | Two-stage ML (LightGBM + DTree), GA evolution, 4-gate validation, 40+ features |
+| Engine E (Regime) | ✅ Functional | RegimeDetector standalone; advisory hints planned |
+| Engine F (Governance) | ✅ Functional | Autonomous edge lifecycle + weight management |
 | Data Manager | ✅ Functional | Alpaca + cache + normalization |
 | Backtester | ✅ Functional | Walk-forward capable |
 | Dashboard (V2) | ✅ Functional | V1 deprecated |
@@ -64,12 +87,13 @@ The `ModeController` (`orchestration/mode_controller.py`) binds the engines toge
 At its core, an **Edge** is simply *a pattern that produces profitable trades*. It is not restricted to complex mathematical equations; it is a vast net of independent, real-world anomalies that can be cataloged and exploited. It is a repeatable factor that lets you consistently make money over many trades, and produces a positive expected value (EV).
 
 There are **6 Core Edges** the system must track:
-1. **Price / Technical:** Patterns (e.g., RSI bounces, Bollinger Band breakouts, mean reversion, and trend following) that are statistically more likely to work than random chance.
-2. **Fundamental:** Value discrepancies, balance sheet strength, growth metrics, or DCF models that identify mispriced assets relative to their intrinsic worth.
-3. **News-Based / Event-Driven:** Real-world event triggers (e.g., political tweets, macroeconomic shifts, specific corporate lawsuits).
-4. **Stat/Quant:** Pure historical probability vectors (e.g., seasonal patterns, overnight gap fills, option flow anomalies).
-5. **Behavioral/Psychological:** Exploiting human panic, herding, or pre/post-earnings options volatility vs. market sentiment.
-6. **"Grey":** Information that is almost like insider trading without being illegal, just less common/priced-in information (e.g., tracking politician stock purchases, or non-public corporate hacks).
+1. **Price / Technical:** Patterns (e.g., RSI bounces, Bollinger Band breakouts, mean reversion, and trend following) that are statistically more likely to work than random chance. *Implemented: RSI Bounce, ATR Breakout, Bollinger Reversion, Momentum, SMA Cross.*
+2. **Fundamental:** Value discrepancies, balance sheet strength, growth metrics, or DCF models that identify mispriced assets relative to their intrinsic worth. *Implemented: FundamentalRatio, ValueTrap.*
+3. **News-Based / Event-Driven:** Real-world event triggers (e.g., political tweets, macroeconomic shifts, specific corporate lawsuits). *Partial: VADER sentiment exists; EarningsVolEdge handles pre/post-earnings drift.*
+4. **Stat/Quant:** Pure historical probability vectors (e.g., seasonal patterns, overnight gap fills, option flow anomalies). *Implemented: SeasonalityEdge (day-of-week / month-of-year), GapEdge (overnight gap fill), VolumeAnomalyEdge (spike reversal / dry-up breakout).*
+5. **Behavioral/Psychological:** Exploiting human panic, herding, or pre/post-earnings options volatility vs. market sentiment. *Implemented: PanicEdge (multi-condition extreme reversion), HerdingEdge (cross-sectional contrarian), EarningsVolEdge (vol compression / PEAD).*
+6. **"Grey":** Information that is almost like insider trading without being illegal, just less common/priced-in information (e.g., tracking politician stock purchases, or non-public corporate hacks). *Not yet implemented — abstract data source stubs planned.*
+- **Evolutionary / Synthetic:** CompositeEdge genomes combine genes from any category above. The GA discovers cross-category combinations (e.g., "buy when RSI < 30 AND overnight gap down AND gold rising"). RuleBasedEdge captures patterns from decision tree scanning.
 - **Execution:** While another form of an edge, outside of proper coding, we will not be able to compete with HFTs and large firms on this so it will not be a focus. However, it can be seen as gaining fractions of a percent through smarter routing or lower slippage.
 
 **The "True Edge"**:

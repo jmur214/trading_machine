@@ -1,29 +1,34 @@
 ---
-description: Run the Autonomous Evolution Cycle (Machine Learning Loop)
+description: Run the Autonomous Evolution Cycle (Discovery + GA + Validation)
 ---
 
-This workflow triggers the "Brain" of the system to proactively learn and upgrade itself.
+This workflow triggers Engine D's discovery pipeline to hunt for new edges, evolve composite genomes, and validate candidates through the 4-gate pipeline.
 
 Steps:
-1. **Initialize the Research Environment**: Loads historical data and Discovery Engine.
-2. **Generate Mutations**: Uses Genetic Algorithms to spawn 10-50 new strategy variations (Mutants).
-3. **Survivor Validation**:
-   - Runs **Backtest** (Profit Check).
-   - Runs **Robustness Check** (Parallel Universe PBO Check).
-   - Runs **Sortino Check** (Upside "Skyrocket" Potential).
-4. **Consistency Verification**:
-   - Runs **Walk-Forward Optimization** to ensure the strategy didn't just get lucky.
-5. **Promotion**:
-   - If a mutant survives all checks, it is PROMOTED to `config/edge_config.json`.
-   - The next time you run `Live` or `Paper`, this new strategy will be active.
+1. **Regime Detection**: Engine E detects current market regime (trend, volatility, correlation).
+2. **Feature Engineering**: Computes 40+ features across 7 categories (technical, fundamental, calendar, microstructure, inter-market, regime, cross-sectional).
+3. **Pattern Hunting**: Two-stage ML pipeline — LightGBM screens for important features, shallow decision tree extracts interpretable rules.
+4. **Genetic Evolution**: GA cycle on CompositeEdge population — tournament selection, crossover, mutation, elitism. Population persists in `data/governor/ga_population.yml`.
+5. **4-Gate Validation**:
+   - **Gate 1 — Backtest**: Sharpe > 0 (cheap filter).
+   - **Gate 2 — PBO Robustness**: 50 synthetic paths, survival rate > 0.7.
+   - **Gate 3 — WFO Degradation**: OOS Sharpe >= 60% of IS Sharpe.
+   - **Gate 4 — Significance**: Monte Carlo permutation test p-value < 0.05.
+6. **Promotion**: Candidates passing ALL gates are promoted to `active` in `data/governor/edges.yml`.
 
 **How to Run**:
 ```bash
-# Run a small batch (fast)
-python scripts/run_evolution_cycle.py
+# Full discovery cycle (post-backtest)
+python -m scripts.run_backtest --discover
 
-# To run a large batch, edit the script to n_candidates=50
+# With fresh logs
+python -m scripts.run_backtest --fresh --discover
+
+# Generate candidates only (no validation)
+python -m engines.engine_d_discovery.discovery
 ```
 
 **Outcome**:
-Check `config/edge_config.json` after the run. You should see new, evolved strategies (e.g., `rsi_long_mut_a1b2`) added with optimized weights.
+- Check `data/governor/edges.yml` for newly promoted edges (status: active).
+- Check `data/governor/ga_population.yml` for GA population state and generation count.
+- Check `data/research/discovery_log.jsonl` for full audit trail of the discovery cycle.

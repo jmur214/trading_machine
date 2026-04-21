@@ -11,6 +11,7 @@ class EdgeBase:
     """
     def __init__(self):
         self.params: Dict[str, Any] = {}
+        self.regime_meta: Dict[str, Any] | None = None
 
     def set_params(self, params: Dict[str, Any]) -> None:
         self.params = params or {}

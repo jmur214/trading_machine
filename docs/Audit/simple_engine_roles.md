@@ -61,7 +61,18 @@ The Accountant is the most rigid person in the room. They don't care about predi
 
 ---
 
-## 6. The Performance Reviewer (Engine D)
+## 6. The Edge Hunter (Engine D)
+*Also known as: The Discovery & Evolution Engine*
+
+**The core question they answer:** *"What new patterns and strategies can we find?"*
+
+The Edge Hunter works in the back lab after hours. They sift through mountains of historical data using machine learning to find patterns nobody else has noticed. They breed the best strategies together (like a genetic algorithm), mutating and combining them to create new ones. Then they put every candidate through a brutal gauntlet of tests: "Does this still work on data you've never seen? Is this statistically significant or just luck?" Only the survivors get promoted to the Researcher's active playbook.
+
+**What they do NOT do:** They never participate in live trading. They never decide which strategies to trust day-to-day. They just find new ideas and prove they work before handing them off.
+
+---
+
+## 7. The Performance Reviewer (Engine F)
 *Also known as: The Strategy Governor*
 
 **The core question they answer:** *"Who is making us money, and who made a mistake?"*
@@ -78,4 +89,5 @@ The Performance Reviewer sits in the corner taking notes on everyone's performan
 3. The **Portfolio Manager (C)** decides how those ideas should fit into an ideal pie chart.
 4. The **Risk Manager (B)** takes those ideas, puts seatbelts on them, sizes them safely, and executes them.
 5. The **Accountant (C)** logs the receipts to prove exactly what we bought.
-6. The **Performance Reviewer (D)** watches all this happen and grades the Researcher's strategies over time, adjusting who we listen to next month.
+6. The **Edge Hunter (D)** runs experiments in the lab to discover new strategies and validate them before adding to the playbook.
+7. The **Performance Reviewer (F)** watches all this happen and grades the Researcher's strategies over time, adjusting who we listen to next month.

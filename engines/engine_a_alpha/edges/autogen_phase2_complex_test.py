@@ -20,27 +20,11 @@ class AutogenPhase2ComplexTest(EdgeBase, EdgeTemplate):
         self.set_params(params)
         self.dm = DataManager()
         self.fundamental_cache = {}
-        # Internal Regime Detector
-        from engines.engine_d_research.regime_detector import RegimeDetector
-        self.regime_detector = RegimeDetector()
-        self.regime_cache = {}
-
     def compute_signals(self, data_map, as_of):
         scores = {}
-        
-        # 1. Detect Regime (Context)
-        spy_df = data_map.get("SPY")
-        current_regime = {"trend": "unknown", "volatility": "unknown"}
-        if spy_df is not None:
-            spy_last = spy_df.index[-1]
-            if spy_last in self.regime_cache:
-                current_regime = self.regime_cache[spy_last]
-            else:
-                slice_spy = spy_df.loc[:as_of]
-                if not slice_spy.empty:
-                    current_regime = self.regime_detector.detect_regime(slice_spy)
-                    self.regime_cache[spy_last] = current_regime
-                    self.regime_cache["spy_df_ref"] = slice_spy
+
+        # 1. Regime context (provided by AlphaEngine via regime_meta attribute)
+        current_regime = self.regime_meta or {"trend": "unknown", "volatility": "unknown"}
 
         # 2. Calculation Phase
         ticker_gene_vals = {}

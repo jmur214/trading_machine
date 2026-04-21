@@ -82,16 +82,22 @@ rm -rf data/research/*
 
 ### EVOLUTION & OPTIMIZATION (DARWIN)
 ```bash
-# 1. GENERATE CANDIDATES (Discovery Engine)
-# Uses templates to actuate new edge variants into the registry.
-python -m engines.engine_d_research.discovery
+# FULL DISCOVERY CYCLE (Recommended — post-backtest)
+# Runs: regime detection → feature hunt (LightGBM+DTree) → GA evolution →
+#       4-gate validation (backtest → PBO → WFO → significance) → auto-promote
+python -m scripts.run_backtest --discover
+python -m scripts.run_backtest --fresh --discover    # with fresh logs
 
-# 2. VALIDATE CANDIDATES (Evolutionary Selector)
+# GENERATE CANDIDATES ONLY (no validation)
+# Creates template mutations + GA-evolved composite genomes
+python -m engines.engine_d_discovery.discovery
+
+# VALIDATE CANDIDATES (Evolutionary Selector)
 # Runs walk-forward optimization on 'candidate' edges.
 # Promotes winners to 'active' status.
 python -m scripts.optimize
 
-# 3. ML DATA HARVEST (Experimental)
+# ML DATA HARVEST (Experimental)
 # Collects trade signals and outcomes for ML training
 python -m scripts.harvest_data
 ```
@@ -128,6 +134,17 @@ python -m intelligence.news_summarizer
 
 ### ANALYTICS & PERFORMANCE
 ```bash
+# PERFORMANCE BENCHMARK (full scorecard)
+# Runs a standardized backtest and outputs:
+#   Portfolio metrics (Sharpe, Sortino, Calmar, CAGR, MDD, profit factor)
+#   Per-edge breakdown (PnL, win rate, trade count)
+#   SPY buy-and-hold comparison (alpha measurement)
+python -m scripts.run_benchmark
+python -m scripts.run_benchmark --start 2023-01-01 --end 2024-12-31
+python -m scripts.run_benchmark --capital 50000
+python -m scripts.run_benchmark --json     # JSON output only
+# Report saved to: data/research/benchmark_report.json
+
 # View research and backtest outputs
 cat data/trade_logs/trades.csv
 cat data/trade_logs/portfolio_snapshots.csv
