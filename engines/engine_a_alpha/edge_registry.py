@@ -82,11 +82,27 @@ class EdgeRegistry:
             self._specs[edge_id].status = status
             self._save()
 
-    def list(self, status: Optional[str] = None) -> List[EdgeSpec]:
+    def list(self, status: Optional[str] = None,
+             statuses: Optional[List[str]] = None) -> List[EdgeSpec]:
+        """List edges filtered by status. Pass `status="active"` for single
+        match or `statuses=["active","paused"]` for multi-match (used for
+        soft-pause behavior where paused edges keep trading at reduced weight).
+        """
         vals = list(self._specs.values())
+        if statuses:
+            allowed = set(statuses)
+            return [s for s in vals if s.status in allowed]
         if status:
             return [s for s in vals if s.status == status]
         return vals
+
+    def list_tradeable(self) -> List[EdgeSpec]:
+        """Return edges that should be loaded into the alpha pipeline: active
+        edges trade at their config weight; paused edges trade at a reduced
+        weight (soft-pause) so the revival gate can observe post-pause
+        performance. Retired/failed/archived/candidate edges do NOT trade.
+        """
+        return self.list(statuses=["active", "paused"])
 
     def list_modules(self, status: str = "active") -> List[str]:
         """

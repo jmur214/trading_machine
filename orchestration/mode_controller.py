@@ -600,9 +600,13 @@ class ModeController:
                 else:
                     print(f"[RUN_BACKTEST] Edge ID {eid} not found in registry.")
         else:
-            # Default Mode: Load Active
-            active_specs = registry.list(status="active")
-            for spec in active_specs:
+            # Default Mode: Load tradeable (active + paused).
+            # Phase α v2 soft-pause: paused edges trade at reduced weight
+            # (applied later when constructing edge_weights) rather than being
+            # silenced entirely. This is what lets the revival gate observe
+            # post-pause performance data and decide whether to re-activate.
+            tradeable_specs = registry.list_tradeable()
+            for spec in tradeable_specs:
                 specs_to_load[spec.edge_id] = spec
 
             # Also load any edge implied by override_params keys, even if candidate
@@ -706,8 +710,17 @@ class ModeController:
         """
         import os
         import json
+        import random
         import shutil
         from datetime import datetime, timedelta
+
+        import numpy as np
+
+        # Deterministic RNG seed for the backtest pipeline. Prevents any future
+        # stochastic code path (ML inference, evolution invoked mid-run, etc.)
+        # from injecting wall-clock entropy into trade decisions.
+        random.seed(0)
+        np.random.seed(0)
 
         if alpha_debug:
             os.environ["ALPHA_DEBUG"] = "1"
@@ -792,6 +805,22 @@ class ModeController:
         config_edge_weights = cfg_alpha.get("edge_weights", {})
         edge_weights = {eid: float(config_edge_weights.get(eid, 1.0))
                         for eid in loaded_edges}
+
+        # Phase α v2 soft-pause: edges with status=paused trade at reduced
+        # weight (default 0.25x) so the lifecycle revival gate has continuous
+        # post-pause data to work with. Without this, paused edges would be
+        # silenced entirely → no trades → no revival evidence → paused forever.
+        PAUSED_WEIGHT_MULTIPLIER = 0.25
+        _paused_ids = {
+            s.edge_id for s in EdgeRegistry().get_all_specs() if s.status == "paused"
+        }
+        paused_count = 0
+        for eid in list(edge_weights.keys()):
+            if eid in _paused_ids:
+                edge_weights[eid] *= PAUSED_WEIGHT_MULTIPLIER
+                paused_count += 1
+        if paused_count:
+            print(f"[RUN_BACKTEST] Applied {PAUSED_WEIGHT_MULTIPLIER}x soft-pause weight to {paused_count} edge(s)")
         alpha = AlphaEngine(
             edges=loaded_edges,
             edge_weights=edge_weights,
@@ -838,6 +867,10 @@ class ModeController:
             if not no_governor:
                 governor.update_from_trades(metrics.trades, metrics.snapshots)
                 governor.save_weights()
+                # Phase α: autonomous lifecycle evaluation after weight updates.
+                # Gated by governor.cfg.lifecycle_enabled (default False). Fires
+                # retire/pause/revive transitions and appends to lifecycle_history.csv.
+                governor.evaluate_lifecycle(metrics.trades)
         except Exception as e:
             print(f"[GOVERNOR][WARN] Could not update governor: {e}")
 

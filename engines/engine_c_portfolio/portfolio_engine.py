@@ -214,10 +214,20 @@ class PortfolioEngine:
                     # exactly flat
                     pos = Position()
 
-        if fill.get("stop") is not None:
-            pos.stop = float(fill["stop"])
-        if fill.get("take_profit") is not None:
-            pos.take_profit = float(fill["take_profit"])
+        # Only apply the incoming stop/take_profit when the fill's direction
+        # matches the resulting net position direction. On an opposite-side
+        # fill that merely reduces an existing position, the fill's SL/TP were
+        # computed for the *incoming* trade's direction (e.g. a short signal
+        # places stops above price) — applying them to the surviving position
+        # (still long) inverts the stop geometry and produces phantom
+        # profitable "stop" hits on the next bar.
+        fill_dir = 1 if side == "long" else (-1 if side == "short" else 0)
+        pos_dir = 1 if pos.qty > 0 else (-1 if pos.qty < 0 else 0)
+        if fill_dir != 0 and fill_dir == pos_dir:
+            if fill.get("stop") is not None:
+                pos.stop = float(fill["stop"])
+            if fill.get("take_profit") is not None:
+                pos.take_profit = float(fill["take_profit"])
         self.positions[ticker] = pos
         self._log_info(f"Updated position for {ticker}: qty={pos.qty}, avg_price={pos.avg_price}")
         print(f"[DEBUG_PORTFOLIO_STATE] After fill: cash={self.cash}, positions={{t: p.qty for t, p in self.positions.items()}}, realized_pnl={self.realized_pnl}")

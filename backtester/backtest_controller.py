@@ -305,12 +305,17 @@ class BacktestController:
                 if is_debug_enabled("BACKTEST_CONTROLLER"):
                     print(f"[BACKTEST][WARN] Regime detection failed at {ts}: {e}")
 
-        # Inject learned edge affinity from Governor's regime tracker
+        # Inject learned edge affinity from Governor's regime tracker.
+        # Gated by governor config flag `learned_affinity_enabled` (default True
+        # for backward compat) so we can A/B it against baseline. When the
+        # regime_tracker signal itself is unreliable (see 2026-04-23 walk-forward
+        # findings), disabling this removes a noisy signal-scaler from the path.
         if regime_meta and hasattr(self, 'alpha') and self.alpha is not None:
             governor = getattr(self.alpha, 'governor', None)
             if governor is not None:
+                affinity_enabled = getattr(governor.cfg, 'learned_affinity_enabled', True) if hasattr(governor, 'cfg') else True
                 tracker = getattr(governor, 'regime_tracker', None)
-                if tracker is not None:
+                if tracker is not None and affinity_enabled:
                     macro = regime_meta.get("macro_regime")
                     if isinstance(macro, dict):
                         label = macro.get("label", "transitional")
@@ -538,8 +543,13 @@ class BacktestController:
                             print(f"[RISK][{ts}] {tkr} skipped (no order).")
                     continue
 
-                # --- Prevent duplicates / double entries ---
-                if order.get("side") in ("long", "short") and curr_qty != 0:
+                # --- Prevent duplicate full-size entries (Path B ATR sizing) ---
+                # Path A (target-weight) orders are delta-sized, so they correctly
+                # top up or trim an existing position and must pass through.
+                sizing_mode = (order.get("meta") or {}).get("sizing_mode")
+                if (order.get("side") in ("long", "short")
+                        and curr_qty != 0
+                        and sizing_mode != "target_weight"):
                     if is_debug_enabled("RISK") or is_info_enabled("RISK"):
                         print(f"[RISK][{ts}] {tkr} already in position; skipping duplicate entry.")
                     continue
@@ -661,9 +671,21 @@ class BacktestController:
             except Exception:
                 continue
 
-    def _evaluate_stops(self, next_rows, nxt):
+    def _evaluate_stops(self, next_rows, nxt, regime_meta=None):
         """Evaluate SL/TP on next bar."""
         if self.cfg.eval_stops_after_entry_on_next_bar:
+            # Resolve regime label once per bar (same logic as _execute_fills)
+            if regime_meta:
+                macro = regime_meta.get("macro_regime")
+                if isinstance(macro, dict):
+                    bar_regime_label = macro.get("label", "unknown")
+                elif isinstance(macro, str):
+                    bar_regime_label = macro
+                else:
+                    bar_regime_label = "unknown"
+            else:
+                bar_regime_label = "unknown"
+
             for tkr, pos in list(self.portfolio.positions.items()):
                 try:
                     if pos.qty == 0:
@@ -681,6 +703,7 @@ class BacktestController:
                         if "price" not in stop_or_tp and "fill_price" in stop_or_tp:
                             stop_or_tp["price"] = stop_or_tp["fill_price"]
                         stop_or_tp.setdefault("commission", float(getattr(self.exec, "commission", 0.0)))
+                        stop_or_tp["regime_label"] = bar_regime_label
                     if stop_or_tp:
                         # PnL is computed by PortfolioEngine.apply_fill()
                         self.portfolio.apply_fill(stop_or_tp)
@@ -792,13 +815,10 @@ class BacktestController:
                 if is_debug_enabled("BACKTEST_CONTROLLER"):
                     print(f"[BACKTEST][WARN] Could not save regime history: {e}")
 
-        # --- Feedback loop: update edge weights from latest trades (safe call) ---
-        try:
-            from analytics.edge_feedback import update_edge_weights_from_latest_trades
-            update_edge_weights_from_latest_trades()
-        except Exception as e:
-            if is_info_enabled("BACKTEST_CONTROLLER"):
-                print(f"[BACKTEST_CONTROLLER][WARN] Could not run edge feedback: {e}")
+        # Governor feedback (update_from_trades + save_weights) is handled by
+        # ModeController post-run, gated on --no-governor. Doing it here as well
+        # bypassed that gate and also double-merged evaluator recommendations,
+        # polluting edge_weights.json with stale placeholder edges.
 
         # --- NEW: Export performance summary to JSON for research feedback loop ---
         try:
@@ -1095,7 +1115,7 @@ class BacktestController:
 
                 self._execute_fills(orders, next_rows, nxt, regime_meta=regime_meta)
 
-                self._evaluate_stops(next_rows, nxt)
+                self._evaluate_stops(next_rows, nxt, regime_meta=regime_meta)
 
                 self._log_snapshot(next_rows, nxt)
 

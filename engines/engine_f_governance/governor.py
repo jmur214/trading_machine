@@ -53,6 +53,17 @@ class GovernorConfig:
     min_trades_per_regime: int = 8
     regime_weight_blend_alpha: float = 0.7  # 0.7 = 70% regime weight, 30% global
 
+    # learned edge affinity (signal_processor 0.3-1.5x multiplier per category)
+    learned_affinity_enabled: bool = True
+
+    # autonomous lifecycle transitions (active → paused → retired, reversible)
+    # Default False (defense-first): requires explicit opt-in before edges
+    # start retiring themselves. See engines/engine_f_governance/lifecycle_manager.py
+    lifecycle_enabled: bool = False
+    lifecycle_retirement_margin: float = 0.3  # edge_sharpe must undershoot benchmark by this
+    lifecycle_min_trades: int = 100
+    lifecycle_min_days: int = 90
+
     # autonomous allocation evaluation (Phase 8)
     allocation_evaluation_enabled: bool = True
     auto_apply_allocation: bool = False
@@ -130,7 +141,36 @@ class StrategyGovernor:
         self._regime_weights: Dict[str, Dict[str, float]] = {}
         self._regime_blend_alpha: float = getattr(self.cfg, 'regime_weight_blend_alpha', 0.7)
 
+        # Prime regime weights from the loaded tracker so that regime-conditional
+        # blending works during THIS run, not just the next one. Without this,
+        # _regime_weights only gets populated inside update_from_trades (end of
+        # run) and get_edge_weights falls back to global weights for the entire
+        # trade-generation pass.
+        if getattr(self.cfg, 'regime_conditional_enabled', True):
+            self._rebuild_regime_weights_from_tracker(self._weights.keys())
+
     # ----------------- public API ----------------- #
+
+    def _rebuild_regime_weights_from_tracker(self, edge_names) -> None:
+        """Populate self._regime_weights from self.regime_tracker for every
+        regime the tracker has data on. Uses `edge_names` as the edge set to
+        evaluate (typically the keys of self._weights)."""
+        edge_names = list(edge_names)
+        self._regime_weights = {}
+        for regime_label in sorted(set(self.regime_tracker._data.keys()) - {"_global"}):
+            regime_w = {}
+            for edge_name in edge_names:
+                rw = self.regime_tracker.get_regime_weight(
+                    edge_name, regime_label,
+                    sr_floor=self.cfg.sr_weight_floor,
+                    sr_ceil=self.cfg.sr_weight_ceil,
+                    disable_sr_threshold=self.cfg.disable_sr_threshold,
+                    mdd_threshold=self.cfg.disable_mdd_threshold,
+                )
+                if rw is not None:
+                    regime_w[edge_name] = rw
+            if regime_w:
+                self._regime_weights[regime_label] = regime_w
 
     def update_from_trades(
         self,
@@ -316,33 +356,24 @@ class StrategyGovernor:
         self._weights = self._normalize(merged)
         self.normalize_weights()
 
-        # Feed regime tracker with ALL trades (not just rolling window) —
-        # the tracker uses Welford's online algorithm for long-term learning
+        # Feed regime tracker with realized-PnL rows only — entries have NaN PnL
+        # and recording them as 0.0 floods the Welford stats with fake zero-PnL
+        # trades, destroying the mean/variance signal and suppressing Sharpe.
         regime_enabled = getattr(self.cfg, 'regime_conditional_enabled', True)
         if regime_enabled and "regime_label" in df.columns:
             for _, row in df.iterrows():
+                pnl_raw = row.get("pnl")
+                if pd.isna(pnl_raw):
+                    continue
                 edge_name = "Unknown" if pd.isna(row["edge"]) else str(row["edge"])
-                pnl_val = float(row["pnl"]) if pd.notna(row.get("pnl")) else 0.0
+                pnl_val = float(pnl_raw)
                 regime_label = str(row["regime_label"]) if pd.notna(row.get("regime_label")) else "unknown"
                 if regime_label and regime_label != "unknown":
-                    self.regime_tracker.record_trade(edge_name, pnl_val, regime_label)
+                    trigger = str(row["trigger"]) if "trigger" in row and pd.notna(row.get("trigger")) else None
+                    self.regime_tracker.record_trade(edge_name, pnl_val, regime_label, trigger=trigger)
 
             # Build regime-conditional weights for each known regime
-            self._regime_weights = {}
-            for regime_label in set(self.regime_tracker._data.keys()) - {"_global"}:
-                regime_w = {}
-                for edge_name in weights_new:
-                    rw = self.regime_tracker.get_regime_weight(
-                        edge_name, regime_label,
-                        sr_floor=self.cfg.sr_weight_floor,
-                        sr_ceil=self.cfg.sr_weight_ceil,
-                        disable_sr_threshold=self.cfg.disable_sr_threshold,
-                        mdd_threshold=self.cfg.disable_mdd_threshold,
-                    )
-                    if rw is not None:
-                        regime_w[edge_name] = rw
-                if regime_w:
-                    self._regime_weights[regime_label] = regime_w
+            self._rebuild_regime_weights_from_tracker(weights_new.keys())
 
         # persist diagnostics and log
         try:
@@ -378,15 +409,20 @@ class StrategyGovernor:
             return dict(self._weights)
 
         # Blend: alpha * regime + (1-alpha) * global
+        # Kill-switch passthrough: a regime_val of exactly 0.0 means the tracker
+        # decided this edge is unprofitable in this regime (Sharpe ≤ disable
+        # threshold). Don't dilute that with global weight — respect the kill.
         alpha = self._regime_blend_alpha
         blended = {}
-        for edge_name in set(self._weights) | set(regime_w):
+        for edge_name in sorted(set(self._weights) | set(regime_w)):
             global_val = self._weights.get(edge_name, 1.0)
             regime_val = regime_w.get(edge_name)
-            if regime_val is not None:
-                blended[edge_name] = alpha * regime_val + (1.0 - alpha) * global_val
-            else:
+            if regime_val is None:
                 blended[edge_name] = global_val
+            elif regime_val <= 1e-9:
+                blended[edge_name] = 0.0
+            else:
+                blended[edge_name] = alpha * regime_val + (1.0 - alpha) * global_val
         return blended
 
     def set_edge_weights(self, weights: Dict[str, float]) -> None:
@@ -501,6 +537,56 @@ class StrategyGovernor:
 
         self._write_feedback_history(old_weights, new_weights, metrics)
 
+        # --- Autonomous lifecycle transitions (Phase α) ---
+        self.evaluate_lifecycle(trades)
+
+    def evaluate_lifecycle(self, trades) -> None:
+        """Run lifecycle gates on active/paused edges using the provided trade
+        DataFrame. No-op if `lifecycle_enabled` is False. Callable from both
+        the backtest post-run path and the paper/live `update_from_trade_log`
+        path so autonomous retirement/pause/revival fires in every mode.
+
+        Wrapped in try/except — lifecycle evaluation must never break the
+        feedback loop upstream. Failures are logged and swallowed.
+        """
+        if not getattr(self.cfg, 'lifecycle_enabled', False):
+            return
+        try:
+            from engines.engine_f_governance.lifecycle_manager import (
+                LifecycleConfig, LifecycleManager,
+            )
+            from core.benchmark import compute_benchmark_metrics
+
+            # Resolve benchmark window from the trade log
+            bench_sharpe = 0.0
+            if trades is not None and not trades.empty and "timestamp" in trades.columns:
+                ts = pd.to_datetime(trades["timestamp"], errors="coerce", utc=True)
+                ts = ts.dropna()
+                if not ts.empty:
+                    start_iso = ts.min().date().isoformat()
+                    end_iso = ts.max().date().isoformat()
+                    bm = compute_benchmark_metrics(start_iso, end_iso)
+                    bench_sharpe = bm.sharpe
+
+            lcfg = LifecycleConfig(
+                enabled=True,
+                retirement_min_trades=int(getattr(self.cfg, 'lifecycle_min_trades', 100)),
+                retirement_min_days=int(getattr(self.cfg, 'lifecycle_min_days', 90)),
+                retirement_margin=float(getattr(self.cfg, 'lifecycle_retirement_margin', 0.3)),
+            )
+            registry_path = self.state_path.parent / "edges.yml"
+            history_path = self.state_path.parent / "lifecycle_history.csv"
+            lcm = LifecycleManager(
+                cfg=lcfg,
+                registry_path=registry_path,
+                history_path=history_path,
+            )
+            events = lcm.evaluate(trades, benchmark_sharpe=bench_sharpe)
+            if events:
+                log.info(f"[Governor] Lifecycle fired {len(events)} transition(s)")
+        except Exception as e:
+            log.warning(f"[Governor] Lifecycle evaluation failed: {e}")
+
     def _apply_allocation_recommendation(self, rec: dict) -> None:
         """Write recommended allocation params to portfolio policy config."""
         config_path = Path("config/portfolio_policy.json")
@@ -587,7 +673,7 @@ class StrategyGovernor:
         # Convert halflife to alpha (EMA): alpha = 1 - 0.5**(1/halflife)
         alpha = 1.0 - 0.5 ** (1.0 / max(1.0, float(halflife_days)))
         out: Dict[str, float] = {}
-        keys = set(old) | set(new)
+        keys = sorted(set(old) | set(new))
         for k in keys:
             prev = float(old.get(k, 1.0))
             nxt = float(new.get(k, prev))

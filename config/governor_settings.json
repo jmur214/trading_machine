@@ -10,9 +10,14 @@
   "min_trades_in_window": 10,
   "max_turnover_per_month": 100.0,
   "penalize_negative_correlation": false,
-  "regime_conditional_enabled": true,
+  "regime_conditional_enabled": false,
   "min_trades_per_regime": 8,
   "regime_weight_blend_alpha": 0.7,
+  "learned_affinity_enabled": true,
   "allocation_evaluation_enabled": true,
-  "auto_apply_allocation": false
+  "auto_apply_allocation": false,
+  "lifecycle_enabled": true,
+  "lifecycle_retirement_margin": 0.3,
+  "lifecycle_min_trades": 100,
+  "lifecycle_min_days": 90
 }

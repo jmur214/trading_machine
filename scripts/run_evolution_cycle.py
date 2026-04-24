@@ -79,14 +79,32 @@ class AutonomousEvolution:
             survival = metrics.get("robustness_survival", 0.0)
             
             logger.info(f"   > Metrics: Sharpe={sharpe:.2f} | Sortino={sortino:.2f} | Survival={survival*100:.0f}%")
-            
+
             # Gating Logic (Tier 1 Filters)
+            # Gate 1 is benchmark-relative: an edge that beats SPY buy-and-hold by at least
+            # -0.3 Sharpe (i.e., within 0.3 of the benchmark) passes. Edges at Sharpe 0.5
+            # during a bull market where SPY sits at 1.5 DESTROY value vs passive holding.
             passed = True
             rejection_reason = ""
-            
-            if sharpe < 0.5: # Lowered slightly for 'potential'
-                passed = False; rejection_reason = "Low Sharpe"
-            elif sortino < 0.8: 
+
+            # Resolve eval window from the backtest data for benchmark lookup
+            try:
+                from core.benchmark import compute_benchmark_metrics
+                first_ticker = list(self.data_map.keys())[0]
+                start_dt = self.data_map[first_ticker].index[0]
+                end_dt = self.data_map[first_ticker].index[-1]
+                bm = compute_benchmark_metrics(
+                    str(start_dt.date()), str(end_dt.date()),
+                )
+                bench_threshold = bm.gate_threshold(margin=0.3)
+            except Exception as e:
+                logger.warning(f"Benchmark gate unavailable ({e}), falling back to Sharpe < 0.5")
+                bench_threshold = 0.5
+
+            if sharpe < bench_threshold:
+                passed = False
+                rejection_reason = f"Sharpe {sharpe:.2f} < benchmark_threshold {bench_threshold:.2f}"
+            elif sortino < 0.8:
                 passed = False; rejection_reason = "Low Sortino"
             elif survival < 0.4:
                 passed = False; rejection_reason = "Failed Robustness"

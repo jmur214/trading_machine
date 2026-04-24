@@ -8,5 +8,6 @@
   "position_sizing": "atr_risk",
   "max_positions": 10,
   "slippage_bps": 5,
-  "commission_per_trade": 0.0
+  "commission_per_trade": 0.0,
+  "risk_advisory_enabled": true
 }

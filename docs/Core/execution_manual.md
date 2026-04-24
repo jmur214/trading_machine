@@ -4,6 +4,80 @@
 
 ---
 
+### RUNTIME FLAGS (`run_backtest.py` and related scripts)
+
+Two orthogonal axes control which configs and which state files a run uses. They are independent — choose each based on what you're doing.
+
+**`--env {dev, prod}`** — selects which *config file* pair to load. Parsed in `ModeController.__init__` ([mode_controller.py:522, 551](orchestration/mode_controller.py#L522)).
+
+| env | Alpha config | Risk config | Purpose |
+|-----|--------------|-------------|---------|
+| `dev` | `alpha_settings.dev.json` | `risk_settings.dev.json` | Debug on, loose thresholds (enter=0.10, exit=0.03), only `rsi_mean_reversion` + `xsec_meanrev` weighted. Use for quick iteration. |
+| `prod` | `alpha_settings.prod.json` | `risk_settings.prod.json` | Debug off, tight thresholds (enter=0.01, exit=0.005), full edge roster with curated weights. This is the canonical settings. |
+
+Default: `prod`. Use `--env dev` for rapid parameter experiments without editing the prod config.
+
+**`--mode {sandbox, prod}`** — selects where *Governor state* is read from and written to. Parsed in `ModeController.run_backtest()` ([mode_controller.py:772-774](orchestration/mode_controller.py#L772-L774)).
+
+| mode | Governor state path | Purpose |
+|------|---------------------|---------|
+| `prod` | `data/governor/edge_weights.json` + `regime_edge_performance.json` | Main learned state. Every run reads from and writes to these files. |
+| `sandbox` | `data/governor/sandbox/edge_weights.json` + `regime_edge_performance.json` | Isolated scratch state. Use to test changes without contaminating main governor memory. |
+
+Default: `prod`. Use `--mode sandbox` when you want to run backtests that should not update the main governor's learned weights.
+
+**`--no-governor`** — skips the post-run `governor.update_from_trades()` + `save_weights()` call entirely ([mode_controller.py:838-840](orchestration/mode_controller.py#L838-L840)). The backtest still *reads* current governor state at startup, but does not write. Use for deterministic A/B tests where you want identical state between runs.
+
+**Note on combining flags:** `--env` and `--mode` are independent. Typical combinations:
+- `--env prod --mode prod` (default): real backtest that updates learned state.
+- `--env prod --mode sandbox`: test a code change against prod configs without polluting main governor.
+- `--env dev --mode sandbox`: quick iteration on debug configs in isolated state.
+
+### DETERMINISTIC A/B TESTING
+
+Backtests are *not* naturally deterministic across runs because every run that doesn't pass `--no-governor` writes `data/governor/edge_weights.json` and `regime_edge_performance.json`. Run 2 then reads post-run-1 state and produces different results — not because the code is non-deterministic, but because its inputs are.
+
+To get reproducible results for A/B comparisons:
+
+```bash
+# 1. Create an anchor snapshot of governor state (one-time)
+cp data/governor/regime_edge_performance.json data/governor/regime_edge_performance.json.anchor
+cp data/governor/edge_weights.json data/governor/edge_weights.json.anchor
+
+# 2. Before each test run, restore the anchor
+cp data/governor/regime_edge_performance.json.anchor data/governor/regime_edge_performance.json
+cp data/governor/edge_weights.json.anchor data/governor/edge_weights.json
+
+# 3. Run with --no-governor so the run does not mutate the anchor for the next test
+python -m scripts.run_backtest --no-governor
+
+# 4. Verify determinism across two runs
+md5 data/trade_logs/trades.csv      # run 1 md5
+# (restore anchor, run again)
+md5 data/trade_logs/trades.csv      # should match run 1
+```
+
+`scripts/run_deterministic.py` (wrapper that handles anchor save/restore + md5 comparison) is the preferred entry point for this workflow.
+
+**Determinism also requires `PYTHONHASHSEED=0`** — Python 3 randomizes string hashing per-process by default, which makes `set()` iteration order differ across invocations. `run_deterministic.py` sets this automatically via a self-reexec guard at the top of the module; no manual action needed. When running `scripts/run_backtest` directly for A/B comparisons, prefix with `PYTHONHASHSEED=0 python -m scripts.run_backtest --no-governor`.
+
+### WALK-FORWARD VALIDATION (regime-conditional governor)
+
+Any regime-conditional mechanism (governor-per-regime weights, per-edge kill-switches conditioned on regime stats) must pass walk-forward before re-enabling. In-sample A/B (anchor trained and evaluated on the same window) hides overfitting — we saw this on 2026-04-23 where an in-sample Sharpe penalty of -0.15 revealed itself as -0.50 under walk-forward, decisively falsifying the per-edge-per-regime kill mechanism.
+
+```bash
+# Run the walk-forward harness: train regime_tracker on 2021-2022, evaluate
+# 2023-2024 under three policy variants (baseline / hard-kill / soft-kill).
+# Backs up config + governor state, auto-restores on exit.
+PYTHONHASHSEED=0 python -m scripts.walk_forward_regime
+```
+
+Output: a 3-row report with OOS Sharpe, CAGR, MDD, WR per variant. Acceptance for re-enabling any regime-conditional feature: **OOS Sharpe of the activated variant ≥ OOS baseline Sharpe.** Anything below is a no-go regardless of in-sample result.
+
+Date windows are hardcoded in the script (TRAIN_START/END, EVAL_START/END); edit those constants to test other splits.
+
+---
+
 ### AUTONOMOUS MODE (THE "ONE BUTTON")
 Runs the full cycle: Data -> Hunt -> Navigate -> Trade
 ```bash

@@ -1,44 +1,43 @@
 {
-    "debug": false,
-    "enter_threshold": 0.01,
-    "exit_threshold": 0.005,
-    "regime": {
-        "enable_trend": true,
-        "trend_fast": 20,
-        "trend_slow": 50,
-        "enable_vol": true,
-        "vol_lookback": 30,
-        "vol_z_max": 2.5,
-        "shrink_off": 0.5
-    },
-    "hygiene": {
-        "min_history": 20,
-        "dedupe_last_n": 2,
-        "clamp": 1.5
-    },
-    "ensemble": {
-        "enable_shrink": true,
-        "shrink_lambda": 0.35,
-        "combine": "weighted_mean"
-    },
-    "flip_cooldown_bars": 3,
-    "min_edge_contribution": 0.05,
-    "edge_weights": {
-        "atr_breakout_v1": 2.5,
-        "momentum_edge_v1": 1.5,
-        "rsi_bounce_v1": 0.0,
-        "bollinger_reversion_v1": 0.0,
-        "news_sentiment_edge": 0.5,
-        "value_trap_v1": 0.5,
-        "value_deep_v1": 0.5,
-        "growth_sales_v1": 0.5,
-        "seasonality_v1": 1.0,
-        "gap_fill_v1": 1.0,
-        "volume_anomaly_v1": 1.0,
-        "panic_v1": 1.0,
-        "herding_v1": 1.0,
-        "earnings_vol_v1": 1.0
-    },
-    "edge_params": {}
-
+  "debug": false,
+  "enter_threshold": 0.01,
+  "exit_threshold": 0.005,
+  "regime": {
+    "enable_trend": true,
+    "trend_fast": 20,
+    "trend_slow": 50,
+    "enable_vol": true,
+    "vol_lookback": 30,
+    "vol_z_max": 2.5,
+    "shrink_off": 0.5
+  },
+  "hygiene": {
+    "min_history": 20,
+    "dedupe_last_n": 2,
+    "clamp": 1.5
+  },
+  "ensemble": {
+    "enable_shrink": true,
+    "shrink_lambda": 0.35,
+    "combine": "weighted_mean"
+  },
+  "flip_cooldown_bars": 3,
+  "min_edge_contribution": 0.05,
+  "edge_weights": {
+    "atr_breakout_v1": 2.5,
+    "momentum_edge_v1": 1.5,
+    "rsi_bounce_v1": 0.0,
+    "bollinger_reversion_v1": 0.0,
+    "news_sentiment_edge": 0.5,
+    "value_trap_v1": 0.5,
+    "value_deep_v1": 0.5,
+    "growth_sales_v1": 0.5,
+    "seasonality_v1": 1.0,
+    "gap_fill_v1": 1.0,
+    "volume_anomaly_v1": 1.0,
+    "panic_v1": 1.0,
+    "herding_v1": 1.0,
+    "earnings_vol_v1": 1.0
+  },
+  "edge_params": {}
 }

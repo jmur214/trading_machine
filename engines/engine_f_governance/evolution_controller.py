@@ -1,13 +1,12 @@
 
 import json
 import logging
-import subprocess
 import sys
 import os
 import yaml
 import pandas as pd
-from datetime import datetime
 from pathlib import Path
+from typing import Dict, Optional, Tuple
 
 # Setup logging
 logging.basicConfig(
@@ -29,12 +28,19 @@ class EvolutionController:
     2. Running Walk-Forward Optimization (WFO) on each candidate.
     3. Promoting winners to 'active' status.
     4. Disabling losers.
+
+    History note: previously subprocessed to `scripts/walk_forward_validation.py`
+    which does NOT exist — every candidate was silently failing. Rewired
+    2026-04-24 to call `engines.engine_d_discovery.wfo.WalkForwardOptimizer`
+    directly, matching the pattern in `scripts/run_evolution_cycle.py`.
     """
-    
-    def __init__(self, project_root: str = None):
+
+    def __init__(self, project_root: str = None, data_map: Optional[Dict] = None):
         self.project_root = Path(project_root or os.getcwd())
         self.registry_path = self.project_root / "data" / "governor" / "edges.yml"
-        self.wfo_script = self.project_root / "scripts" / "walk_forward_validation.py"
+        # data_map is required for WFO; caller must supply or we lazy-load
+        self.data_map = data_map
+        self._wfo = None  # instantiated lazily once data_map is loaded
         
     def run_cycle(self):
         log.info("Starting Evolution Cycle...")
@@ -95,35 +101,92 @@ class EvolutionController:
         except Exception as e:
             log.error(f"Error saving edges: {e}")
 
-    def run_wfo_for_candidate(self, edge_id, params):
-        """Calls the WFO script for a specific edge and param set."""
-        cmd = [
-            sys.executable, str(self.wfo_script),
-            "--edge", edge_id,
-            "--params", json.dumps(params)
-        ]
-        
+    def _ensure_data_and_wfo(self):
+        """Lazy-load data_map and WalkForwardOptimizer. Called only when validating."""
+        if self._wfo is not None:
+            return
+        if self.data_map is None:
+            # Load from processed/ directory as run_evolution_cycle.py does
+            from engines.data_manager.data_manager import DataManager
+            dm = DataManager(cache_dir=str(self.project_root / "data" / "processed"))
+            self.data_map = {}
+            for f in dm.cache_dir.glob("*_1d.csv"):
+                ticker = f.name.split("_")[0]
+                df = dm.load_cached(ticker, "1d")
+                if df is not None and not df.empty:
+                    self.data_map[ticker] = df
+            if not self.data_map:
+                raise RuntimeError(
+                    "EvolutionController.run_cycle requires data in data/processed/. "
+                    "Run scripts/update_data.py first."
+                )
+        from engines.engine_d_discovery.wfo import WalkForwardOptimizer
+        self._wfo = WalkForwardOptimizer(self.data_map)
+
+    def run_wfo_for_candidate(self, edge_id: str, params: dict) -> Tuple[bool, float, Optional[str]]:
+        """Run WFO for a candidate using WalkForwardOptimizer directly.
+
+        Returns (passed, avg_sharpe, specialist_type). passed is True if
+        OOS Sharpe beats benchmark_threshold AND degradation > 0.6.
+        """
         try:
-            # We assume WFO writes a summary file we can read
-            # But we also parse stdout for now since we just modified WFO to print the summary
-            result = subprocess.run(cmd, capture_output=True, text=True)
-            
-            # Check for success file
-            summary_path = self.project_root / "data/research/wfo_summary.json"
-            if summary_path.exists():
-                with open(summary_path, "r") as f:
-                    summary = json.load(f)
-                
-                # Verify it matches our edge
-                if summary.get("edge") == edge_id:
-                    return summary.get("passed", False), summary.get("avg_sharpe", 0.0), summary.get("specialist_type")
-            
-            log.warning(f"WFO did not produce summary for {edge_id}. Output:\n{result.stderr}")
-            return False, 0.0, None
-            
+            self._ensure_data_and_wfo()
         except Exception as e:
-            log.error(f"WFO Execution failed: {e}")
+            log.error(f"Could not load data for WFO: {e}")
             return False, 0.0, None
+
+        # We need the full candidate spec (module + class) to run WFO.
+        # Look it up from the registry.
+        try:
+            edges = self.load_edges()
+            spec = next((e for e in edges if e.get("edge_id") == edge_id), None)
+            if spec is None:
+                log.warning(f"No registry entry for {edge_id}; cannot run WFO")
+                return False, 0.0, None
+            # Apply the param override for this specific run
+            spec = dict(spec)
+            spec["params"] = params or spec.get("params", {})
+        except Exception as e:
+            log.error(f"Registry lookup failed for {edge_id}: {e}")
+            return False, 0.0, None
+
+        try:
+            first_ticker = list(self.data_map.keys())[0]
+            start_dt = self.data_map[first_ticker].index[0] + pd.Timedelta(days=365)
+            wfo_res = self._wfo.run_optimization(
+                spec,
+                start_date=str(start_dt.date()),
+                train_months=12,
+                test_months=3,
+            )
+        except Exception as e:
+            log.error(f"WFO Execution failed for {edge_id}: {e}")
+            return False, 0.0, None
+
+        if not wfo_res:
+            return False, 0.0, None
+
+        oos_sharpe = float(wfo_res.get("oos_sharpe", 0.0))
+        degradation = float(wfo_res.get("degradation", 0.0))
+
+        # Benchmark-relative pass: OOS Sharpe must beat SPY - 0.3 over the eval window
+        try:
+            from core.benchmark import compute_benchmark_metrics
+            end_dt = self.data_map[first_ticker].index[-1]
+            bm = compute_benchmark_metrics(str(start_dt.date()), str(end_dt.date()))
+            bench_threshold = bm.gate_threshold(margin=0.3)
+        except Exception as e:
+            log.warning(f"Benchmark unavailable ({e}); falling back to oos_sharpe > 0.5")
+            bench_threshold = 0.5
+
+        passed = oos_sharpe >= bench_threshold and degradation > 0.6
+        specialist_type = None  # reserved for regime-specialist classification
+        log.info(
+            f"[WFO] {edge_id}: oos_sharpe={oos_sharpe:.2f}  "
+            f"bench_threshold={bench_threshold:.2f}  degradation={degradation:.2f}  "
+            f"passed={passed}"
+        )
+        return passed, oos_sharpe, specialist_type
 
     def update_production_config(self, edge_id: str, new_params: dict):
         """Updates alpha_settings.prod.json to include the new 'active' edge parameters."""

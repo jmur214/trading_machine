@@ -545,10 +545,27 @@ class DiscoveryEngine:
             result["sharpe"] = sharpe
             result["sortino"] = sortino
 
-            # Gate 1 check: must have positive Sharpe to proceed
-            if sharpe <= 0:
-                print(f"[DISCOVERY] {candidate_spec['edge_id']} failed Gate 1 (Sharpe={sharpe:.2f})")
-                return result
+            # Gate 1: benchmark-relative Sharpe. An edge passing at Sharpe 0.5
+            # during a bull market where SPY sits at Sharpe 1.5 is destroying
+            # value vs buy-and-hold. Require the edge to be within 0.2 Sharpe
+            # of the benchmark over the same window — or beat it.
+            try:
+                from core.benchmark import gate_sharpe_vs_benchmark
+                passed, threshold = gate_sharpe_vs_benchmark(
+                    sharpe, start_date, end_date, margin=0.2,
+                )
+                result["benchmark_threshold"] = threshold
+                if not passed:
+                    print(f"[DISCOVERY] {candidate_spec['edge_id']} failed Gate 1 "
+                          f"(Sharpe={sharpe:.2f} < benchmark_threshold={threshold:.2f})")
+                    return result
+            except Exception as e:
+                # Fallback to the legacy absolute-threshold gate if benchmark
+                # data is unavailable — conservative: require Sharpe > 0
+                print(f"[DISCOVERY] Benchmark gate unavailable ({e}), falling back to Sharpe > 0")
+                if sharpe <= 0:
+                    print(f"[DISCOVERY] {candidate_spec['edge_id']} failed Gate 1 (Sharpe={sharpe:.2f})")
+                    return result
 
             # Compute daily returns for significance testing
             daily_returns = equity_curve.pct_change().dropna().values

@@ -53,6 +53,11 @@ class RiskConfig:
     max_pct_adv: float = 0.01               # Limit trade size to 1% of Average Daily Volume
     adv_window: int = 20                    # Lookback for ADV calculation
 
+    # Advisory consumption toggle (Engine E → Risk). When False, risk engine
+    # ignores suggested_max_positions, suggested_exposure_cap, risk_scalar, and
+    # correlation-regime sector-cap adjustments. Default True preserves behavior.
+    risk_advisory_enabled: bool = True
+
 
 class RiskEngine:
     """
@@ -426,10 +431,17 @@ class RiskEngine:
                 }
 
         # --- Detect flip in signal direction (close and reverse next bar) ---
+        # Note: portfolio.positions retains entries with qty=0 after a full
+        # exit (fresh Position() is stored back under the ticker). Those
+        # zero-qty stubs must not be treated as open positions — otherwise
+        # the qty>0/<=0 branch below mislabels a flat stub as "short" and
+        # emits a spurious "exit qty=0" order against any incoming long.
         current_pos = None
         try:
             if self.portfolio and ticker in self.portfolio.positions:
-                current_pos = self.portfolio.positions[ticker]
+                _p = self.portfolio.positions[ticker]
+                if _p is not None and int(_p.qty) != 0:
+                    current_pos = _p
         except Exception:
             current_pos = None
 
@@ -464,7 +476,7 @@ class RiskEngine:
         effective_sector_cap = self.cfg.max_sector_exposure_pct
         advisory_risk_scalar = 1.0
 
-        if advisory:
+        if advisory and self.cfg.risk_advisory_enabled:
             # Dynamic max positions (can only tighten, never loosen)
             suggested_max_pos = advisory.get("suggested_max_positions")
             if suggested_max_pos is not None:
@@ -605,11 +617,13 @@ class RiskEngine:
             risk_scaler = 1.0
 
             # 1. ML Gate Confidence (if explicitly set by SignalGate/MLPredictor)
+            # Low confidence sizes down, but never to zero — a market-state-only
+            # gate should not have veto power over a real alpha signal.
             gate_conf = signal.get("gate_confidence")
             if gate_conf is not None:
                 gate_conf = float(gate_conf)
-                if gate_conf < 0.5: risk_scaler = 0.0
-                elif gate_conf < 0.6: risk_scaler = 0.5
+                if gate_conf < 0.5: risk_scaler = 0.3
+                elif gate_conf < 0.6: risk_scaler = 0.6
                 elif gate_conf < 0.8: risk_scaler = 1.0
                 else: risk_scaler = 1.5
             else:

@@ -1,6 +1,8 @@
 {
     "mode": "mean_variance",
     "target_volatility": 0.15,
+    "vol_target_enabled": true,
+    "exposure_cap_enabled": true,
     "min_weight": 0.0,
     "max_weight": 0.30,
     "vol_lookback": 20,

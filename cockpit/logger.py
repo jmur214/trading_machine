@@ -145,24 +145,33 @@ class CockpitLogger:
     # -------------------------------------------------------------------- #
     def _append_to_csv(self, path: Path, row_dict: dict) -> None:
         """Append a single dict row to the appropriate buffer and flush if needed."""
-        if path == self.trade_path:
-            row_dict["run_id"] = self.run_id
-            self._trade_buffer.append(row_dict)
-            if len(self._trade_buffer) >= self._buffer_limit:
-                self._flush_buffer(self.trade_path, self._trade_buffer)
-            if self.flush_each_fill:
-                self.flush()
-        elif path == self.snap_path:
-            row_dict["run_id"] = self.run_id
-            self._snap_buffer.append(row_dict)
-            if len(self._snap_buffer) >= self._buffer_limit:
-                self._flush_buffer(self.snap_path, self._snap_buffer)
-        else:
-            # Fallback: write immediately if unknown path
-            df = pd.DataFrame([row_dict])
-            df["run_id"] = self.run_id
-            with self._lock:
+        needs_flush = False
+        flush_each = False
+        path_ref = None
+        buffer_ref = None
+        with self._lock:
+            if path == self.trade_path:
+                row_dict["run_id"] = self.run_id
+                self._trade_buffer.append(row_dict)
+                needs_flush = len(self._trade_buffer) >= self._buffer_limit
+                flush_each = self.flush_each_fill
+                path_ref = self.trade_path
+                buffer_ref = self._trade_buffer
+            elif path == self.snap_path:
+                row_dict["run_id"] = self.run_id
+                self._snap_buffer.append(row_dict)
+                needs_flush = len(self._snap_buffer) >= self._buffer_limit
+                path_ref = self.snap_path
+                buffer_ref = self._snap_buffer
+            else:
+                df = pd.DataFrame([row_dict])
+                df["run_id"] = self.run_id
                 df.to_csv(path, mode="a", header=False, index=False)
+                return
+        if needs_flush:
+            self._flush_buffer(path_ref, buffer_ref)
+        if flush_each:
+            self.flush()
 
     # -------------------------------------------------------------------- #
     def _calc_realized_pnl(self, fill: dict) -> Optional[float]:
@@ -310,9 +319,11 @@ class CockpitLogger:
             time.sleep(self._flush_interval)
             if self._stop_event.is_set():
                 break
-            if self._lock.locked():
-                continue
-            self.flush()
+            try:
+                self.flush()
+            except Exception as e:
+                if is_info_enabled() or is_debug_enabled("LOGGER"):
+                    print(f"[LOGGER][WARN] Auto-flush error: {e}")
 
     # -------------------------------------------------------------------- #
     def close(self) -> None:

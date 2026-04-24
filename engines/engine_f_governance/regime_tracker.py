@@ -114,15 +114,41 @@ class RegimePerformanceTracker:
         self.min_trades = min_trades
         # {regime_label: {edge_name: RegimeEdgeStats}}
         self._data: Dict[str, Dict[str, RegimeEdgeStats]] = {}
+        # {regime_label: {edge_name: {trigger: RegimeEdgeStats}}}
+        # Lets the governor distinguish signal-driven "exit"s from SL/TP fills,
+        # which can bleed very differently on trend-follower edges.
+        self._trigger_data: Dict[str, Dict[str, Dict[str, RegimeEdgeStats]]] = {}
 
-    def record_trade(self, edge_name: str, pnl: float, regime_label: str) -> None:
-        """Record a trade and update stats for both regime-specific and global buckets."""
+    def record_trade(self, edge_name: str, pnl: float, regime_label: str,
+                     trigger: Optional[str] = None) -> None:
+        """Record a trade and update stats for both regime-specific and global buckets.
+
+        If trigger is provided, also accumulates per-trigger stats so callers
+        can query bleed-rate by trigger kind (stop / take_profit / exit).
+        """
         for label in (regime_label, "_global"):
             if label not in self._data:
                 self._data[label] = {}
             if edge_name not in self._data[label]:
                 self._data[label][edge_name] = RegimeEdgeStats()
             self._data[label][edge_name].update(pnl)
+
+            if trigger is not None and trigger != "":
+                edge_trigs = (self._trigger_data
+                              .setdefault(label, {})
+                              .setdefault(edge_name, {}))
+                if trigger not in edge_trigs:
+                    edge_trigs[trigger] = RegimeEdgeStats()
+                edge_trigs[trigger].update(pnl)
+
+    def get_trigger_stats(self, edge_name: str, regime_label: str,
+                          trigger: str) -> Optional[RegimeEdgeStats]:
+        """Return per-trigger stats, or None if insufficient samples."""
+        stats = (self._trigger_data.get(regime_label, {})
+                 .get(edge_name, {}).get(trigger))
+        if stats is None or stats.trade_count < self.min_trades:
+            return None
+        return stats
 
     def get_regime_sharpe(self, edge_name: str, regime_label: str) -> Optional[float]:
         """Get Sharpe for an edge in a specific regime. Returns None if insufficient data."""
@@ -212,26 +238,58 @@ class RegimePerformanceTracker:
         """Persist to JSON."""
         path = Path(path)
         path.parent.mkdir(parents=True, exist_ok=True)
-        serialized = {}
+        serialized_data = {}
         for regime_label, edges in self._data.items():
-            serialized[regime_label] = {
+            serialized_data[regime_label] = {
                 edge_name: stats.to_dict() for edge_name, stats in edges.items()
             }
+        serialized_triggers = {}
+        for regime_label, edges in self._trigger_data.items():
+            serialized_triggers[regime_label] = {
+                edge_name: {
+                    trigger: stats.to_dict() for trigger, stats in trigs.items()
+                }
+                for edge_name, trigs in edges.items()
+            }
+        payload = {
+            "_version": 2,
+            "data": serialized_data,
+            "trigger_data": serialized_triggers,
+        }
         with path.open("w") as f:
-            json.dump(serialized, f, indent=2)
+            json.dump(payload, f, indent=2)
 
     def load(self, path: str | Path) -> None:
-        """Load from JSON. Silently no-ops if file doesn't exist."""
+        """Load from JSON. Silently no-ops if file doesn't exist.
+
+        Supports both v1 (flat {regime: {edge: stats}}) and v2 (wrapped with
+        data + trigger_data sections) schemas.
+        """
         path = Path(path)
         if not path.exists():
             return
         try:
             with path.open() as f:
                 raw = json.load(f)
-            for regime_label, edges in raw.items():
+            if isinstance(raw, dict) and raw.get("_version") == 2:
+                data_section = raw.get("data", {})
+                trigger_section = raw.get("trigger_data", {})
+            else:
+                # v1 legacy: whole file is the data section
+                data_section = raw
+                trigger_section = {}
+            for regime_label, edges in data_section.items():
                 self._data[regime_label] = {
                     edge_name: RegimeEdgeStats.from_dict(stats_dict)
                     for edge_name, stats_dict in edges.items()
+                }
+            for regime_label, edges in trigger_section.items():
+                self._trigger_data[regime_label] = {
+                    edge_name: {
+                        trigger: RegimeEdgeStats.from_dict(stats_dict)
+                        for trigger, stats_dict in trigs.items()
+                    }
+                    for edge_name, trigs in edges.items()
                 }
         except Exception:
             pass  # Non-fatal; start fresh

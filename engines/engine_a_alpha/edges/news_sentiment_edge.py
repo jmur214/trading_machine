@@ -78,7 +78,7 @@ class NewsSentimentEdge(EdgeBase, EdgeTemplate):
         if self.history_loaded:
             return
 
-        csv_files = list(self.history_dir.glob("news_history_*.csv"))
+        csv_files = sorted(self.history_dir.glob("news_history_*.csv"))
         if not csv_files:
             return
 

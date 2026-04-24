@@ -14,6 +14,8 @@ class PortfolioPolicyConfig:
     """
     mode: str = "adaptive"               # adaptive | parrondo_fixed
     target_volatility: float = 0.15      # portfolio-level target annualized vol (15%)
+    vol_target_enabled: bool = True      # toggle the _apply_vol_target overlay for A/B
+    exposure_cap_enabled: bool = True    # toggle the advisory exposure cap overlay for A/B
     min_weight: float = -0.1             # minimum per-asset weight (for shorts)
     max_weight: float = 0.25             # maximum per-asset weight
     vol_lookback: int = 20               # bars to use for rolling volatility
@@ -208,9 +210,12 @@ class PortfolioPolicy:
             return {t: (1.0/n) * np.sign(s) for t, s in signals.items()} if n > 0 else {}
 
         inv_vols = {}
-        # Filter only tickers with vol data
-        available_tickers = set(signals.keys()).intersection(vols.keys())
-        
+        # Filter only tickers with vol data. Sorted so set-intersection iteration
+        # order is stable across runs — FP aggregation of `total` downstream is
+        # order-dependent, and an unsorted set here was the second source of
+        # backtest non-determinism.
+        available_tickers = sorted(set(signals.keys()).intersection(vols.keys()))
+
         for tkr in available_tickers:
             s_strength = signals[tkr]
             vol = vols[tkr]
@@ -234,10 +239,12 @@ class PortfolioPolicy:
             print("[POLICY] Target weights (pre-overlay):", weights)
 
         # --- Portfolio-level vol targeting overlay ---
-        weights = self._apply_vol_target(weights, price_data)
+        if self.cfg.vol_target_enabled:
+            weights = self._apply_vol_target(weights, price_data)
 
         # --- Advisory exposure cap (from Engine E regime detection) ---
-        weights = self._apply_exposure_cap(weights, regime_meta)
+        if self.cfg.exposure_cap_enabled:
+            weights = self._apply_exposure_cap(weights, regime_meta)
 
         if self.cfg.debug:
             print("[POLICY] Final weights (post-overlay):", weights)
