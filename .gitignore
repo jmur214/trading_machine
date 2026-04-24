@@ -26,5 +26,11 @@ storage/*.csv
 # Aider
 .aider*
 
+# Claude Code personal/runtime state (keep door open for team-wide
+# .claude/settings.json, .claude/agents/, .claude/commands/ if desired)
+.claude/settings.local.json
+.claude/*.lock
+.claude/plans/
+
 # Archived info
 Archive/
