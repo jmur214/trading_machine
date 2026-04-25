@@ -1,36 +1,44 @@
-# docs/Audit/ — Technical Deep-Dives & Engine Design
+# docs/Audit/ — Code Health Tracking
 
-This folder contains the architectural research, engine design work, and codebase analysis that informs the system's evolution. These are **working documents** — some describe what IS, others describe what SHOULD BE.
+This folder tracks the current quality state of the codebase. It 
+holds operational documents that describe how the system stands 
+*right now*, not historical analysis.
 
----
+## Files
 
-## Reading Order
+| File | Purpose | Maintained by |
+|------|---------|---------------|
+| `health_check.md` | Living tracker of current code quality issues | `engine-auditor` and `code-health` subagents |
+| `high_level-engine_function.md` | What each engine actually does today (compare against charters to find drift) | Updated as engines change; compared against `docs/Core/engine_charters.md` |
 
-| # | File | What It Is | Status |
-|---|------|-----------|--------|
-| 1 | `high_level-engine_function.md` | **What each engine does TODAY** — current business rules as-implemented | 🚧 Draft |
-| 2 | `outside-opinion.md` | Independent external review of the engine design — pros, cons, recommendations | 📖 Reference |
-| 3 | `engine_charters.md` | **What each engine SHOULD do** — formal authority boundaries, contracts, invariants | 🚧 Draft (will migrate to Core when finalized) |
-| 4 | `simple_engine_roles.md` | Plain-English "hedge fund room" metaphor explaining each engine role | ✅ Stable |
-| 5 | `codebase_findings.md` | Folder-by-folder codebase audit — bugs, god classes, weak points, hitlist | 📸 Snapshot (from initial deep-dive) |
+## How this folder is used
 
-## The Key Distinction
+`docs/Core/SESSION_PROCEDURES.md` Path 2 ("Critical findings") routes 
+to `health_check.md` — it's the file that answers "what should we fix?"
 
-> **`high_level-engine_function.md`** describes the system as it exists in code right now.
-> **`engine_charters.md`** describes the system as it *should* exist once refactoring is complete.
->
-> The gap between these two files IS the refactoring work remaining. Comparing them reveals exactly where the implementation has converged toward — or diverged from — the charter design.
+The `engine-auditor` subagent reads `docs/Core/engine_charters.md` 
+(target design) and the actual codebase, then appends drift findings 
+to `health_check.md`.
 
-## How to Use These Files
+The `code-health` subagent scans for general technical debt (god 
+classes, duplicates, dead code, etc.) and appends findings the 
+same way.
 
-- **Before modifying engine logic:** Read the relevant engine's charter in `engine_charters.md` to understand the target authority boundaries.
-- **Before proposing architectural changes:** Read `outside-opinion.md` (start with the TL;DR at the top) to understand the external critique that shaped the charters.
-- **Before debugging system behavior:** Check `codebase_findings.md` for known weak points in that area.
-- **When explaining the system to someone new:** Use `simple_engine_roles.md` — it's the most accessible overview.
+## What this folder is NOT
 
-## Subfolders
+This folder does NOT hold:
+- Architectural specifications (those live in `docs/Core/`)
+- Historical audit reports (those live in `docs/Archive/audits/`)
+- One-time external reviews (also in `docs/Archive/audits/`)
+- Audit prompts or templates (those are in agent definitions in 
+  `.claude/agents/`)
 
-| Folder | Contents |
-|--------|----------|
-| `Mini-projects/` | Standalone research tasks and prompts |
-| `Previous_Audits/` | Historical audit results |
+## Reading order for a new agent
+
+1. `docs/Core/engine_charters.md` — target design
+2. `docs/Audit/health_check.md` — what's currently degraded
+3. `docs/Audit/high_level-engine_function.md` — current 
+   implementation summary, only if doing detailed engine work
+
+The gap between charter and implementation IS the refactoring work 
+remaining. Don't conflate them.

@@ -9,7 +9,7 @@
   - Log any new feature additions in `docs/Progress_Summaries/` with a timestamped file when completing a major phase.
   - The architectural documentation (`index.md` files) utilizes a hybrid approach. If you add, modify, or delete core scripts, you MUST run the documentation sync workflow via the `/6_docs_maintenance` slash command, or manually run `python scripts/sync_docs.py`. After doing so, verify that the manual qualitative summaries at the top of the `index.md` files are still accurate regarding the new code.
   - **Command Tracking (CRITICAL):** Track all aspects of using the command line in your reasoning (if commands work, fail, what they do, etc.). Most importantly, if any *new* commands are researched or utilized, they must IMMEDIATELY be added to `docs/Core/execution_manual.md`.
-- **Engine Boundaries:** The system uses a 6-engine architecture: A (Alpha), B (Risk), C (Portfolio), D (Discovery), E (Regime), F (Governance). Before modifying any engine's core logic, consult `docs/Audit/engine_charters.md` for authority boundaries. Cross-reference with `docs/Audit/high_level-engine_function.md` to understand what each engine currently does.
+- **Engine Boundaries:** The system uses a 6-engine architecture: A (Alpha), B (Risk), C (Portfolio), D (Discovery), E (Regime), F (Governance). Before modifying any engine's core logic, consult `docs/Core/engine_charters.md` for authority boundaries. Cross-reference with `docs/Audit/high_level-engine_function.md` to understand what each engine currently does.
 - **Environment Variables:** All secrets and API keys (e.g., Alpaca keys) must reside in `.env`. Never commit them to source control.
 
 ## System Workflows

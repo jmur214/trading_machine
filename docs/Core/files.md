@@ -65,8 +65,18 @@ This is a high-level, quick-reference guide to the primary directories of the Tr
 
 | Directory | Purpose |
 |-----------|---------|
-| `docs/Core/` | AI command center — GOAL, PROJECT_CONTEXT, ROADMAP, execution_manual, roles |
+| `docs/Core/` | AI command center — `CLAUDE.md` reading order entry, `SESSION_PROCEDURES.md`, `GOAL.md`, `PROJECT_CONTEXT.md`, `ROADMAP.md`, `engine_charters.md`, `simple_engine_roles.md`, `execution_manual.md`, `roles.md`, `agent_instructions.md`, `files.md` |
 | `docs/Core/Ideas_Pipeline/` | 3-stage idea promotion workflow (human → backlog → evaluations → ROADMAP) |
-| `docs/Audit/` | Technical audits, engine charters, codebase findings |
-| `docs/Progress_Summaries/` | Lessons learned, timestamped phase completion summaries |
-| `docs/Archive/` | Deprecated content — preserved for historical reference |
+| `docs/Audit/` | Living code-health tracking — `health_check.md` (current findings, maintained by subagents) and `high_level-engine_function.md` (what each engine does today; compare against `docs/Core/engine_charters.md`) |
+| `docs/Progress_Summaries/` | Per-session summaries (`YYYY-MM-DD_session.md`), `lessons_learned.md`, `_template.md` |
+| `docs/Archive/` | Gitignored historical content — old audits, retired specs, prior roadmaps |
+
+## AI Configuration
+
+| Directory | Purpose |
+|-----------|---------|
+| `.claude/agents/` | Subagent definitions (one `.md` per cognitive lens — `architect`, `code-health`, `edge-analyst`, `engine-auditor`, `ml-architect`, `quant-dev`, `regime-analyst`, `risk-ops-manager`, `ux-engineer`, `agent-architect`) |
+| `.claude/skills/` | Reusable skills (e.g. `commit/SKILL.md` — commit-message format) |
+| `.claude/settings.json` | Project hooks: SessionStart banner, Stop reminder, PostToolUse(Edit\|Write) → `sync_docs.py` for `engines/**/*.py`; permission boundaries |
+| `CLAUDE.md` (repo root) | Operating constitution — non-negotiable rules, autonomy boundaries, git discipline |
+| `DOCUMENTATION_SYSTEM.md` (repo root) | Universal guide describing the documentation system's design philosophy |

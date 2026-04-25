@@ -11,6 +11,7 @@ Every file in `docs/Core/` has a specific role. They are not meant to be read al
 
 | File | Purpose | When to Read |
 |------|---------|-------------|
+| **`SESSION_PROCEDURES.md`** | Operational playbook — "what's next" decision tree (Paths 1–6), ideas-pipeline routing, session-end checklist. | Every session, after `CLAUDE.md`. Re-readable mid-session without re-loading anything else. |
 | **`GOAL.md`** | Your north star. Defines the AI's role, links to all reference docs. | First thing, every session. If you feel context drifting, re-read this. |
 | **`PROJECT_CONTEXT.md`** | The architecture bible. 6-Engine system, edge doctrine, current state table, design philosophy. | Once at the start. Re-read when touching engine-level logic. |
 
@@ -19,10 +20,10 @@ If you need to work on engine-level logic, are reviewing the architecture, or wa
 
 | File | Purpose |
 |------|---------|
-| **`docs/Audit/simple_engine_roles.md`** | Plain-English "hedge fund room" metaphor — gives you the intuitive feel for each engine's personality |
-| **`docs/Audit/engine_charters.md`** | Formal authority boundaries, input/output contracts, invariants, and the interaction map (⚠️ draft — will migrate to Core when finalized) |
-| **`docs/Audit/high_level-engine_function.md`** | What each engine actually does TODAY in the code (⚠️ draft — compare against charters to see the gap) |
-| **`docs/Audit/codebase_findings.md`** | Folder-by-folder audit of the codebase — known bugs, god classes, weak points, and the remediation hitlist |
+| **`docs/Core/simple_engine_roles.md`** | Plain-English "hedge fund room" metaphor — gives you the intuitive feel for each engine's personality |
+| **`docs/Core/engine_charters.md`** | Formal authority boundaries, input/output contracts, invariants, and the interaction map |
+| **`docs/Audit/high_level-engine_function.md`** | What each engine actually does TODAY in the code (compare against charters to see the gap) |
+| **`docs/Audit/health_check.md`** | Living tracker of current code-quality findings — maintained by the `engine-auditor` and `code-health` subagents |
 | **`engines/*/index.md`** | Module-level documentation inside each engine directory — architecture notes + auto-generated code reference |
 
 ### Tier 2: Reference (Consult During Work)
@@ -88,9 +89,11 @@ SESSION START
 
 | Location | Purpose |
 |----------|---------|
-| `docs/Audit/` | Engine design work & codebase analysis — start with its `README.md` for reading order. Key files: `engine_charters.md` (target design), `high_level-engine_function.md` (current state), `codebase_findings.md` (known issues) |
-| `docs/Audit/engine_charters.md` | Formal authority boundaries for all 6 engines (draft — will migrate to Core when finalized) |
-| `docs/Progress_Summaries/` | Historical lessons learned and phase completion logs |
-| `docs/Archive/` | Deprecated content preserved for historical reference |
-| `.agent/workflows/` | Slash-command automation workflows (e.g., `/1_run_backtest`) |
-| `DOCUMENTATION_SYSTEM.md` (repo root) | The universal guide to how this entire documentation system works |
+| `docs/Audit/` | Living code-health tracking. Contains `health_check.md` (current findings, maintained by subagents) and `high_level-engine_function.md` (what each engine does today). Compare the latter against `docs/Core/engine_charters.md` to see refactoring drift. |
+| `docs/Progress_Summaries/` | Session summaries (`YYYY-MM-DD_session.md`), `lessons_learned.md`, and the `_template.md` used for new summaries. |
+| `docs/Archive/` | Gitignored historical content — old audits, retired specs, prior roadmaps. Snapshots, not current state. |
+| `.claude/agents/` | Subagent definitions implementing the cognitive lenses in `roles.md`. |
+| `.claude/skills/` | Reusable skills (e.g. `commit/SKILL.md` for commit-message format). |
+| `.claude/settings.json` | Project hooks — SessionStart banner, Stop reminder, PostToolUse `sync_docs.py` trigger on `engines/**/*.py`. |
+| `CLAUDE.md` (repo root) | Operating constitution — non-negotiable rules, autonomy boundaries, git discipline. |
+| `DOCUMENTATION_SYSTEM.md` (repo root) | Universal guide describing the documentation system's design philosophy. |
