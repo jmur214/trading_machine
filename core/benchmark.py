@@ -59,8 +59,17 @@ class BenchmarkMetrics:
         return self.sharpe - margin
 
 
-def _load_benchmark_prices(ticker: str, data_dir: Path = DEFAULT_DATA_DIR) -> pd.DataFrame:
-    """Load processed OHLCV for benchmark ticker. Raises FileNotFoundError if missing."""
+def _load_benchmark_prices(ticker: str, data_dir: Optional[Path] = None) -> pd.DataFrame:
+    """Load processed OHLCV for benchmark ticker. Raises FileNotFoundError if missing.
+
+    `data_dir` defaults to whatever `DEFAULT_DATA_DIR` resolves to AT CALL TIME
+    (not at module import time). This lets tests / scripts swap the data
+    directory at runtime via `core.benchmark.DEFAULT_DATA_DIR = ...`. Using
+    `data_dir: Path = DEFAULT_DATA_DIR` would have frozen the path at module
+    load and silently ignored runtime overrides.
+    """
+    if data_dir is None:
+        data_dir = DEFAULT_DATA_DIR
     path = data_dir / f"{ticker}_1d.csv"
     if not path.exists():
         # Processed file sometimes has only the latest row. Fall back to raw.
