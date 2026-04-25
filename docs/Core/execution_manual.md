@@ -271,6 +271,60 @@ python -c "from engines.data_manager.earnings_data import EarningsDataManager; \
 print(EarningsDataManager(api_key=None).cache_status().to_string())"
 ```
 
+### UNIVERSE MEMBERSHIP (S&P 500 historical)
+```bash
+# The membership loader lives at engines/data_manager/universe.py.
+# Source: Wikipedia "List of S&P 500 companies". No API key required.
+# Cache at data/universe/sp500_membership.parquet (refresh window: 7 days).
+
+# Refresh the cached membership history (one network call):
+python -c "from engines.data_manager.universe import SP500MembershipLoader; \
+loader = SP500MembershipLoader(); df = loader.fetch_membership(force=True); \
+print(loader.cache_status()); print('current:', len(loader.current_constituents()))"
+
+# Survivorship-bias-aware snapshot for an arbitrary historical date:
+python -c "from engines.data_manager.universe import SP500MembershipLoader; \
+print(SP500MembershipLoader().historical_constituents('2018-01-01')[:10])"
+
+# Inspect the cache state without hitting the network:
+python -c "from engines.data_manager.universe import SP500MembershipLoader; \
+print(SP500MembershipLoader().cache_status())"
+```
+
+The companion CLI `scripts/fetch_universe.py` uses the membership list
+to populate `data/processed/` (OHLCV bars) via the existing
+`DataManager` pipeline. It is **explicit user action only** — running
+it for the full historical universe is a 30-60 minute job that hits
+Alpaca's rate limit, so it is never invoked by tests, hooks, or
+backtests.
+
+```bash
+# Preview which tickers would be fetched without touching the API:
+python -m scripts.fetch_universe --source sp500_historical --dry-run
+
+# Fetch only today's S&P 500 constituents:
+python -m scripts.fetch_universe --source sp500_current --start 2018-01-01
+
+# Fetch the full historical union (every ticker that's ever been in the index)
+# — recommended for survivorship-bias-aware backtests:
+python -m scripts.fetch_universe --source sp500_historical --start 2018-01-01
+
+# Fetch from a custom newline-separated ticker file:
+python -m scripts.fetch_universe --source file --file my_tickers.txt
+
+# Cap the number of fetches per run (useful for incremental backfills):
+python -m scripts.fetch_universe --source sp500_historical --max-tickers 50
+
+# Re-fetch tickers that already have a cached parquet (forces refresh):
+python -m scripts.fetch_universe --source sp500_current --refresh
+```
+
+Idempotent by default: tickers whose
+`data/processed/parquet/<TICKER>_<TF>.parquet` already exists are
+skipped. The script exits with code 0 on full success, 1 if any
+ticker failed to fetch, 2 if Alpaca credentials are missing for a
+non-empty fetch list.
+
 ### DEBUGGING & DIAGNOSTICS
 ```bash
 # The 'debug/' folder contains ad-hoc verification scripts

@@ -29,6 +29,18 @@
 ### `fetch_data.py`
 - **Function `main()`**: No docstring
 
+### `fetch_universe.py`
+**Module Docstring:** scripts/fetch_universe.py
+- **Class `FetchSummary`**: No docstring
+  - `def report()`
+- **Function `parse_args()`**: No docstring
+- **Function `load_ticker_list()`**: Resolve --source into a deduped, sorted ticker list.
+- **Function `split_cached_vs_missing()`**: Partition the universe into already-cached vs. missing tickers.
+- **Function `credentials_available()`**: True if DataManager will be able to talk to Alpaca.
+- **Function `fetch_one()`**: Fetch a single ticker and return (success, message).
+- **Function `run()`**: No docstring
+- **Function `main()`**: No docstring
+
 ### `harvest_data.py`
 - **Function `harvest()`**: Run a simulation to collect (Features, Label) pairs for ML training.
 
@@ -41,6 +53,14 @@
   - `def prune()`
   - `def clean_logs()`: Removes old backtest log folders from data/trade_logs.
 
+### `reset_base_edges.py`
+**Module Docstring:** scripts/reset_base_edges.py
+- **Function `load_edges()`**: No docstring
+- **Function `save_edges()`**: No docstring
+- **Function `preview()`**: Return edge_ids that would be demoted.
+- **Function `demote()`**: Mutate in place: active → candidate. Returns count.
+- **Function `main()`**: No docstring
+
 ### `retrain_edges.py`
 *No public classes or functions found.*
 
@@ -52,7 +72,28 @@
 - **Function `run_cycle()`**: No docstring
 
 ### `run_backtest.py`
-- **Function `run_backtest_logic()`**: Programmatic entry point for running a backtest.
+**Module Docstring:** scripts/run_backtest.py
+- **Function `run_backtest_logic()`**: Backward-compatible programmatic entry point for running a backtest.
+- **Function `main()`**: No docstring
+
+### `run_benchmark.py`
+**Module Docstring:** Performance Benchmark
+- **Function `profit_factor()`**: Gross profit / gross loss.
+- **Function `max_consecutive()`**: Longest streak of consecutive winning (or losing) trades.
+- **Function `avg_trade_duration()`**: Average holding period in bars (approximate from trade timestamps).
+- **Function `per_edge_metrics()`**: Compute per-edge performance from trade log.
+- **Function `spy_benchmark()`**: Compute SPY buy-and-hold metrics over the same period.
+- **Function `print_scorecard()`**: Print a formatted performance scorecard.
+- **Function `run_benchmark()`**: Run benchmark and return full report dict.
+- **Function `main()`**: No docstring
+
+### `run_deterministic.py`
+**Module Docstring:** scripts/run_deterministic.py
+- **Function `md5()`**: No docstring
+- **Function `canonical_md5()`**: MD5 of the CSV with per-run identifier columns (run_id, meta) excluded.
+- **Function `save_anchor()`**: No docstring
+- **Function `restore_anchor()`**: No docstring
+- **Function `run_once()`**: No docstring
 - **Function `main()`**: No docstring
 
 ### `run_diagnostics.py`
@@ -114,3 +155,42 @@
 
 ### `validate_phase2_math.py`
 - **Function `test_phase2_math()`**: No docstring
+
+### `walk_forward_affinity.py`
+**Module Docstring:** scripts/walk_forward_affinity.py
+- **Function `backup()`**: No docstring
+- **Function `restore()`**: No docstring
+- **Function `write_gov_config()`**: No docstring
+- **Function `latest_run_summary()`**: No docstring
+- **Function `phase_train()`**: No docstring
+- **Function `phase_eval()`**: No docstring
+- **Function `main()`**: No docstring
+
+### `walk_forward_factor_edge.py`
+**Module Docstring:** scripts/walk_forward_factor_edge.py
+- **Function `backup()`**: No docstring
+- **Function `restore()`**: No docstring
+- **Function `set_edge_weight()`**: No docstring
+- **Function `latest_run_summary()`**: No docstring
+- **Function `run_eval()`**: No docstring
+- **Function `main()`**: No docstring
+
+### `walk_forward_regime.py`
+**Module Docstring:** scripts/walk_forward_regime.py
+- **Function `backup()`**: No docstring
+- **Function `restore()`**: No docstring
+- **Function `write_gov_config()`**: Write governor_settings.json with overrides.
+- **Function `latest_run_summary()`**: Read performance_summary.json from the most-recently-modified run dir.
+- **Function `phase_train()`**: Phase 1: clean slate, run 2021-2022 with governor on → save OOS-anchor.
+- **Function `phase_eval()`**: Phase 2/3: restore OOS anchor, run 2023-2024 --no-governor with given policy.
+- **Function `main()`**: No docstring
+
+### `walk_forward_risk_advisory.py`
+**Module Docstring:** scripts/walk_forward_risk_advisory.py
+- **Function `backup()`**: No docstring
+- **Function `restore()`**: No docstring
+- **Function `write_cfg()`**: No docstring
+- **Function `latest_run_summary()`**: No docstring
+- **Function `phase_train()`**: No docstring
+- **Function `phase_eval()`**: No docstring
+- **Function `main()`**: No docstring

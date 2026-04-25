@@ -13,6 +13,7 @@
 | `data_manager.py` | OHLCV + fundamentals fetch/cache (Alpaca primary, yfinance fallback). |
 | `macro_data.py` | FRED macro series fetch/cache. Cache at `data/macro/<SERIES_ID>.parquet`. Env: `FRED_API_KEY`. See "Macro data pipeline" below. |
 | `earnings_data.py` | Finnhub earnings calendar + EPS/revenue surprise fetch/cache. Cache at `data/earnings/<SYMBOL>_calendar.parquet`. Env: `FINNHUB_API_KEY`. See "Earnings data pipeline" below. |
+| `universe.py` | Survivorship-bias-aware S&P 500 historical membership loader (Wikipedia scrape). Cache at `data/universe/sp500_membership.parquet`. No API key required. See "Universe membership pipeline" below. |
 | `fundamentals/loader.py` | Fundamentals loader helpers. |
 
 ## Macro data pipeline (`macro_data.py`)
@@ -91,6 +92,59 @@ event-aligned price panels) belong in the consuming edge, not here.
 layer mocked) plus one live integration test gated behind
 `FINNHUB_API_KEY`.
 
+## Universe membership pipeline (`universe.py`)
+
+Self-contained Wikipedia scraper for S&P 500 historical membership.
+**Not yet wired into any engine** — this is the survivorship-bias-aware
+data layer the strategic pivot doc lists as a hard prerequisite for any
+further factor-edge work (`momentum_factor_v1` failed in part because
+the 39-name universe wasn't broad enough to support cross-sectional
+selection). No API key required.
+
+**Public API:**
+- `SP500MembershipLoader(cache_dir="data/universe")` — fetch + cache
+  the membership table.
+- `loader.fetch_membership(force=False, max_age_hours=168)` →
+  long-format `DataFrame[ticker, name, sector, included_from,
+  included_until]`. Cache-first: returns the parquet cache if fresher
+  than `max_age_hours` (default 7 days; membership changes are rare,
+  no need to thrash Wikipedia). On network failure falls back to
+  cache; raises `UniverseError` only when there is no cache to fall
+  back to.
+- `loader.current_constituents()` → tickers whose `included_until` is
+  NaT (the open spell).
+- `loader.historical_constituents(as_of)` → survivorship-bias-aware
+  snapshot of which tickers were in the index on a given date.
+- `loader.cache_status()` → dict describing the on-disk cache.
+
+**Pure helpers** (no I/O — useful in tests or for consumers that want
+to manipulate membership frames):
+- `parse_membership_html(html)` — Wikipedia HTML → membership frame.
+- `current_tickers(df)` / `active_at(df, as_of)` — query a frame
+  directly.
+- `normalize_ticker(t)` — strip footnotes, uppercase, etc.
+
+**Schema** (`MEMBERSHIP_COLUMNS`): `ticker` (str), `name` (object),
+`sector` (object), `included_from` (datetime64, NaT if pre-changelog),
+`included_until` (datetime64, NaT if currently active). One row per
+(ticker, spell-of-membership); a ticker that's been added and removed
+multiple times has multiple rows.
+
+**Limitations:** the Wikipedia "changes" table only goes back ~30
+years and is volunteer-maintained. For tickers currently in the index
+with no entry in the change log, `included_from` falls back to the
+"Date added" column of the current table; if that's also missing, it's
+NaT.
+
+**CLI companion:** `scripts/fetch_universe.py` — explicit
+user-driven tool that uses the membership list to populate
+`data/processed/` via the existing `DataManager` pipeline. See
+`docs/Core/execution_manual.md` for usage.
+
+**Tests:** `tests/test_universe.py` — 40 offline tests (HTTP layer
+mocked, parser exercised against fixture HTML) plus one live
+integration test gated behind `UNIVERSE_LIVE_TEST=1`.
+
 <!-- AUTO-GENERATED: DO NOT EDIT BELOW -->
 
 ## Auto-Generated Code Reference
@@ -137,3 +191,18 @@ layer mocked) plus one live integration test gated behind
 - **Function `yoy_change()`**: Year-over-year change (default monthly cadence: 12 periods).
 - **Function `credit_quality_slope()`**: HY OAS minus IG OAS — widens before risk-off events.
 - **Function `real_fed_funds()`**: DFF minus 10y breakeven inflation. Rough real-policy-rate proxy.
+
+### `universe.py`
+**Module Docstring:** Survivorship-bias-aware S&P 500 historical membership pipeline.
+- **Class `UniverseError`**: Raised for non-recoverable failures in the universe pipeline.
+- **Class `SP500MembershipLoader`**: Fetch + cache the Wikipedia S&P 500 membership history.
+  - `def __init__()`
+  - `def load_cached()`: Read the cached membership parquet without touching the network.
+  - `def fetch_membership()`: Fetch the S&P 500 membership history, with cache.
+  - `def current_constituents()`: Return the list of tickers currently in the index.
+  - `def historical_constituents()`: Tickers active on a given date — the survivorship-bias-aware view.
+  - `def cache_status()`: Return a dict describing the on-disk cache state.
+- **Function `parse_membership_html()`**: Convert raw Wikipedia HTML into the canonical membership frame.
+- **Function `current_tickers()`**: Tickers whose most recent spell is still open (included_until NaT).
+- **Function `active_at()`**: Tickers active on ``as_of``.
+- **Function `normalize_ticker()`**: Trim, uppercase, and strip Wikipedia footnote markers like '[1]'.

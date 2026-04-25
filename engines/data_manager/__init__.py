@@ -15,6 +15,15 @@ from engines.data_manager.macro_data import (
     real_fed_funds,
     yoy_change,
 )
+from engines.data_manager.universe import (
+    MEMBERSHIP_COLUMNS,
+    SP500MembershipLoader,
+    UniverseError,
+    active_at,
+    current_tickers,
+    normalize_ticker,
+    parse_membership_html,
+)
 
 __all__ = [
     "EVENT_COLUMNS",
@@ -22,11 +31,18 @@ __all__ = [
     "EarningsDataManager",
     "EarningsEvent",
     "MACRO_SERIES",
+    "MEMBERSHIP_COLUMNS",
     "MacroDataError",
     "MacroDataManager",
     "MacroSeries",
+    "SP500MembershipLoader",
+    "UniverseError",
+    "active_at",
     "credit_quality_slope",
+    "current_tickers",
     "list_series",
+    "normalize_ticker",
+    "parse_membership_html",
     "real_fed_funds",
     "surprise_pct",
     "yoy_change",
