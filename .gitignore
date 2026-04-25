@@ -16,6 +16,14 @@ __pycache__/
 .env.*
 config/alpaca_keys.json
 
+# Local working snapshots of config files (before-risky-change backups
+# made on individual machines — not project history)
+config/*.backup
+config/*.backup-*
+config/*-backup
+config/*.pre-*
+config/*.bak
+
 # Logs and runtime data
 data/
 logs/
