@@ -1,8 +1,8 @@
 """Tests for engines.data_manager.earnings_data.
 
-All tests run offline by mocking the Finnhub HTTP layer. There is one
-integration-style test at the bottom gated behind ``FINNHUB_API_KEY`` —
-skipped by default so CI / fresh clones never hit the live API.
+All tests run offline by mocking the yfinance backend. There is one
+integration-style test at the bottom gated behind ``--run-network`` —
+skipped by default so CI / fresh clones never hit the live network.
 """
 import json
 import math
@@ -13,7 +13,6 @@ from unittest.mock import patch
 
 import pandas as pd
 import pytest
-import requests
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
@@ -30,6 +29,9 @@ from engines.data_manager.earnings_data import (
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+# Observation-shape dicts (the same shape produced by both the
+# yfinance adapter and the legacy Finnhub adapter — we keep this
+# shape because `_observations_to_frame` consumes it directly).
 SAMPLE_AAPL_CALENDAR = [
     {
         "date": "2020-04-30",
@@ -82,27 +84,27 @@ SAMPLE_MSFT_CALENDAR = [
 ]
 
 
-class _FakeResponse:
-    def __init__(self, status_code: int, payload: dict):
-        self.status_code = status_code
-        self._payload = payload
-        self.text = json.dumps(payload)
-
-    def json(self):
-        return self._payload
-
-
-def _ok(observations):
-    return _FakeResponse(200, {"earningsCalendar": observations})
+def _patch_yf(observations_or_fn):
+    """Patch the yfinance adapter. Accepts a list (returned for any
+    symbol) or a callable that takes ``symbol`` and returns a list."""
+    if callable(observations_or_fn):
+        return patch(
+            "engines.data_manager.earnings_data._fetch_yfinance_earnings",
+            side_effect=observations_or_fn,
+        )
+    return patch(
+        "engines.data_manager.earnings_data._fetch_yfinance_earnings",
+        return_value=observations_or_fn,
+    )
 
 
 @pytest.fixture
 def mgr(tmp_path):
-    """Manager isolated to a tmp cache dir, stub key, no rate limiting."""
+    """Manager isolated to a tmp cache dir, online, no rate limiting."""
     return EarningsDataManager(
-        api_key="fake-key",
         cache_dir=tmp_path,
         rate_limit_s=0,
+        offline=False,
     )
 
 
@@ -169,7 +171,7 @@ def test_observations_parse_drops_rows_with_unparseable_date():
 
 
 def test_observations_parse_falls_back_to_argument_symbol():
-    # Some Finnhub rows have null/missing 'symbol'; fall back to caller arg
+    # Some upstream rows have null/missing 'symbol'; fall back to caller arg
     obs = [{"date": "2024-01-01", "epsActual": 1.0, "epsEstimate": 0.9}]
     df = _observations_to_frame(obs, symbol="aapl")
     assert df.iloc[0]["symbol"] == "AAPL"
@@ -188,11 +190,10 @@ def test_observations_parse_nullable_quarter_year():
 # Fetch + cache
 # ---------------------------------------------------------------------------
 def test_fetch_writes_parquet_and_meta(mgr, tmp_path):
-    with patch("engines.data_manager.earnings_data.requests.get",
-               return_value=_ok(SAMPLE_AAPL_CALENDAR)) as mock_get:
+    with _patch_yf(SAMPLE_AAPL_CALENDAR) as mock_yf:
         df = mgr.fetch_calendar("AAPL", start="2020-01-01")
 
-    mock_get.assert_called_once()
+    mock_yf.assert_called_once()
     assert (tmp_path / "AAPL_calendar.parquet").exists()
     assert (tmp_path / "_meta.json").exists()
     meta = json.loads((tmp_path / "_meta.json").read_text())
@@ -201,90 +202,99 @@ def test_fetch_writes_parquet_and_meta(mgr, tmp_path):
 
 
 def test_fetch_normalizes_lowercase_symbol(mgr, tmp_path):
-    with patch("engines.data_manager.earnings_data.requests.get",
-               return_value=_ok(SAMPLE_AAPL_CALENDAR)):
+    with _patch_yf(SAMPLE_AAPL_CALENDAR):
         mgr.fetch_calendar("aapl")
     # Cache file should be uppercase regardless of caller casing
     assert (tmp_path / "AAPL_calendar.parquet").exists()
 
 
 def test_cache_short_circuits_inside_max_age(mgr):
-    with patch("engines.data_manager.earnings_data.requests.get",
-               return_value=_ok(SAMPLE_AAPL_CALENDAR)) as mock_get:
+    with _patch_yf(SAMPLE_AAPL_CALENDAR) as mock_yf:
         mgr.fetch_calendar("AAPL")
-        assert mock_get.call_count == 1
+        assert mock_yf.call_count == 1
         # second call within max_age — should NOT hit network
         mgr.fetch_calendar("AAPL")
-        assert mock_get.call_count == 1
+        assert mock_yf.call_count == 1
 
 
 def test_force_bypasses_cache(mgr):
-    with patch("engines.data_manager.earnings_data.requests.get",
-               return_value=_ok(SAMPLE_AAPL_CALENDAR)) as mock_get:
+    with _patch_yf(SAMPLE_AAPL_CALENDAR) as mock_yf:
         mgr.fetch_calendar("AAPL")
         mgr.fetch_calendar("AAPL", force=True)
-    assert mock_get.call_count == 2
+    assert mock_yf.call_count == 2
 
 
 def test_max_age_zero_always_refetches(mgr):
-    with patch("engines.data_manager.earnings_data.requests.get",
-               return_value=_ok(SAMPLE_AAPL_CALENDAR)) as mock_get:
+    with _patch_yf(SAMPLE_AAPL_CALENDAR) as mock_yf:
         mgr.fetch_calendar("AAPL")
         mgr.fetch_calendar("AAPL", max_age_hours=0)
-    assert mock_get.call_count == 2
+    assert mock_yf.call_count == 2
+
+
+def test_start_date_filters_observations(mgr):
+    # SAMPLE_AAPL_CALENDAR spans 2020-04 → 2024-01. A start filter
+    # of 2024-01-01 should keep only the 2024 row.
+    with _patch_yf(SAMPLE_AAPL_CALENDAR):
+        df = mgr.fetch_calendar("AAPL", start="2024-01-01")
+    assert len(df) == 1
+    assert df.index[0] == pd.Timestamp("2024-01-25")
+
+
+def test_end_date_filters_observations(mgr):
+    with _patch_yf(SAMPLE_AAPL_CALENDAR):
+        df = mgr.fetch_calendar("AAPL", start="2020-01-01", end="2021-01-01")
+    assert len(df) == 2
+    assert df.index.max() == pd.Timestamp("2020-07-30")
 
 
 # ---------------------------------------------------------------------------
 # Error handling / graceful degradation
 # ---------------------------------------------------------------------------
 def test_network_failure_serves_cache(mgr):
-    with patch("engines.data_manager.earnings_data.requests.get",
-               return_value=_ok(SAMPLE_AAPL_CALENDAR)):
+    with _patch_yf(SAMPLE_AAPL_CALENDAR):
         mgr.fetch_calendar("AAPL")
-    # Now simulate the network going down on a forced refresh
-    with patch("engines.data_manager.earnings_data.requests.get",
-               side_effect=requests.ConnectionError("offline")):
+    # Now simulate yfinance failing on a forced refresh
+    with patch(
+        "engines.data_manager.earnings_data._fetch_yfinance_earnings",
+        side_effect=EarningsDataError("yfinance offline"),
+    ):
         df = mgr.fetch_calendar("AAPL", force=True)
     assert len(df) == 3  # cached data
 
 
 def test_network_failure_without_cache_raises(mgr):
-    with patch("engines.data_manager.earnings_data.requests.get",
-               side_effect=requests.ConnectionError("offline")):
+    with patch(
+        "engines.data_manager.earnings_data._fetch_yfinance_earnings",
+        side_effect=EarningsDataError("yfinance offline"),
+    ):
         with pytest.raises(EarningsDataError):
             mgr.fetch_calendar("AAPL")
 
 
-def test_http_error_raises_when_no_cache(mgr):
-    with patch("engines.data_manager.earnings_data.requests.get",
-               return_value=_FakeResponse(429, {"error": "rate limit"})):
-        with pytest.raises(EarningsDataError):
-            mgr.fetch_calendar("AAPL")
-
-
-def test_no_api_key_uses_cache_only(tmp_path):
-    keyed = EarningsDataManager(
-        api_key="fake-key", cache_dir=tmp_path, rate_limit_s=0,
+def test_offline_mode_uses_cache_only(tmp_path):
+    """offline=True (default when api_key=None) skips network even
+    when a fetch is requested. Mirrors the prior keyless contract."""
+    online = EarningsDataManager(
+        cache_dir=tmp_path, rate_limit_s=0, offline=False,
     )
-    with patch("engines.data_manager.earnings_data.requests.get",
-               return_value=_ok(SAMPLE_AAPL_CALENDAR)):
-        keyed.fetch_calendar("AAPL")
+    with _patch_yf(SAMPLE_AAPL_CALENDAR):
+        online.fetch_calendar("AAPL")
 
-    keyless = EarningsDataManager(
-        api_key=None, cache_dir=tmp_path, rate_limit_s=0,
+    offline_mgr = EarningsDataManager(
+        cache_dir=tmp_path, rate_limit_s=0, offline=True,
     )
-    with patch("engines.data_manager.earnings_data.requests.get") as mock_get:
-        df = keyless.fetch_calendar("AAPL", force=True)
-        mock_get.assert_not_called()
+    with _patch_yf(SAMPLE_AAPL_CALENDAR) as mock_yf:
+        df = offline_mgr.fetch_calendar("AAPL", force=True)
+        mock_yf.assert_not_called()
     assert len(df) == 3
 
 
-def test_no_api_key_no_cache_raises(tmp_path):
-    keyless = EarningsDataManager(
-        api_key=None, cache_dir=tmp_path, rate_limit_s=0,
+def test_offline_mode_no_cache_raises(tmp_path):
+    offline_mgr = EarningsDataManager(
+        cache_dir=tmp_path, rate_limit_s=0, offline=True,
     )
     with pytest.raises(EarningsDataError):
-        keyless.fetch_calendar("AAPL")
+        offline_mgr.fetch_calendar("AAPL")
 
 
 def test_load_cached_when_missing_returns_empty(mgr):
@@ -293,37 +303,27 @@ def test_load_cached_when_missing_returns_empty(mgr):
     assert list(df.columns) == EVENT_COLUMNS
 
 
-def test_empty_earnings_calendar_field_is_treated_as_no_events(mgr, tmp_path):
-    # Finnhub returns null `earningsCalendar` for symbols with no events
-    # in the queried window. That should be a zero-row frame, not an error.
-    with patch("engines.data_manager.earnings_data.requests.get",
-               return_value=_FakeResponse(200, {"earningsCalendar": None})):
+def test_empty_observations_caches_empty_frame(mgr, tmp_path):
+    # yfinance returns no events for a delisted/illiquid symbol —
+    # that should be a zero-row frame on disk, not an error.
+    with _patch_yf([]):
         df = mgr.fetch_calendar("ZZZZ")
     assert df.empty
     assert (tmp_path / "ZZZZ_calendar.parquet").exists()
-
-
-def test_response_missing_calendar_field_raises(mgr):
-    with patch("engines.data_manager.earnings_data.requests.get",
-               return_value=_FakeResponse(200, {"unexpected": "shape"})):
-        with pytest.raises(EarningsDataError):
-            mgr.fetch_calendar("AAPL")
 
 
 # ---------------------------------------------------------------------------
 # Universe fetch
 # ---------------------------------------------------------------------------
 def test_universe_concatenates_per_symbol_frames(mgr):
-    def fake_get(url, params=None, timeout=None):
-        sym = params["symbol"]
-        if sym == "AAPL":
-            return _ok(SAMPLE_AAPL_CALENDAR)
-        if sym == "MSFT":
-            return _ok(SAMPLE_MSFT_CALENDAR)
-        return _ok([])
+    def fake_fetch(symbol):
+        if symbol == "AAPL":
+            return SAMPLE_AAPL_CALENDAR
+        if symbol == "MSFT":
+            return SAMPLE_MSFT_CALENDAR
+        return []
 
-    with patch("engines.data_manager.earnings_data.requests.get",
-               side_effect=fake_get):
+    with _patch_yf(fake_fetch):
         combined = mgr.fetch_universe(["AAPL", "MSFT"])
 
     assert set(combined["symbol"].unique()) == {"AAPL", "MSFT"}
@@ -332,22 +332,22 @@ def test_universe_concatenates_per_symbol_frames(mgr):
 
 
 def test_universe_skips_failed_symbols(mgr):
-    def fake_get(url, params=None, timeout=None):
-        sym = params["symbol"]
-        if sym == "AAPL":
-            return _ok(SAMPLE_AAPL_CALENDAR)
-        return _FakeResponse(500, {"error": "boom"})
+    def fake_fetch(symbol):
+        if symbol == "AAPL":
+            return SAMPLE_AAPL_CALENDAR
+        raise EarningsDataError(f"yfinance boom on {symbol}")
 
-    with patch("engines.data_manager.earnings_data.requests.get",
-               side_effect=fake_get):
+    with _patch_yf(fake_fetch):
         combined = mgr.fetch_universe(["AAPL", "BROKE"])
 
     assert set(combined["symbol"].unique()) == {"AAPL"}
 
 
 def test_universe_all_failures_raises(mgr):
-    with patch("engines.data_manager.earnings_data.requests.get",
-               return_value=_FakeResponse(500, {"error": "boom"})):
+    with patch(
+        "engines.data_manager.earnings_data._fetch_yfinance_earnings",
+        side_effect=EarningsDataError("boom"),
+    ):
         with pytest.raises(EarningsDataError):
             mgr.fetch_universe(["AAPL", "MSFT"])
 
@@ -356,8 +356,7 @@ def test_universe_all_failures_raises(mgr):
 # Cache status
 # ---------------------------------------------------------------------------
 def test_cache_status_reports_state(mgr):
-    with patch("engines.data_manager.earnings_data.requests.get",
-               return_value=_ok(SAMPLE_AAPL_CALENDAR)):
+    with _patch_yf(SAMPLE_AAPL_CALENDAR):
         mgr.fetch_calendar("AAPL")
     status = mgr.cache_status()
     assert "AAPL" in status["symbol"].values
@@ -368,7 +367,7 @@ def test_cache_status_reports_state(mgr):
 
 def test_cache_status_empty_when_nothing_fetched(tmp_path):
     mgr = EarningsDataManager(
-        api_key=None, cache_dir=tmp_path, rate_limit_s=0,
+        cache_dir=tmp_path, rate_limit_s=0, offline=True,
     )
     status = mgr.cache_status()
     assert status.empty
@@ -386,18 +385,18 @@ def test_default_cache_dir_under_repo_root():
 
 
 # ---------------------------------------------------------------------------
-# Integration (live network) — skipped unless FINNHUB_API_KEY is set.
+# Integration (live network) — skipped unless ARCHONDEX_TEST_NETWORK is set.
+# yfinance has no key, so we gate on an explicit opt-in env var.
 # ---------------------------------------------------------------------------
 @pytest.mark.skipif(
-    not os.getenv("FINNHUB_API_KEY"),
-    reason="Live Finnhub API key not set; set FINNHUB_API_KEY in .env to enable.",
+    not os.getenv("ARCHONDEX_TEST_NETWORK"),
+    reason="Live yfinance fetch skipped; set ARCHONDEX_TEST_NETWORK=1 to enable.",
 )
-def test_live_finnhub_aapl_fetch(tmp_path):
-    mgr = EarningsDataManager(cache_dir=tmp_path)
+def test_live_yfinance_aapl_fetch(tmp_path):
+    mgr = EarningsDataManager(cache_dir=tmp_path, offline=False)
     df = mgr.fetch_calendar("AAPL", start="2023-01-01", end="2023-12-31")
     assert not df.empty
     assert list(df.columns) == EVENT_COLUMNS
-    # AAPL reports four times a year — expect at least one print in 2023
     assert (df.index >= pd.Timestamp("2023-01-01")).all()
     assert (df.index <= pd.Timestamp("2023-12-31")).all()
     assert (df["symbol"] == "AAPL").all()

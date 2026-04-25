@@ -249,26 +249,35 @@ python -c "from engines.data_manager.macro_data import MacroDataManager; \
 print(MacroDataManager(api_key=None).cache_status().to_string())"
 ```
 
-### EARNINGS DATA (FINNHUB)
+### EARNINGS DATA (yfinance)
 ```bash
-# The Finnhub earnings pipeline lives at engines/data_manager/earnings_data.py.
+# The earnings pipeline lives at engines/data_manager/earnings_data.py.
 # It is a library — no CLI script. Cache in data/earnings/<SYMBOL>_calendar.parquet.
-# Requires FINNHUB_API_KEY in .env (free key: https://finnhub.io/register).
-# Without a key the manager runs in cache-only mode.
-# Free tier ceiling is 60 req/min — manager rate-limits to 1.1s/call by default.
+# Backend: yfinance (no API key required). Finnhub was the original
+# backend but its free tier returns 0 historical earnings — see
+# memory/project_finnhub_free_tier_no_historical_2026_04_25.md.
+# Manager rate-limits to 1.1s/call by default to be polite to Yahoo.
+# Online by default; pass offline=True for cache-only mode.
 
 # Bootstrap the cache for a universe (loops with rate limiting):
 python -c "from engines.data_manager.earnings_data import EarningsDataManager; \
-mgr = EarningsDataManager(); df = mgr.fetch_universe(['AAPL','MSFT','NVDA']); \
+mgr = EarningsDataManager(offline=False); df = mgr.fetch_universe(['AAPL','MSFT','NVDA']); \
 print(df.tail()); print(mgr.cache_status())"
 
 # Refresh a single symbol (force-bypass the 24h freshness window):
 python -c "from engines.data_manager.earnings_data import EarningsDataManager; \
-print(EarningsDataManager().fetch_calendar('AAPL', force=True).tail())"
+print(EarningsDataManager(offline=False).fetch_calendar('AAPL', force=True).tail())"
 
 # Inspect the on-disk cache state without hitting the network:
 python -c "from engines.data_manager.earnings_data import EarningsDataManager; \
-print(EarningsDataManager(api_key=None).cache_status().to_string())"
+print(EarningsDataManager(offline=True).cache_status().to_string())"
+
+# Re-bootstrap the full universe (115 tickers, ~150s with default rate limit):
+python -c "import json, warnings; warnings.filterwarnings('ignore'); \
+from engines.data_manager.earnings_data import EarningsDataManager; \
+mgr = EarningsDataManager(offline=False); \
+mgr.fetch_universe(json.load(open('config/universe.json')), force=True); \
+print(mgr.cache_status().to_string())"
 ```
 
 ### UNIVERSE MEMBERSHIP (S&P 500 historical)

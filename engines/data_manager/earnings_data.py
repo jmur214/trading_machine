@@ -1,27 +1,31 @@
 # engines/data_manager/earnings_data.py
 """
-Finnhub earnings calendar + surprise data pipeline.
+yfinance-backed earnings calendar + surprise data pipeline.
 
 Self-contained fetch + parquet cache for company-level earnings
-events: announcement dates, EPS actual vs consensus, revenue
-actual vs consensus, and the surprise magnitudes derived from
-them. Designed to feed PEAD (post-earnings announcement drift)
-edges and any event-driven logic that needs to align price action
-with earnings releases — this module owns I/O and caching only,
-no signal logic.
+events: announcement dates, EPS actual vs consensus, and the
+surprise magnitudes derived from them. Designed to feed PEAD
+(post-earnings announcement drift) edges and any event-driven
+logic that needs to align price action with earnings releases —
+this module owns I/O and caching only, no signal logic.
 
 Why this exists
 ---------------
 Per the 2026-04-24 strategic pivot doc, PEAD is the strongest
 single-factor alpha in the academic literature (~2% monthly excess
-for 2-3 months following a positive surprise). Free EPS surprise
-data is available from Finnhub's free tier; this module is the
-foundation an edge will later sit on top of.
+for 2-3 months following a positive surprise). The original
+implementation used Finnhub's free tier, but on 2026-04-25 we
+verified that the free tier returns 0 historical earnings (both
+unfiltered calendar windows and per-symbol queries). yfinance
+exposes ~6 years of historical earnings dates per ticker with
+EPS Estimate, Reported EPS, and surprise % — sufficient for PEAD
+backtesting at zero cost and no API key.
 
 Key design choices
 ------------------
-- Free-tier Finnhub API; key from .env ``FINNHUB_API_KEY``
-  (optional — without one the module still serves cached data).
+- yfinance backend (no API key required). The Finnhub key in
+  ``.env`` is retained for possible real-time use during paper
+  trading but is not consumed here.
 - Parquet cache at ``data/earnings/<SYMBOL>_calendar.parquet``,
   with a sidecar ``_meta.json`` recording the last successful
   fetch per symbol. Mirrors the FRED cache pattern in
@@ -30,12 +34,16 @@ Key design choices
   fresher than ``max_age_hours`` (default 24h — earnings are
   quarterly events; intraday refresh adds nothing, daily refresh
   catches new announcements).
-- Network failures degrade gracefully: if the API is unreachable
+- Network failures degrade gracefully: if yfinance is unreachable
   the cache is returned with a warning rather than raising. Edges
-  should never crash because Finnhub is down.
+  should never crash because the data source is down.
 - Per-call rate limit (1.1s sleep between fetches by default) to
-  respect the free tier's 60 req/min ceiling. Configurable; set
-  to 0 in tests.
+  avoid hammering Yahoo's anti-scraping. Configurable; set to 0
+  in tests.
+- Revenue fields are not provided by yfinance and stay NaN in the
+  cached schema. PEAD logic uses ``eps_surprise_pct`` exclusively;
+  if a future edge needs revenue surprise the schema is preserved
+  so a different backend can populate those columns later.
 - No engine wiring in this file. Integration is a separate handoff.
 
 Cached schema (per symbol)
@@ -61,7 +69,6 @@ Columns:
 from __future__ import annotations
 
 import json
-import os
 import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -69,7 +76,7 @@ from pathlib import Path
 from typing import Iterable, Optional
 
 import pandas as pd
-import requests
+import yfinance as yf
 from dotenv import load_dotenv
 
 
@@ -79,13 +86,12 @@ if _ENV_PATH.exists():
     load_dotenv(dotenv_path=_ENV_PATH, override=False)
 
 
-FINNHUB_API_BASE = "https://finnhub.io/api/v1"
 DEFAULT_CACHE_DIR = ROOT_DIR / "data" / "earnings"
 DEFAULT_START = "2020-01-01"
 DEFAULT_TIMEOUT_S = 15
 DEFAULT_MAX_AGE_HOURS = 24
-# Finnhub free tier ceiling is 60 req/min. 1.1s between calls keeps us
-# comfortably under that. Override per-test with rate_limit_s=0.
+# yfinance scrapes Yahoo; 1.1s between calls keeps us polite. Override
+# per-test with rate_limit_s=0.
 DEFAULT_RATE_LIMIT_S = 1.1
 
 # Column order for cached event frames. Kept stable so consumers can
@@ -137,22 +143,29 @@ class EarningsEvent:
 # Manager
 # ---------------------------------------------------------------------------
 class EarningsDataManager:
-    """Fetch + cache Finnhub earnings calendar entries per ticker.
+    """Fetch + cache yfinance earnings calendar entries per ticker.
 
     Parameters
     ----------
     api_key:
-        Finnhub API key. Falls back to ``FINNHUB_API_KEY`` env var.
-        If neither is set the manager runs in cache-only mode — all
-        fetches degrade to whatever is on disk.
+        Retained for backwards compatibility with the previous
+        Finnhub-backed signature. Unused under the yfinance backend;
+        accepted so existing callers (tests, scripts) don't break.
+        Pass ``None`` to indicate cache-only mode (still honoured —
+        skips network on every call).
     cache_dir:
         Directory for parquet cache. Defaults to ``data/earnings/``
         at the repo root.
     timeout_s:
-        Network timeout for individual Finnhub requests.
+        Network timeout for individual yfinance requests.
     rate_limit_s:
         Minimum seconds between consecutive network fetches issued
         by this manager. 0 disables rate limiting (use only in tests).
+    offline:
+        If True, never touch the network — serve cache only and
+        raise ``EarningsDataError`` if no cache exists. Defaults to
+        True when ``api_key=None`` for compatibility with the prior
+        keyless-implies-cache-only contract.
     """
 
     def __init__(
@@ -161,8 +174,12 @@ class EarningsDataManager:
         cache_dir: Optional[Path | str] = None,
         timeout_s: int = DEFAULT_TIMEOUT_S,
         rate_limit_s: float = DEFAULT_RATE_LIMIT_S,
+        offline: Optional[bool] = None,
     ) -> None:
-        self.api_key = api_key or os.getenv("FINNHUB_API_KEY")
+        self.api_key = api_key  # retained for caller compatibility
+        # Preserve the prior contract: api_key=None → cache-only mode.
+        # This keeps existing tests and shims working unchanged.
+        self.offline = offline if offline is not None else (api_key is None)
         self.cache_dir = (
             Path(cache_dir) if cache_dir is not None else DEFAULT_CACHE_DIR
         )
@@ -234,25 +251,25 @@ class EarningsDataManager:
         if not force and cached_age is not None and cached_age < max_age_hours:
             return self.load_cached(symbol)
 
-        if self.api_key is None:
+        if self.offline:
             if cached_age is not None:
-                _log(f"no FINNHUB_API_KEY; serving stale cache for {symbol} "
+                _log(f"offline mode; serving cache for {symbol} "
                      f"({cached_age:.1f}h old)")
                 return self.load_cached(symbol)
             raise EarningsDataError(
-                f"FINNHUB_API_KEY not set and no cached data for {symbol}. "
-                "Add FINNHUB_API_KEY to .env or pre-populate the cache."
+                f"offline=True and no cached data for {symbol}. "
+                "Re-instantiate with offline=False or pre-populate the cache."
             )
 
         try:
             df = self._download_calendar(symbol, start=start, end=end)
-        except (requests.RequestException, EarningsDataError) as exc:
+        except EarningsDataError as exc:
             if cached_age is not None:
-                _log(f"Finnhub fetch failed for {symbol} ({exc!s}); "
+                _log(f"yfinance fetch failed for {symbol} ({exc!s}); "
                      f"falling back to cache aged {cached_age:.1f}h")
                 return self.load_cached(symbol)
             raise EarningsDataError(
-                f"Finnhub fetch failed for {symbol} and no cache available: {exc}"
+                f"yfinance fetch failed for {symbol} and no cache available: {exc}"
             ) from exc
 
         self._save(symbol, df)
@@ -338,40 +355,31 @@ class EarningsDataManager:
         start: Optional[str],
         end: Optional[str],
     ) -> pd.DataFrame:
-        # Finnhub requires both `from` and `to`. Default to a wide
-        # window if either is absent so the caller doesn't have to
-        # think about the API's parameter requirements.
-        from_ = start or DEFAULT_START
-        to_ = end or datetime.now(timezone.utc).date().isoformat()
-        params = {
-            "symbol": symbol,
-            "from": from_,
-            "to": to_,
-            "token": self.api_key,
-        }
+        # yfinance returns ~6 years of historical earnings per ticker,
+        # indexed by Earnings Date with columns: 'EPS Estimate',
+        # 'Reported EPS', 'Surprise(%)'. Future earnings have NaN
+        # Reported EPS — keep them in cache so callers can see the
+        # next-event date, but they contribute no PEAD signal until
+        # filed.
+        from_ = pd.to_datetime(start) if start else pd.to_datetime(DEFAULT_START)
+        to_ = pd.to_datetime(end) if end else None
 
         self._respect_rate_limit()
-        resp = requests.get(
-            f"{FINNHUB_API_BASE}/calendar/earnings",
-            params=params,
-            timeout=self.timeout_s,
-        )
-        if resp.status_code != 200:
-            raise EarningsDataError(
-                f"Finnhub returned HTTP {resp.status_code} for {symbol}: "
-                f"{resp.text[:200]}"
-            )
-        payload = resp.json()
-        # Finnhub returns {"earningsCalendar": [...]} on success. The
-        # field is sometimes null when the symbol has no events in the
-        # window — treat that as an empty list, not an error.
-        if "earningsCalendar" not in payload:
-            raise EarningsDataError(
-                f"Finnhub response missing 'earningsCalendar' for {symbol}: "
-                f"{str(payload)[:200]}"
-            )
-        observations = payload.get("earningsCalendar") or []
-        return _observations_to_frame(observations, symbol)
+        observations = _fetch_yfinance_earnings(symbol)
+
+        # Window-filter to caller-requested range. yfinance ignores
+        # date params, so we filter client-side to honour the contract.
+        filtered = []
+        for obs in observations:
+            d = pd.to_datetime(obs.get("date"), errors="coerce")
+            if pd.isna(d):
+                continue
+            if d < from_:
+                continue
+            if to_ is not None and d > to_:
+                continue
+            filtered.append(obs)
+        return _observations_to_frame(filtered, symbol)
 
     def _save(self, symbol: str, df: pd.DataFrame) -> None:
         path = self._calendar_path(symbol)
@@ -416,6 +424,53 @@ def surprise_pct(actual: float | None, estimate: float | None) -> float:
     if e == 0:
         return float("nan")
     return (a - e) / abs(e)
+
+
+def _fetch_yfinance_earnings(symbol: str) -> list[dict]:
+    """Pull earnings dates for ``symbol`` from yfinance and convert
+    to the legacy Finnhub-shaped observation dict.
+
+    yfinance returns a DataFrame indexed by ``Earnings Date`` with
+    columns: ``EPS Estimate``, ``Reported EPS``, ``Surprise(%)``.
+    Revenue is not exposed; revenue keys are emitted as ``None`` so
+    the downstream parser produces NaN columns and the cached schema
+    stays stable.
+
+    Raises ``EarningsDataError`` on yfinance failure so the manager
+    can decide whether to fall back to cache or surface the error.
+    """
+    try:
+        ticker = yf.Ticker(symbol)
+        ed = ticker.earnings_dates
+    except Exception as exc:
+        raise EarningsDataError(
+            f"yfinance returned an error for {symbol}: {exc}"
+        ) from exc
+
+    if ed is None or ed.empty:
+        return []
+
+    observations: list[dict] = []
+    for ts, row in ed.iterrows():
+        # yfinance's index is timezone-aware (e.g. America/New_York).
+        # Strip TZ for the cached announcement_date — PEAD aligns on
+        # calendar date, not minute.
+        try:
+            date_str = pd.Timestamp(ts).tz_convert(None).strftime("%Y-%m-%d")
+        except (TypeError, ValueError):
+            date_str = pd.Timestamp(ts).strftime("%Y-%m-%d")
+        observations.append({
+            "date": date_str,
+            "symbol": symbol.upper(),
+            "epsActual": row.get("Reported EPS"),
+            "epsEstimate": row.get("EPS Estimate"),
+            "revenueActual": None,
+            "revenueEstimate": None,
+            "hour": "",
+            "quarter": pd.Timestamp(ts).quarter,
+            "year": pd.Timestamp(ts).year,
+        })
+    return observations
 
 
 def _observations_to_frame(
