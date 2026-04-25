@@ -46,11 +46,13 @@
   - `def __init__()`
   - `def register()`
   - `def set_status()`
-  - `def list()`
+  - `def list()`: List edges filtered by status. Pass `status="active"` for single
+  - `def list_tradeable()`: Return edges that should be loaded into the alpha pipeline: active
   - `def list_modules()`: Returns module names for edges with the specified status.
   - `def list_active_modules()`: Returns module names for edges whose status == 'active'.
   - `def get()`
-  - `def ensure()`
+  - `def get_all_specs()`: Returns all registered edge specs regardless of status.
+  - `def ensure()`: Idempotent upsert.
 
 ### `edge_template.py`
 - **Class `EdgeTemplate`**: Interface for edges that support autonomous parameter generation.

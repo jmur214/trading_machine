@@ -10,7 +10,7 @@ This is a high-level, quick-reference guide to the primary directories of the Tr
 | `engines/engine_c_portfolio/` | Portfolio Management — accounting ledger, allocation policies, equity tracking, vol targeting, regime-adaptive allocation, autonomous allocation discovery (`allocation_evaluator.py`) |
 | `engines/engine_d_discovery/` | Discovery & Evolution — two-stage ML scanning (LightGBM + DTree), GA evolution (selection/crossover/mutation), 4-gate validation (backtest/PBO/WFO/significance), 40+ feature engineering |
 | `engines/engine_e_regime/` | Regime Intelligence — market state detection (trend, volatility), advisory policy hints |
-| `engines/engine_f_governance/` | Governance — edge lifecycle management, weight updates, performance scoring, edge promotion, regime-conditional edge weighting (`regime_tracker.py` — runtime disabled 2026-04-23, walk-forward central tendency net-negative across 3 splits), allocation evaluation orchestration |
+| `engines/engine_f_governance/` | Governance — edge lifecycle management (`lifecycle_manager.py` — autonomous active ↔ paused → retired transitions, validated end-to-end 2026-04-25), weight updates, performance scoring, regime-conditional edge weighting (`regime_tracker.py` — runtime disabled 2026-04-23, walk-forward central tendency net-negative across 3 splits), allocation evaluation orchestration |
 | `engines/data_manager/` | Data Pipeline — OHLCV ingestion (Alpaca), caching (Parquet/CSV), normalization |
 
 ## Orchestration & Execution
@@ -43,9 +43,9 @@ This is a high-level, quick-reference guide to the primary directories of the Tr
 | Directory | Purpose |
 |-----------|---------|
 | `debug_config.py` | **Root-level** — Global debug flag system (`DEBUG_LEVELS` dict) used by all engines for conditional logging |
-| `scripts/` | CLI tools — run_backtest, run_diagnostics, fetch_data, sync_docs, run_deterministic (pinned-state A/B harness), walk_forward_regime (train-window / eval-window validation for regime-conditional governor) |
+| `scripts/` | CLI tools — run_backtest, run_diagnostics, fetch_data, sync_docs, run_deterministic (pinned-state A/B harness), walk_forward_regime / walk_forward_affinity / walk_forward_risk_advisory / walk_forward_factor_edge (per-feature OOS validation harnesses), reset_base_edges (Phase ε demote tool, --confirm required) |
 | `config/` | Configuration — universe definitions, edge configs, backtest settings |
-| `core/` | Shared utilities and base classes — includes `metrics_engine.py` (MetricsEngine used by Discovery + Governance) |
+| `core/` | Shared utilities and base classes — includes `metrics_engine.py` (MetricsEngine used by Discovery + Governance) and `benchmark.py` (LRU-cached SPY rolling Sharpe + benchmark-relative gate utility, used by Discovery validation and Governance lifecycle) |
 | `utils/` | General-purpose helper functions |
 | `storage/` | State persistence — system state management between runs |
 | `tests/` | Test suite — edge output tests, pipeline tests, portfolio accounting tests |

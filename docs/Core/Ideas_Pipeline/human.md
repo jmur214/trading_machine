@@ -3,6 +3,7 @@
 2. Tracking my input and ideas that I directly chat with the AI's about and adding that to a file in docs
 3. I think this largely is tied in with engine A, but finding stocks that actually could be hypothetically profitable like defense stocks or oil with a war 
 4. An information pipeline - could be for the machine to make better trades like info about markets, either from papers or online sources, or could be for the machine itself to improve
+5. Also, I think we should use both sharpe AND sortino ratio along with the other metrics. While overall we want a stable portfolio, we want significant gains as well, so to have a high risk sleeve we need to look more towards sortino vs sharpe, where as overall a sharpe may be better. Let me know your thoughts on this. 
 ---
 # 🗄️ PROCESSED ARCHIVE
 

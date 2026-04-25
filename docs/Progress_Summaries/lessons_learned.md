@@ -499,3 +499,36 @@ Whenever a significant bug is fixed, a new operational paradigm is adopted, or a
 
   **Files:** new memory `project_autonomous_lifecycle_broken_2026_04_24.md`, new plan `docs/Core/Ideas_Pipeline/autonomous_lifecycle_plan.md`. Next work starts with Phase β + γ.
 
+- **2026-04-25 | Registry Status-Stomp Bug — Lifecycle Decisions Were Silently Reverted on Every Import |** During the universe-expansion lifecycle stress test (Sharpe collapsed 0.979 → 0.332 on 109 tickers), the lifecycle correctly identified that both `atr_breakout_v1` and `momentum_edge_v1` should be paused, wrote both transitions to `data/governor/lifecycle_history.csv`, and updated `data/governor/edges.yml`. A subsequent 1-run deterministic to measure post-pause performance produced canon md5 **bitwise-identical to the pre-pause smoke test** — Sharpe 0.332 unchanged, no behavior shift. That should have been impossible (soft-pause multiplies edge weight by 0.25x → different signals → different canon).
+
+  **Root cause:** `engines/engine_a_alpha/edges/momentum_edge.py` lines 61-67 call `EdgeRegistry().ensure(EdgeSpec(..., status="active"))` on every module import. The pre-fix `EdgeRegistry.ensure()` had:
+
+  ```python
+  if spec.status:
+      s.status = spec.status   # forced override — bug
+  ```
+
+  Comment said "keep status as-is unless provided," but `EdgeSpec.status` defaults to `"active"` so callers always provide it. Effect: every backtest startup imported `momentum_edge.py` → ensure() reverted `momentum_edge_v1` from `paused` back to `active` → lifecycle's decision lost.
+
+  **Why this hid for so long:**
+  1. `lifecycle_history.csv` recorded pauses cleanly — audit trail looked working
+  2. `atr_breakout_v1` escaped because `atr_breakout.py` has no auto-register block, so its pauses persisted. Yesterday's "first autonomous pause" finding for atr_breakout was real and confirmed.
+  3. The bug only fires for newer edges with the auto-register-on-import pattern. Only 2 files in the repo have it: `momentum_edge.py` and `momentum_factor_edge.py`.
+  4. `momentum_factor_edge.py` had `weight: 0.0` in alpha_settings (separate kill-switch after walk-forward failed it), so even with `status` being stomped, the edge wasn't trading. Bug invisible there too.
+
+  Net effect: every prior lifecycle test that paused atr_breakout was real; every test that would have paused momentum_edge was silently reverted. Including today's stress test before the fix.
+
+  **Fix:** `EdgeRegistry.ensure()` now write-protects `status` for existing specs. New specs (not yet in registry) honor the import-time `status="active"` so newly-added edges register correctly. Existing specs only have non-status fields merged. Only the lifecycle layer (and explicit `set_status()` API) can transition status now, per the explicit `edges.yml` Write Contract documented in `docs/Core/PROJECT_CONTEXT.md` ("F writes: status field changes — neither engine deletes the other's fields").
+
+  **Methodology rules (this is the important part):**
+
+  1. **Bitwise-identical canon md5 when you expected a change is diagnostic evidence.** I expected post-pause Sharpe to differ from pre-pause. The canon md5 was identical. That should have triggered investigation immediately rather than acceptance. The deterministic harness's md5 is a precise instrument — "no change where I expected change" is just as informative as "change where I expected none." **Rule: when a code change should affect trade behavior and canon md5 doesn't shift, treat that as a P0 anomaly, not a non-event.**
+
+  2. **Audit trails record decisions, not effects.** `lifecycle_history.csv` showed pauses firing. That gave a false sense of working autonomy. To prove autonomy is actually working, the audit trail must be cross-checked against the resulting `edges.yml` state AND against trade behavior in the next run. **Rule: document & audit the decision; verify the EFFECT separately.**
+
+  3. **Documented contracts need executable enforcement.** The "F writes status; A doesn't touch status field" contract was documented in `PROJECT_CONTEXT.md` from project start. The actual code (`EdgeRegistry.ensure()`) violated it from day one. No test asserted the contract. Nobody noticed. **Rule: a write-contract that isn't enforced by code (asserts, write-protected APIs, or tests) decays into folklore. Either enforce it or remove it from the doc.**
+
+  4. **Repeated identical lifecycle events for the same edge are a smell.** If `lifecycle_history.csv` shows `momentum_edge_v1: active → paused` on multiple consecutive runs, that's impossible under correct behavior (the second run should see the edge already paused, no transition). The audit trail had this signature; nothing was watching for it. **Future low-priority refinement: lifecycle startup sanity check that flags `<id>: <prev> → <new>` events where `prev` doesn't match the registry's actual current value.**
+
+  **Files:** `engines/engine_a_alpha/edge_registry.py` (fix in `ensure()`), memory `project_registry_status_stomp_bug_2026_04_25.md`. The 2 auto-register sites (`momentum_edge.py:61`, `momentum_factor_edge.py:113`) are now harmless — they register-if-new, no-op for existing.
+

@@ -19,6 +19,21 @@
 
 *This section is automatically built by `scripts/sync_docs.py`. Do not edit manually.*
 
+### `allocation_evaluator.py`
+**Module Docstring:** Autonomous Portfolio Allocation Discovery.
+- **Class `AllocationMetrics`**: Performance metrics for an allocation configuration.
+  - `def score()`: Composite score: higher is better.
+- **Class `AllocationRecommendation`**: A recommended allocation config with its score.
+  - `def to_dict()`
+- **Class `AllocationEvaluator`**: Evaluate allocation parameter combinations over historical trades.
+  - `def __init__()`
+  - `def evaluate()`: Evaluate all parameter combos over trade history.
+  - `def evaluate_by_regime()`: Find optimal configs per regime label.
+  - `def recommend()`: Return best config globally + per regime as dicts.
+  - `def get_config_for_regime()`: Get recommended params for a specific regime, falling back to global.
+  - `def save_recommendations()`
+  - `def load_recommendations()`
+
 ### `allocator.py`
 - **Class `AllocatorConfig`**: No docstring
 - **Class `EngineCAllocator`**: Portfolio-level selection & diversification.

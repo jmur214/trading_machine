@@ -35,7 +35,7 @@
   - `def run_loop()`: Run a simple polling loop using a provided feed (must expose .latest_map()).
 - **Class `ModeController`**: High-level orchestrator that prepares data, wires engines, and runs the chosen mode.
   - `def __init__()`
-  - `def run_backtest()`
+  - `def run_backtest()`: Full backtest orchestration with all features previously in run_backtest_logic().
   - `def run_paper()`: Simulated streaming using historical data, with configurable fill delay.
   - `def run_live()`: Live loop using an external feed (e.g. cached CSV, Alpaca, or data stream).
 - **Class `CachedCSVLiveFeed`**: Minimal live-like feed that reads cached CSVs produced by DataManager.ensure_data().

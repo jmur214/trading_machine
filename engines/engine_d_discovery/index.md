@@ -27,49 +27,64 @@
 ### `discovery.py`
 - **Class `DiscoveryEngine`**: Engine D (Discovery): The Evolutionary Lab.
   - `def __init__()`
-  - `def hunt()`: Phase 2 Core: The "Hunter". Scans for patterns using two-stage ML pipeline.
-  - `def generate_candidates()`: Produce candidate specs via template mutation + GA evolution.
-  - `def validate_candidate()`: Multi-gate validation pipeline (backtest -> PBO -> WFO -> significance).
-  - `def get_queued_candidates()`: Retrieve candidates from registry by status.
-  - `def save_candidates()`: Append/update candidates in edges.yml.
+  - `def hunt()`: Phase 2 Core: The "Hunter".
+  - `def generate_candidates()`: Produce candidate specs via two paths:
+  - `def get_queued_candidates()`: Retrieve candidates from registry that are ready for validation.
+  - `def save_candidates()`: Append candidates to the active edges.yml (or a separate staging registry).
+  - `def validate_candidate()`: Multi-gate validation pipeline for edge candidates.
+
+### `discovery_logger.py`
+**Module Docstring:** Discovery activity logger.
+- **Class `DiscoveryLogger`**: Append-only JSONL logger for discovery cycle events.
+  - `def __init__()`
+  - `def log_hunt()`
+  - `def log_ga_generation()`
+  - `def log_validation()`
+  - `def log_cycle_summary()`
 
 ### `feature_engineering.py`
-- **Class `FeatureEngineer`**: Central feature factory. Computes 40+ features across 7 categories.
-  - `def compute_all_features()`: Master method. Accepts OHLCV, fundamentals, SPY/TLT/GLD, regime context.
-  - `def compute_cross_sectional_features()` (static): Percentile ranks across universe per date.
+- **Class `FeatureEngineer`**: Tier 1 Research Feature Factory.
+  - `def __init__()`
+  - `def compute_all_features()`: Master factory method. Computes all feature blocks and returns a unified DataFrame.
+  - `def compute_cross_sectional_features()`: Compute cross-sectional rank features across the universe.
+
+### `genetic_algorithm.py`
+**Module Docstring:** Genetic Algorithm engine for CompositeEdge genome evolution.
+- **Class `GeneticAlgorithm`**: Manages a persistent population of CompositeEdge genomes and evolves
+  - `def __init__()`
+  - `def load_population()`: Load population from YAML. Returns True if loaded, False if empty/new.
+  - `def save_population()`: Persist population to YAML.
+  - `def seed_from_registry()`: Seed Gen 0 from existing composite edges in the registry.
+  - `def tournament_select()`: Tournament selection: pick k random individuals, return the one
+  - `def crossover()`: Single-point crossover: take a prefix of genes from parent_a and
+  - `def mutate()`: Mutate a genome with several possible operations:
+  - `def evolve()`: Run one generation of evolution.
+  - `def get_unevaluated()`: Return genomes that don't have fitness scores yet.
+  - `def to_candidate_specs()`: Convert genomes to EdgeRegistry-compatible candidate specs
+
+### `robustness.py`
+- **Class `RobustnessTester`**: Tier 1 Research Tool: Robustness & Overfitting Check.
+  - `def generate_bootstrap_paths()`: Generate N synthetic price histories using Circular Block Bootstrap.
+  - `def calculate_pbo()`: Probability of Backtest Overfitting (PBO).
+
+### `significance.py`
+**Module Docstring:** Statistical significance testing for edge discovery validation.
+- **Function `monte_carlo_permutation_test()`**: Test whether the strategy's Sharpe ratio is statistically significant
+- **Function `minimum_track_record_length()`**: Minimum Track Record Length (MinTRL) per Bailey & Lopez de Prado (2012).
+
+### `synthetic_market.py`
+- **Class `SyntheticMarketGenerator`**: Generates realistic synthetic market data using Regime-Switching Geometric Brownian Motion.
+  - `def __init__()`
+  - `def generate_price_history()`: Generates OHLCV Data.
+  - `def generate_fundamentals()`: Generates consistent P/E, P/S data for the simulated price.
 
 ### `tree_scanner.py`
 - **Class `DecisionTreeScanner`**: Tier 2 Research: The Hunter.
-  - `def generate_targets()`: Multi-class vol-adjusted target labeling.
-  - `def scan()`: Two-stage pipeline: GBT screening -> decision tree rule extraction.
-
-### `genetic_algorithm.py`
-- **Class `GeneticAlgorithm`**: Manages persistent population of CompositeEdge genomes.
-  - `def load_population()` / `def save_population()`: YAML persistence.
-  - `def tournament_select()`: Pick k random, return highest fitness.
-  - `def crossover()`: Single-point gene swapping.
-  - `def mutate()`: Threshold perturbation, operator flip, gene add/delete, direction mutation.
-  - `def evolve()`: One generation: elitism + tournament + crossover + mutation.
-  - `def to_candidate_specs()`: Convert genomes to EdgeRegistry-compatible format.
-
-### `significance.py`
-- **Function `monte_carlo_permutation_test()`**: Shuffle returns to build null Sharpe distribution, compute p-value.
-- **Function `minimum_track_record_length()`**: Bailey & Lopez de Prado MinTRL formula.
-
-### `robustness.py`
-- **Class `RobustnessTester`**: Probability of Backtest Overfitting (PBO) calculation.
-  - `def calculate_pbo()`: Synthetic path analysis for overfitting detection.
+  - `def __init__()`
+  - `def generate_targets()`: Generate multi-class targets based on future returns.
+  - `def scan()`: Two-stage scanning pipeline:
 
 ### `wfo.py`
-- **Class `WalkForwardOptimizer`**: Walk-forward optimization with in-sample/out-of-sample split.
-  - `def run_optimization()`: Returns degradation ratio (OOS Sharpe / IS Sharpe).
-
-### `discovery_logger.py`
-- **Class `DiscoveryLogger`**: Append-only JSONL logger for discovery cycle events.
-  - `def log_hunt()`: Record hunt results and feature importances.
-  - `def log_ga_generation()`: Record GA population statistics.
-  - `def log_validation()`: Record per-candidate validation gate results.
-  - `def log_cycle_summary()`: Record cycle-level summary stats.
-
-### `synthetic_market.py`
-- Synthetic market data generation for testing.
+- **Class `WalkForwardOptimizer`**: Tier 1 Research Feature: Walk-Forward Optimization (WFO).
+  - `def __init__()`
+  - `def run_optimization()`: optimize parameters over rolling windows.

@@ -73,3 +73,55 @@
 
 ## Configuration
 All tunable parameters in `config/regime_settings.json`.
+
+
+<!-- AUTO-GENERATED: DO NOT EDIT BELOW -->
+
+## Auto-Generated Code Reference
+
+*This section is automatically built by `scripts/sync_docs.py`. Do not edit manually.*
+
+### `advisory.py`
+**Module Docstring:** AdvisoryEngine — generates non-binding advisory hints from stabilized regime state.
+- **Class `AdvisoryEngine`**: Generates non-binding advisory hints from stabilized regime state.
+  - `def __init__()`
+  - `def generate()`: Generate advisory hints and macro regime info.
+
+### `hysteresis.py`
+**Module Docstring:** HysteresisFilter — prevents single-bar regime flips.
+- **Class `HysteresisFilter`**: State machine that stabilizes raw detector outputs.
+  - `def update()`: Process a new raw observation and return the stabilized state.
+  - `def is_transitioning()`: True if there is an unconfirmed pending state.
+  - `def transition_progress()`: Fraction of confirmation bars accumulated (0.0 – 1.0).
+  - `def reset()`: Clear all state. Called between backtest runs.
+
+### `regime_config.py`
+**Module Docstring:** RegimeConfig — typed configuration for Engine E.
+- **Class `TrendConfig`**: No docstring
+- **Class `VolatilityConfig`**: No docstring
+- **Class `CorrelationConfig`**: No docstring
+- **Class `BreadthConfig`**: No docstring
+- **Class `ForwardStressConfig`**: No docstring
+- **Class `AdvisoryConfig`**: No docstring
+- **Class `RegimeConfig`**: No docstring
+  - `def from_json()`: Load config from JSON file. Falls back to defaults if file missing.
+
+### `regime_detector.py`
+**Module Docstring:** RegimeDetector — Engine E coordinator.
+- **Class `RegimeDetector`**: 5-axis market regime detector with hysteresis, advisory hints,
+  - `def __init__()`
+  - `def detect_regime()`: Run full 5-axis regime detection for the current bar.
+  - `def history()`: Access the regime history store.
+  - `def reset()`: Clear all internal state. Must be called between backtest runs.
+
+### `regime_history.py`
+**Module Docstring:** RegimeHistoryStore — tracks regime state over time for duration,
+- **Class `RegimeHistoryStore`**: In-memory store that grows one row per bar.
+  - `def __init__()`
+  - `def append()`: Append a single bar's regime snapshot.
+  - `def axis_durations()`: Consecutive bars in current state per axis.
+  - `def flip_counts()`: Count state transitions per axis in the last `lookback` bars.
+  - `def get_transition_matrix()`: Compute empirical transition probabilities between macro regimes.
+  - `def to_dataframe()`: Export history as a DataFrame for analysis or persistence.
+  - `def save_csv()`: Save history to CSV.
+  - `def reset()`: Clear all state. Called between backtest runs.
