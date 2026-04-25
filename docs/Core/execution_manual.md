@@ -228,6 +228,49 @@ cat data/governor/edge_weights.json
 python -c "import pandas as pd; print(pd.read_parquet('data/research/edge_results.parquet'))"
 ```
 
+### MACRO DATA (FRED)
+```bash
+# The FRED macro pipeline lives at engines/data_manager/macro_data.py.
+# It is a library — no CLI script. Cache in data/macro/<SERIES_ID>.parquet.
+# Requires FRED_API_KEY in .env (free key: https://fredaccount.stlouisfed.org/apikeys).
+# Without a key the manager runs in cache-only mode.
+
+# Bootstrap / refresh the curated panel from a Python shell:
+python -c "from engines.data_manager.macro_data import MacroDataManager; \
+mgr = MacroDataManager(); panel = mgr.fetch_panel(); \
+print(panel.tail()); print(mgr.cache_status())"
+
+# Refresh a single series:
+python -c "from engines.data_manager.macro_data import MacroDataManager; \
+print(MacroDataManager().fetch_series('DGS10', force=True).tail())"
+
+# Inspect the on-disk cache state without hitting the network:
+python -c "from engines.data_manager.macro_data import MacroDataManager; \
+print(MacroDataManager(api_key=None).cache_status().to_string())"
+```
+
+### EARNINGS DATA (FINNHUB)
+```bash
+# The Finnhub earnings pipeline lives at engines/data_manager/earnings_data.py.
+# It is a library — no CLI script. Cache in data/earnings/<SYMBOL>_calendar.parquet.
+# Requires FINNHUB_API_KEY in .env (free key: https://finnhub.io/register).
+# Without a key the manager runs in cache-only mode.
+# Free tier ceiling is 60 req/min — manager rate-limits to 1.1s/call by default.
+
+# Bootstrap the cache for a universe (loops with rate limiting):
+python -c "from engines.data_manager.earnings_data import EarningsDataManager; \
+mgr = EarningsDataManager(); df = mgr.fetch_universe(['AAPL','MSFT','NVDA']); \
+print(df.tail()); print(mgr.cache_status())"
+
+# Refresh a single symbol (force-bypass the 24h freshness window):
+python -c "from engines.data_manager.earnings_data import EarningsDataManager; \
+print(EarningsDataManager().fetch_calendar('AAPL', force=True).tail())"
+
+# Inspect the on-disk cache state without hitting the network:
+python -c "from engines.data_manager.earnings_data import EarningsDataManager; \
+print(EarningsDataManager(api_key=None).cache_status().to_string())"
+```
+
 ### DEBUGGING & DIAGNOSTICS
 ```bash
 # The 'debug/' folder contains ad-hoc verification scripts
