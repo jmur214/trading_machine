@@ -167,6 +167,19 @@ class LifecycleManager:
         if not self.cfg.enabled:
             return []
 
+        # Phase α v3 sanity check: detect audit-trail / registry divergence.
+        # The 2026-04-25 registry-stomp bug accumulated multiple identical
+        # `<edge>: active → paused` events across consecutive runs because
+        # the bug reverted pause state between runs. Under correct behavior
+        # the second run should see the edge already paused and not fire
+        # the same transition again. Catch this signature here so the next
+        # bug class of "lifecycle decisions silently lost" is impossible to
+        # hide. Logged as a warning, not raised — observability not gating.
+        try:
+            self._audit_registry_divergence_check()
+        except Exception as exc:
+            log.debug(f"[Lifecycle] divergence check failed silently: {exc}")
+
         if trades is None or trades.empty:
             return []
 
@@ -338,6 +351,102 @@ class LifecycleManager:
         if recent_sharpe > self.cfg.revival_sharpe and recent_wr > self.cfg.revival_wr:
             return True, f"sustained_recovery_sharpe_{recent_sharpe:.2f}_wr_{recent_wr:.2f}"
         return False, "no_recovery"
+
+    # ----------------- divergence-detection (Phase α v3) ----------------- #
+
+    def _audit_registry_divergence_check(self) -> List[Dict]:
+        """Cross-check audit-trail history against current registry status.
+
+        For each edge that has at least one row in `lifecycle_history.csv`,
+        the most recent `new_status` should equal that edge's current
+        status in `edges.yml`. If they disagree, something between cycles
+        (a config restore, a manual edit, a bug like the 2026-04-25
+        EdgeRegistry.ensure() stomp) reverted the lifecycle's decision
+        without an audit trail.
+
+        Returns a list of divergence records (also logged). Empty list when
+        the audit trail and registry agree, or when either is empty (no
+        data to compare yet).
+
+        This is observability, not gating — the lifecycle still proceeds
+        with whatever the registry currently says. The point is to make
+        silent-revert bugs impossible to hide.
+        """
+        # Bail cleanly when either side has no data yet
+        if not self.history_path.exists() or self.history_path.stat().st_size == 0:
+            return []
+        registry_specs = self._load_registry()
+        if not registry_specs:
+            return []
+
+        try:
+            history = pd.read_csv(self.history_path)
+        except Exception as exc:
+            log.debug(f"[Lifecycle] could not read history for divergence check: {exc}")
+            return []
+
+        if history.empty or "edge_id" not in history.columns or "new_status" not in history.columns:
+            return []
+
+        # Most recent transition per edge_id. Sort by timestamp ascending
+        # then keep last per group → that's the latest event the lifecycle
+        # ever recorded for that edge.
+        try:
+            history = history.copy()
+            history["timestamp"] = pd.to_datetime(history["timestamp"], errors="coerce")
+            history = history.dropna(subset=["timestamp"]).sort_values("timestamp")
+            latest_per_edge = (
+                history.groupby("edge_id")[["timestamp", "new_status"]]
+                .last()
+                .to_dict("index")
+            )
+        except Exception as exc:
+            log.debug(f"[Lifecycle] divergence check parse failed: {exc}")
+            return []
+
+        registry_status = {
+            spec.get("edge_id"): spec.get("status")
+            for spec in registry_specs
+            if spec.get("edge_id")
+        }
+
+        divergences: List[Dict] = []
+        for edge_id, info in latest_per_edge.items():
+            recorded_status = info.get("new_status")
+            current_status = registry_status.get(edge_id)
+            if current_status is None:
+                # Edge in audit trail but not in registry — could be a
+                # rename/removal. Worth flagging but lower-severity.
+                divergences.append({
+                    "edge_id": edge_id,
+                    "audit_says": recorded_status,
+                    "registry_says": "<missing>",
+                    "kind": "missing_from_registry",
+                })
+                continue
+            if str(recorded_status) != str(current_status):
+                divergences.append({
+                    "edge_id": edge_id,
+                    "audit_says": recorded_status,
+                    "registry_says": current_status,
+                    "kind": "status_reverted",
+                })
+
+        if divergences:
+            log.warning(
+                "[Lifecycle] DIVERGENCE DETECTED — audit trail and registry disagree "
+                "on edge status. This is the signature of the 2026-04-25 "
+                "registry-stomp bug class (or a manual edit between cycles). "
+                "Investigate before trusting subsequent lifecycle decisions."
+            )
+            for d in divergences:
+                log.warning(
+                    f"[Lifecycle]   {d['edge_id']}: audit_trail says "
+                    f"{d['audit_says']!r}, registry says {d['registry_says']!r} "
+                    f"({d['kind']})"
+                )
+
+        return divergences
 
     # ----------------- persistence ----------------- #
 

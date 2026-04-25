@@ -1,6 +1,8 @@
-# Autonomous Edge Lifecycle Plan (2026-04-24)
+# Autonomous Edge Lifecycle Plan (2026-04-24, status update 2026-04-25)
 
-> **One-liner**: The system has Engines D and F described as "edge hunter" and "performance reviewer," but **neither actually does its job**. Discovery plumbing is broken; deprecation doesn't exist in code. This is the root cause of underperforming SPY.
+> **Status update (2026-04-25)**: Phases β, γ, α, α-v2, ε-step-1, and the registry-stomp bug-fix have shipped. Phase ζ has begun (first FRED-consuming edge: `macro_yield_curve_edge.py`). Lifecycle is now empirically validated end-to-end on the expanded 109-ticker universe — has correctly paused 2 of 14 base edges based on real evidence with a measurable risk-adjusted improvement. The "deprecate bad edges" half of the user's WHOLE POINT is now working. The "find new edges" half is partially addressed (data layers shipped, first edge integration shipped) but Engine D still searches the wrong space (random technical genes); that's the remaining gap.
+
+> **One-liner (original framing, 2026-04-24)**: The system has Engines D and F described as "edge hunter" and "performance reviewer," but **neither actually does its job**. Discovery plumbing is broken; deprecation doesn't exist in code. This is the root cause of underperforming SPY.
 
 ## Why This Plan Exists
 
@@ -56,6 +58,22 @@ These 7 entries are hand-typed. They predate Discovery. They've never been throu
 A useful edge should beat the "do nothing except hold SPY" benchmark. Passing at Sharpe 0.5 when SPY has been at ~1.0 just crowns edges that happen to correlate with SPY — providing no marginal alpha.
 
 ---
+
+## Phase Status (2026-04-25)
+
+| Phase | Status | Notes |
+|---|---|---|
+| β — Benchmark-relative gates | ✅ Shipped 2026-04-24 | `core/benchmark.py`, wired into Discovery + Evolution Cycle Gate 1 |
+| γ — Fix Discovery plumbing | ✅ Shipped 2026-04-24 | `evolution_controller.py` calls WFO directly; missing-script bug gone |
+| α — `lifecycle_manager.py` | ✅ Shipped 2026-04-24, validated 2026-04-25 | Soft-pause Pareto improvement on 39-ticker; correct pauses on 109-ticker |
+| α v2 — Soft-pause | ✅ Shipped 2026-04-24 | 0.25x weight multiplier on paused edges |
+| Registry stomp bug-fix | ✅ Shipped 2026-04-25 | `EdgeRegistry.ensure()` write-protects status; 21 regression tests |
+| ε — Demote base edges | 🔄 Implicit (lifecycle is doing it incrementally) | 2 of 14 paused so far; `reset_base_edges.py` available but not needed urgently |
+| ζ — New alpha templates | 🔄 In progress | Yield-curve edge shipped; PEAD next; factor work blocked on universe data |
+| α v3 — Refinement | ⏳ Open | Audit-trail/registry-state divergence detection (would catch stomp-bug class earlier) |
+| δ — GA fitness upgrade | ⏳ Open | 1 week estimate, deferred until Engine D rework |
+
+The "deprecation autonomy" half of the user's WHOLE POINT is now working end-to-end. The "discovery autonomy" half needs Engine D to search the right space (factors / macro / earnings) — that's the open structural work.
 
 ## The Plan — 6 Phases
 
