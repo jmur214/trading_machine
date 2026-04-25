@@ -56,9 +56,13 @@ class DataManager:
             print(f"[DATA_MANAGER][INFO] Falling back to yfinance for {ticker}...")
         
         try:
-            # yfinance expects YYYY-MM-DD
-            start_date = pd.to_datetime(start).strftime("%Y-%m-%d")
-            end_date = pd.to_datetime(end).strftime("%Y-%m-%d")
+            # yfinance expects YYYY-MM-DD strings (or accepts None = today).
+            # Don't call strftime on None: pd.to_datetime(None) → NaT, which
+            # raises "NaTType does not support strftime" — silently bricks the
+            # whole fetch path when callers (e.g. scripts/fetch_universe.py)
+            # leave --end at its None default.
+            start_date = pd.to_datetime(start).strftime("%Y-%m-%d") if start else None
+            end_date = pd.to_datetime(end).strftime("%Y-%m-%d") if end else None
             
             # Map timeframe
             interval = "1d"
