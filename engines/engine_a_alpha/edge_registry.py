@@ -126,16 +126,34 @@ class EdgeRegistry:
 
     # Convenience to ensure a spec exists (idempotent upsert)
     def ensure(self, spec: EdgeSpec) -> None:
+        """Idempotent upsert.
+
+        For NEW specs (edge_id not yet in registry): register with the
+        provided status (typically `active` from auto-register-on-import code).
+
+        For EXISTING specs: merge non-status fields (category, module, version,
+        params) if changed. **Do NOT touch the status field.** Status is
+        owned by Engine F's lifecycle layer per the edges.yml Write Contract
+        in PROJECT_CONTEXT.md ("F writes: status field changes").
+
+        Prior bug (fixed 2026-04-25): the previous implementation did
+        `if spec.status: s.status = spec.status`, which let the auto-register-
+        on-import code (e.g. momentum_edge.py:64) silently stomp the
+        lifecycle's pause/retire decisions on every backtest startup. That
+        broke autonomy invisibly — edges paused by Phase α would revert to
+        active on the next module import, with the only "evidence" being
+        that lifecycle_history.csv accumulated repeated pause events for the
+        same edge across runs. Now status is write-protected here; only
+        Engine F (via direct `set_status`) can transition it.
+        """
         if spec.edge_id not in self._specs:
             self.register(spec)
         else:
-            # merge params/version if updated
+            # Merge non-status fields. Status is OWNED by lifecycle/governance.
             s = self._specs[spec.edge_id]
             s.category = spec.category or s.category
             s.module = spec.module or s.module
             s.version = spec.version or s.version
             s.params = spec.params or s.params
-            # keep status as-is unless provided
-            if spec.status:
-                s.status = spec.status
+            # status: intentionally NOT updated — see docstring above
             self._save()
