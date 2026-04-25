@@ -37,7 +37,11 @@
     "volume_anomaly_v1": 1.0,
     "panic_v1": 1.0,
     "herding_v1": 1.0,
-    "earnings_vol_v1": 1.0
+    "earnings_vol_v1": 1.0,
+    "momentum_factor_v1": 0.0,
+    "macro_yield_curve_v1": 0.5,
+    "pead_v1": 0.5,
+    "low_vol_factor_v1": 0.0
   },
   "edge_params": {}
 }
