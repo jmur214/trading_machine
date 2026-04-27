@@ -45,7 +45,8 @@
     "macro_real_rate_v1": 0.5,
     "macro_dollar_regime_v1": 0.5,
     "pead_v1": 0.5,
-    "low_vol_factor_v1": 0.0
+    "low_vol_factor_v1": 0.5,
+    "insider_cluster_v1": 0.5
   },
   "edge_params": {}
 }
