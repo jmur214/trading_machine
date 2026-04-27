@@ -40,6 +40,10 @@
     "earnings_vol_v1": 1.0,
     "momentum_factor_v1": 0.0,
     "macro_yield_curve_v1": 0.5,
+    "macro_credit_spread_v1": 0.5,
+    "macro_unemployment_momentum_v1": 0.5,
+    "macro_real_rate_v1": 0.5,
+    "macro_dollar_regime_v1": 0.5,
     "pead_v1": 0.5,
     "low_vol_factor_v1": 0.0
   },
