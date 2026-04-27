@@ -77,6 +77,40 @@ Maintained as a focused checklist in `docs/Progress_Summaries/2026-04-25_session
 - **One user-side action remains for alpha-measurement unblocks**: `scripts/fetch_universe.py` for the survivorship-aware S&P 500 universe → retest `momentum_factor_v1` with proper top-quintile breadth. (`FRED_API_KEY` + bootstrap is done — `macro_yield_curve_v1` is live. Earnings is done — backend swapped Finnhub→yfinance on 2026-04-25 after Finnhub free tier was confirmed paywalled on history; `pead_v1` is reading from a 109-ticker / 2698-event cache.)
 - **Three architectural items need design** (not autonomous-loop-sized): conditional-weight composition primitive in signal_processor (the architectural answer to today's `low_vol_factor_v1` regime-conditional failure), Engine D rework to search factor/macro/earnings space instead of technical-only genes, and macro-aware Engine E regime classifier (replaces price-only labels with FRED-driven; requires FRED cache populated first).
 
+## Phase 2.10: Alpha-First Roadmap (ACTIVE — 2026-04-27)
+
+> Driven by user-shared audit doc `docs/Progress_Summaries/2026-04-26_audit-and-improvements.md` (16 non-LLM autonomous discovery methods) plus user feedback: defer AI-heavy methods, prioritize code-level improvements, **prioritize items that actually generate new alpha** rather than items that only harden existing search.
+
+### Sequence (alpha generation first, hardening after)
+
+The HIGH severity finding `[HIGH] System Sharpe 0.4 on 109-ticker universe vs SPY 0.88` (`docs/Audit/health_check.md`) is the load-bearing problem. New alpha sources move that number; hardening doesn't. Steps 1-5 below ship new edges; Step 6+ harden the gauntlet around them.
+
+- [~] **Step 1: `momentum_factor_v1` walk-forward retest on S&P 500 universe** (~1 hour, no new code). Prior 39-ticker test fell apart on Split B (-0.19 OOS Sharpe) and Split C (-0.62) because top-quintile = 8 mega-caps. The 2026-04-26 fetch landed 666 S&P 500 names with data; top-quintile is now ~130 stocks. Backup-mutate-restore `config/backtest_settings.json`, run `scripts/walk_forward_factor_edge.py` on the wider universe, document. **Pass** = OOS Sharpe ≥ benchmark - 0.2 on 2 of 3 splits → flip status to active. **Fail** = alpha shortage is structural, escalates urgency on Steps 2-5.
+- [ ] **Step 2: `insider_cluster_v1` edge** (~3 days). `engines/data_manager/insider_data.py` shipped 2026-04-26; zero edges consume it. Cluster Form-4 buying (≥3 distinct insiders within 60 days) predicts positive returns 1-3 month forward in academic literature. Long-only v1 with 90-day linear-decay hold window, additive-aggregation friendly like PEAD. Bootstrap → implement edge → 4-gate validate → register at weight 0.5.
+- [ ] **Step 3: 4-5 macro composite edges** (~1 week). FRED cache holds 18 series; only T10Y2Y is consumed. Ship `macro_credit_spread_v1` (BAA-AAA), `macro_unemployment_momentum_v1` (3m change in U-3), `macro_real_rate_v1` (10Y TIPS or implied), `macro_dollar_regime_v1` (DXY trend). Each mirrors `macro_yield_curve_edge.py` exactly: read FRED series, compute regime label, emit uniform tilt across universe. Each ~1-2 days.
+- [ ] **Step 4: Conditional-weight composition primitive in `signal_processor` + revive `low_vol_factor_v1`** (~3-5 days). Resolves the open MEDIUM in `health_check.md`. Add `regime_gate` field to `EdgeSpec`; `signal_processor.aggregate_signals()` reads Engine E's regime label per bar and applies the gate as a weight multiplier. Default `{}` = full weight (no behavior change for existing edges). Once shipped, re-flip `low_vol_factor_v1` to active with regime-gated weights matching its known profile (positive in 2022-style bear, near-zero in bull windows). Re-run walk-forward.
+- [ ] **Step 5: PEAD variants** (~3-5 days). Current `pead_v1` is long-only positive-surprise. Ship `pead_short_v1` (negative surprise), `pead_magnitude_tiered_v1` (small/medium/large surprise tiers), `pead_predrift_conditioned_v1` (only fire if pre-announcement drift was small — PEAD's strongest variant in literature). Each through 4-gate validator.
+- [ ] **Step 6: Validation gauntlet hardening + GA fitness upgrade** (~1 week). Now that Steps 2-5 produce a candidate stream, gauntlet hardening starts mattering. (a) Multiple-testing correction in `significance.py` (BH-FDR — `monte_carlo_permutation_test` currently has none, ~5% of 132 candidates pass on pure noise). (b) GA fitness function upgrade per Phase δ formula `0.5*OOS_Sharpe_vs_benchmark + 0.3*(1-PBO) + 0.2*OOS/IS_ratio`. (c) Transfer test as 5th gate (train on universe A → eval on universe B).
+
+### Roadmap (after Step 6, alpha + hardening lanes)
+
+7. Engine D gene vocabulary expansion (factor / macro / event genes) — already MEDIUM in health_check, ~1-2 weeks
+8. Sector rotation edge + calendar/seasonality edge — additional Class D edges, ~1 week
+9. Mutual-info feature ranking — ~hours, diagnostic
+10. Adversarial validation as Gate 6 — ~1-2 days, hardening
+11. MAP-Elites GA selection — ~3 days, algorithmic
+12. Optuna replacing grid search — ~1 day, algorithmic
+13. Causal-discovery validation gate (`dowhy`) — ~1 week, algorithmic
+14. Thompson sampling allocator — ~1 week, algorithmic
+15. Conformal prediction intervals — ~3-5 days, algorithmic
+16. Vectorization audit — variable, code hygiene
+
+### Out of Scope (AI-heavy, deferred per user direction 2026-04-27)
+
+PySR / gplearn symbolic regression, tsfresh / AutoGluon AutoML, GNN universe model, self-play RL, TDA, JAX backtester, coevolutionary alphas, reservoir computing, self-supervised TS, active inference, agent-based simulation. Re-evaluate after Steps 1-16 and the HIGH-severity Sharpe finding has empirical movement to attribute to.
+
+Full plan: `~/.claude/plans/foamy-foraging-horizon.md` (mirror, not authoritative — this section is the source of truth).
+
 ## Phase 3: From Simulation to Reality
 - [ ] Enforce structural risk diversification logic and cross-sector allocation before advancing trading operations.
 - [ ] Connect the Order Management System (OMS).
