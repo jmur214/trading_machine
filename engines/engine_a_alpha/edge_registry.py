@@ -15,6 +15,11 @@ class EdgeSpec:
     version: str = "1.0.0"
     params: Optional[Dict[str, Any]] = None
     status: str = "active"      # "active" | "candidate" | "retired"
+    # Regime-conditional weight gate: maps Engine E regime_summary labels
+    # ("benign", "stressed", "crisis") to weight multipliers [0, 1].
+    # Empty dict / None means the edge is unconditionally weighted (no gate).
+    # Applied by SignalProcessor on top of alpha_settings edge_weights.
+    regime_gate: Optional[Dict[str, float]] = None
 
 
 class EdgeRegistry:
@@ -50,6 +55,7 @@ class EdgeRegistry:
                     version=row.get("version", "1.0.0"),
                     params=row.get("params") or {},
                     status=row.get("status", "active"),
+                    regime_gate=row.get("regime_gate") or None,
                 )
                 specs[spec.edge_id] = spec
             self._specs = specs
@@ -57,19 +63,20 @@ class EdgeRegistry:
             self._specs = {}
 
     def _save(self) -> None:
-        data = {
-            "edges": [
-                {
-                    "edge_id": s.edge_id,
-                    "category": s.category,
-                    "module": s.module,
-                    "version": s.version,
-                    "params": s.params or {},
-                    "status": s.status,
-                }
-                for s in self._specs.values()
-            ]
-        }
+        rows = []
+        for s in self._specs.values():
+            row: Dict[str, Any] = {
+                "edge_id": s.edge_id,
+                "category": s.category,
+                "module": s.module,
+                "version": s.version,
+                "params": s.params or {},
+                "status": s.status,
+            }
+            if s.regime_gate:
+                row["regime_gate"] = s.regime_gate
+            rows.append(row)
+        data = {"edges": rows}
         self.path.write_text(yaml.safe_dump(data, sort_keys=False))
 
     # --------------- public api ---------------- #

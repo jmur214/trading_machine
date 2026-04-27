@@ -388,6 +388,17 @@ class AlphaEngine:
         for k, v in self._edge_weights_external.items():
             self.cfg.edge_weights[k] = _coerce_float(v, 1.0)
 
+        # Load regime gates from EdgeRegistry (edge_id -> {regime -> multiplier})
+        try:
+            from engines.engine_a_alpha.edge_registry import EdgeRegistry as _ER
+            _regime_gates = {
+                s.edge_id: s.regime_gate
+                for s in _ER().get_all_specs()
+                if s.regime_gate
+            }
+        except Exception:
+            _regime_gates = {}
+
         # Components
         self.collector = SignalCollector(edges=self.edges, debug=self.cfg.debug)
         self.processor = SignalProcessor(
@@ -395,6 +406,7 @@ class AlphaEngine:
             hygiene=self.cfg.hygiene,
             ensemble=self.cfg.ensemble,
             edge_weights=self.cfg.edge_weights,
+            regime_gates=_regime_gates,
             debug=self.cfg.debug,
         )
         self.formatter = SignalFormatter(

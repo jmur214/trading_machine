@@ -19,7 +19,7 @@ Output schema per ticker:
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Dict, List, Tuple
+from typing import Dict, List, Optional
 
 import numpy as np
 import pandas as pd
@@ -84,12 +84,14 @@ class SignalProcessor:
         hygiene: HygieneSettings,
         ensemble: EnsembleSettings,
         edge_weights: Dict[str, float],
+        regime_gates: Optional[Dict[str, Dict[str, float]]] = None,
         debug: bool = False,
     ):
         self.regime = regime
         self.hygiene = hygiene
         self.ensemble = ensemble
         self.edge_weights = dict(edge_weights or {})
+        self.regime_gates = dict(regime_gates or {})
         self.debug = bool(debug)
         if self.debug:
             print(f"[SIGNAL_PROCESSOR] Init with Regime: {self.regime}")
@@ -228,6 +230,16 @@ class SignalProcessor:
                 # suppression does more harm than good.
 
                 w = float(self.edge_weights.get(edge_name, 1.0))
+                # Regime gate: per-edge conditional weighting from EdgeSpec.regime_gate.
+                # Multiplies w by the gate value for the current regime_summary.
+                # Default 1.0 if regime not in gate (unconditional pass-through).
+                gate = self.regime_gates.get(edge_name)
+                if gate:
+                    advisory = regime_meta.get("advisory") if regime_meta else None
+                    current_regime = (advisory.get("regime_summary", "benign")
+                                      if advisory else "benign")
+                    w *= float(gate.get(current_regime, 1.0))
+
                 details.append({"edge": edge_name, "raw": raw_f, "norm": norm, "weight": w})
                 weighted_sum += (norm * w)
                 # Only count edges with actual signal in denominator —
