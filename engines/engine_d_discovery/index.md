@@ -70,6 +70,7 @@
 ### `significance.py`
 **Module Docstring:** Statistical significance testing for edge discovery validation.
 - **Function `monte_carlo_permutation_test()`**: Test whether the strategy's Sharpe ratio is statistically significant
+- **Function `apply_bh_fdr()`**: Benjamini-Hochberg false-discovery-rate correction for a batch of p-values.
 - **Function `minimum_track_record_length()`**: Minimum Track Record Length (MinTRL) per Bailey & Lopez de Prado (2012).
 
 ### `synthetic_market.py`

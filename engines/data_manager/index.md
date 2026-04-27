@@ -166,16 +166,28 @@ integration test gated behind `UNIVERSE_LIVE_TEST=1`.
 - **Function `is_info_enabled()`**: No docstring
 
 ### `earnings_data.py`
-**Module Docstring:** Finnhub earnings calendar + surprise data pipeline.
+**Module Docstring:** yfinance-backed earnings calendar + surprise data pipeline.
 - **Class `EarningsDataError`**: Raised for non-recoverable failures in the earnings pipeline.
 - **Class `EarningsEvent`**: Lightweight value type for a single earnings announcement.
-- **Class `EarningsDataManager`**: Fetch + cache Finnhub earnings calendar entries per ticker.
+- **Class `EarningsDataManager`**: Fetch + cache yfinance earnings calendar entries per ticker.
   - `def __init__()`
   - `def load_cached()`: Read a cached calendar without touching the network.
   - `def fetch_calendar()`: Fetch one ticker's earnings calendar, with cache.
   - `def fetch_universe()`: Fetch a list of tickers and concatenate into a long events frame.
   - `def cache_status()`: Return a DataFrame describing the on-disk cache state.
 - **Function `surprise_pct()`**: Standard surprise-magnitude transform.
+
+### `insider_data.py`
+**Module Docstring:** OpenInsider Form 4 scraping pipeline.
+- **Class `InsiderDataError`**: Raised for non-recoverable failures in the insider data pipeline.
+- **Class `InsiderTxn`**: Lightweight value type for a single insider transaction.
+- **Class `InsiderDataManager`**: Fetch + cache OpenInsider Form 4 transactions per ticker.
+  - `def __init__()`
+  - `def load_cached()`: Read a cached transactions frame without touching the network.
+  - `def fetch_filings()`: Fetch one ticker's insider transactions, with cache.
+  - `def fetch_universe()`: Fetch a list of tickers and concatenate into one long frame.
+  - `def cache_status()`: Return a DataFrame describing the on-disk cache state.
+- **Function `parse_insider_table()`**: Parse an OpenInsider screener HTML response.
 
 ### `macro_data.py`
 **Module Docstring:** FRED macro data pipeline.
