@@ -5,6 +5,13 @@ from engines.data_manager.earnings_data import (
     EarningsEvent,
     surprise_pct,
 )
+from engines.data_manager.insider_data import (
+    INSIDER_TXN_COLUMNS,
+    InsiderDataError,
+    InsiderDataManager,
+    InsiderTxn,
+    parse_insider_table,
+)
 from engines.data_manager.macro_data import (
     MACRO_SERIES,
     MacroDataError,
@@ -30,6 +37,10 @@ __all__ = [
     "EarningsDataError",
     "EarningsDataManager",
     "EarningsEvent",
+    "INSIDER_TXN_COLUMNS",
+    "InsiderDataError",
+    "InsiderDataManager",
+    "InsiderTxn",
     "MACRO_SERIES",
     "MEMBERSHIP_COLUMNS",
     "MacroDataError",
@@ -42,6 +53,7 @@ __all__ = [
     "current_tickers",
     "list_series",
     "normalize_ticker",
+    "parse_insider_table",
     "parse_membership_html",
     "real_fed_funds",
     "surprise_pct",

@@ -280,6 +280,27 @@ mgr.fetch_universe(json.load(open('config/universe.json')), force=True); \
 print(mgr.cache_status().to_string())"
 ```
 
+### INSIDER TRANSACTIONS (OPENINSIDER)
+```bash
+# The OpenInsider scraper lives at engines/data_manager/insider_data.py.
+# It is a library — no CLI script. Cache in data/insider/<TICKER>.parquet.
+# OpenInsider is unauthenticated — no API key required.
+# Be a good citizen: rate-limited to 1.5s/call by default; never spam.
+
+# Bootstrap the cache for a universe (loops with rate limiting):
+python -c "from engines.data_manager.insider_data import InsiderDataManager; \
+mgr = InsiderDataManager(); df = mgr.fetch_universe(['AAPL','MSFT','NVDA']); \
+print(df.tail()); print(mgr.cache_status())"
+
+# Refresh a single ticker (force-bypass the 24h freshness window):
+python -c "from engines.data_manager.insider_data import InsiderDataManager; \
+print(InsiderDataManager().fetch_filings('AAPL', force=True).tail())"
+
+# Inspect the on-disk cache state without hitting the network:
+python -c "from engines.data_manager.insider_data import InsiderDataManager; \
+print(InsiderDataManager().cache_status().to_string())"
+```
+
 ### UNIVERSE MEMBERSHIP (S&P 500 historical)
 ```bash
 # The membership loader lives at engines/data_manager/universe.py.
