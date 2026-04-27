@@ -79,6 +79,9 @@ class DiscoveryLogger:
             "robustness_survival": result.get("robustness_survival", 0.0),
             "wfo_degradation": result.get("wfo_degradation", 0.0),
             "significance_p": result.get("significance_p", 1.0),
+            "adjusted_significance_p": result.get("adjusted_significance_p"),
+            "bh_fdr_threshold": result.get("bh_fdr_threshold"),
+            "significance_threshold": result.get("significance_threshold"),
             "passed_all_gates": result.get("passed_all_gates", False),
             "promoted": promoted,
         })

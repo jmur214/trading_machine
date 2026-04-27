@@ -11,6 +11,8 @@ import pandas as pd
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from engines.engine_d_discovery.discovery import DiscoveryEngine
+from engines.engine_d_discovery.discovery_logger import DiscoveryLogger
+from engines.engine_d_discovery.significance import apply_bh_fdr
 from engines.engine_d_discovery.wfo import WalkForwardOptimizer
 from engines.data_manager.data_manager import DataManager
 
@@ -33,6 +35,9 @@ class AutonomousEvolution:
     def __init__(self, root_dir: str):
         self.root = Path(root_dir)
         self.discovery = DiscoveryEngine(registry_path=str(self.root / "data" / "governor" / "edges.yml"))
+        self.discovery_logger = DiscoveryLogger(
+            log_path=str(self.root / "data" / "research" / "discovery_log.jsonl")
+        )
         self.dm = DataManager(cache_dir=str(self.root / "data" / "processed"))
         
         # Load Data once
@@ -68,17 +73,53 @@ class AutonomousEvolution:
             logger.info(f"Generated {len(candidates)} mutant candidates.")
         
         winners = []
-        
+
+        # ---- Pass 1: collect raw metrics (defer Gate 4 to BH-FDR pass) ----
+        all_metrics: list = []
         for i, cand in enumerate(candidates):
             logger.info(f"--- Evaluating Candidate {i+1}/{len(candidates)}: {cand['edge_id']} ---")
-            
-            # 2. VALIDATE (Fitness + Robustness)
-            metrics = self.discovery.validate_candidate(cand, self.data_map)
+
+            # 2. VALIDATE (Fitness + Robustness). Pass `significance_threshold=None`
+            # so Gate 4 is deferred — we apply Benjamini-Hochberg FDR correction
+            # across the whole batch below instead of per-candidate p<0.05.
+            metrics = self.discovery.validate_candidate(
+                cand, self.data_map, significance_threshold=None,
+            )
+            all_metrics.append(metrics)
+
+        # ---- BH-FDR batch correction across all candidate p-values ----
+        raw_p_values = [m.get("significance_p", 1.0) for m in all_metrics]
+        bh_alpha = 0.05
+        bh = apply_bh_fdr(raw_p_values, alpha=bh_alpha) if raw_p_values else None
+        if bh is not None:
+            logger.info(
+                f"BH-FDR over {bh['n_tests']} candidates @ alpha={bh_alpha}: "
+                f"{bh['n_rejected']} rejected, threshold={bh['threshold']:.4f}"
+            )
+            for i, m in enumerate(all_metrics):
+                m["adjusted_significance_p"] = bh["adjusted_p_values"][i]
+                m["bh_fdr_threshold"] = bh["threshold"]
+                m["significance_threshold"] = bh_alpha
+                # Re-apply Gate 4 with BH-corrected rejection.
+                m["passed_all_gates"] = (
+                    m.get("sharpe", 0.0) > 0
+                    and m.get("robustness_survival", 0.0) >= 0.7
+                    and bool(bh["reject_at_alpha"][i])
+                )
+
+        # ---- Pass 2: gating + WFO + promotion ----
+        for i, cand in enumerate(candidates):
+            metrics = all_metrics[i]
             sharpe = metrics.get("sharpe", 0.0)
             sortino = metrics.get("sortino", 0.0)
             survival = metrics.get("robustness_survival", 0.0)
-            
-            logger.info(f"   > Metrics: Sharpe={sharpe:.2f} | Sortino={sortino:.2f} | Survival={survival*100:.0f}%")
+            sig_p = metrics.get("significance_p", 1.0)
+            adj_p = metrics.get("adjusted_significance_p", float("nan"))
+
+            logger.info(
+                f"   > Metrics: Sharpe={sharpe:.2f} | Sortino={sortino:.2f} | "
+                f"Survival={survival*100:.0f}% | p={sig_p:.3f} | adj_p={adj_p:.3f}"
+            )
 
             # Gating Logic (Tier 1 Filters)
             # Gate 1 is benchmark-relative: an edge that beats SPY buy-and-hold by at least
@@ -101,6 +142,12 @@ class AutonomousEvolution:
                 logger.warning(f"Benchmark gate unavailable ({e}), falling back to Sharpe < 0.5")
                 bench_threshold = 0.5
 
+            # Gate 4 result is the BH-corrected rejection from `apply_bh_fdr` —
+            # an edge whose adjusted p-value cannot reject the null at FDR=0.05
+            # is statistically indistinguishable from random shuffles of itself
+            # AFTER accounting for the size of the batch we tested.
+            sig_rejected = bh is not None and bool(bh["reject_at_alpha"][i])
+
             if sharpe < bench_threshold:
                 passed = False
                 rejection_reason = f"Sharpe {sharpe:.2f} < benchmark_threshold {bench_threshold:.2f}"
@@ -108,15 +155,19 @@ class AutonomousEvolution:
                 passed = False; rejection_reason = "Low Sortino"
             elif survival < 0.4:
                 passed = False; rejection_reason = "Failed Robustness"
-            
+            elif not sig_rejected:
+                passed = False
+                rejection_reason = (
+                    f"Failed BH-FDR significance (raw p={sig_p:.3f}, "
+                    f"adj p={adj_p:.3f}, alpha=0.05)"
+                )
+
+            self.discovery_logger.log_validation(cand["edge_id"], metrics, promoted=False)
+
             if not passed:
                 logger.info(f"   > REJECTED: {rejection_reason}")
                 # Update registry to 'failed' so we don't loop forever
                 cand["status"] = "failed"
-                # We need a way to save this status update back to registry
-                # For now, we just batch update at end? 
-                # Better to update self.discovery registry. 
-                # We'll re-save the whole list at the end.
                 continue
                 
             logger.info("   > PASSED INITIAL VALIDATION. Proceeding to WFO...")

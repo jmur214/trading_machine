@@ -4,7 +4,7 @@ import yaml
 import pandas as pd
 import logging
 from pathlib import Path
-from typing import List, Dict, Any, Optional, TypeVar, Type
+from typing import List, Dict, Any, Optional, Type
 
 # Import Template Interface from Engine A
 from engines.engine_a_alpha.edge_template import EdgeTemplate
@@ -473,16 +473,32 @@ class DiscoveryEngine:
             
         print(f"[DISCOVERY] Registry saved. New: {new_count}, Updated: {update_count}. Path: {self.registry_path}")
 
-    def validate_candidate(self, candidate_spec: Dict[str, Any], data_map: Dict[str, pd.DataFrame]) -> Dict[str, float]:
+    def validate_candidate(
+        self,
+        candidate_spec: Dict[str, Any],
+        data_map: Dict[str, pd.DataFrame],
+        significance_threshold: Optional[float] = 0.05,
+    ) -> Dict[str, float]:
         """
         Multi-gate validation pipeline for edge candidates.
 
         Gate 1: Quick backtest — must produce Sharpe > 0 (cheap filter).
         Gate 2: PBO robustness — 50 synthetic paths, survival > 0.7.
         Gate 3: WFO degradation — OOS Sharpe >= 60% of IS Sharpe.
-        Gate 4: Statistical significance — permutation test p-value < 0.05.
+        Gate 4: Statistical significance — permutation test p-value
+                below `significance_threshold`.
 
-        Returns metrics dict with all gate results.
+        The `significance_threshold` parameter exists so an orchestrator
+        running a batch of candidates can defer the Gate 4 decision until
+        after `apply_bh_fdr` (Benjamini-Hochberg multiple-testing correction)
+        is applied to the whole batch. Pass `None` to skip the per-candidate
+        significance gate (the orchestrator will then re-evaluate
+        `passed_all_gates` post-hoc using BH-corrected rejections). Standalone
+        callers can leave it at 0.05 to get the uncorrected check, which is
+        valid for a single-test scenario where BH-FDR is a no-op anyway.
+
+        Returns metrics dict with all gate results, plus the raw
+        `significance_p` so the orchestrator can batch-correct.
         """
         import numpy as np
 
@@ -651,12 +667,23 @@ class DiscoveryEngine:
             result["significance_p"] = float(sig_p)
 
             # ---- Final gate check ----
+            # If `significance_threshold` is None, the orchestrator will
+            # re-evaluate Gate 4 after BH-FDR batch correction; treat it as
+            # provisionally passed here so other gates aren't masked.
+            if significance_threshold is None:
+                sig_passed = True
+                sig_threshold_for_log = float("nan")
+            else:
+                sig_passed = sig_p < significance_threshold
+                sig_threshold_for_log = significance_threshold
+
             passed = (
                 sharpe > 0
                 and survival_rate >= 0.7
-                and sig_p < 0.05
+                and sig_passed
             )
             result["passed_all_gates"] = passed
+            result["significance_threshold"] = sig_threshold_for_log
 
             gate_summary = (
                 f"Sharpe={sharpe:.2f}, survival={survival_rate:.0%}, "
