@@ -43,10 +43,9 @@ then LOW. Within each severity, list newest at the top.
 ### [MEDIUM] signal_processor lacks conditional-weight composition for regime-conditional edges
 - Engine: A (signal_processor)
 - First flagged: 2026-04-25
-- Status: open — architectural design needed
-- Description: `signal_processor.py` aggregates edge signals via `weighted_sum = sum(score * weight)` — every edge is treated as unconditionally additive. This blocks deploying edges whose alpha is regime-conditional. Concrete evidence (today): `low_vol_factor_v1` walk-forward — in-sample +0.23 Sharpe (driven by 2022 bear), OOS -0.22 to -0.36 (in bull periods). The factor signal IS real (40+ years academic validation, USMV/SPLV ETFs deliver Sharpe 0.7-1.0); it just can't deploy as a constant-weight contributor because the alpha is concentrated in adverse regimes. Same architectural gap likely blocks: low-vol generally, defensive value strategies, momentum strategies that work in trending regimes only, mean-reversion strategies that work in chop. The 2026-04-23 per-edge per-regime kill-switch attempt was a binary version of this primitive that was falsified — the underlying need is real, the implementation needs to be soft-weighted not binary.
-- Recommended next step: design either (a) edge-level `regime_gate` metadata read by signal_processor — e.g., `regime_gate: {"recession": 1.0, "expansion": 0.2}` mapped against Engine E advisory, OR (b) Engine E advisory output a per-edge weight multiplier that signal_processor applies. Either is multi-day design + implementation. Requires the FRED-driven regime classifier (see other MEDIUM finding) to be in place first so the regime signal is reliable.
-- See: `memory/project_low_vol_regime_conditional_2026_04_25.md`, `docs/Progress_Summaries/2026-04-25_session.md` "What needs adding" section.
+- Status: **resolved 2026-04-27** — regime_gate primitive shipped (commit aa1cb65)
+- Description: Resolved. `SignalProcessor` now accepts `regime_gates: Dict[str, Dict[str, float]]` in its constructor. Per-edge gate maps Engine E `regime_summary` labels ("benign", "stressed", "crisis") to weight multipliers [0,1]. Gate multiplies `w` in the weighted-mean aggregation; missing labels default to 1.0; `regime_meta=None` defaults to "benign". `low_vol_factor_v1` re-enabled at weight 0.5 with gate `{benign:0.15, stressed:1.0, crisis:1.0}`. 8 new tests in `tests/test_signal_processor_regime_gate.py` covering all edge cases.
+- See: commit aa1cb65, `tests/test_signal_processor_regime_gate.py`, `data/governor/edges.yml` (low_vol_factor_v1 entry).
 
 ### [MEDIUM] Engine D's GA gene vocabulary searches a strip-mined space
 - Engine: D (Discovery)
