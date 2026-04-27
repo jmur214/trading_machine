@@ -25,10 +25,12 @@ then LOW. Within each severity, list newest at the top.
 ### [HIGH] System Sharpe 0.4 on 109-ticker universe vs SPY 0.88 in-sample
 - Engine: System-level (Alpha + Risk + Portfolio composition)
 - First flagged: 2026-04-25
-- Status: open — diagnostic complete, remediation depends on Engine D rework + new alpha sources
+- Status: open — active remediation in progress via Phase 2.10 (new edges shipping 2026-04-27)
 - Description: Universe expansion from 39 to 109 tickers exposed that the system underperforms SPY by ~0.5 Sharpe on a broader equity universe. The previously-reported Sharpe 0.979 was a curated-mega-cap-tech artifact. Existing edges don't generalize beyond the original 39 names; lifecycle has correctly paused 2 of 14 (`atr_breakout_v1`, `momentum_edge_v1`) but no replacement alpha is queued.
-- Recommended next step: integrate the parallel agent's FRED + earnings data layers into actual edges (PEAD, yield-curve, etc.); re-architect Engine D to search factor space instead of random technical genes (per the strategic pivot doc).
-- See: `docs/Progress_Summaries/2026-04-24_strategic_pivot.md`, `memory/project_lifecycle_vindicated_universe_expansion_2026_04_25.md`.
+- 2026-04-27 progress: Phase 2.10 shipped 9 new edges — 4 macro regime-tilts (credit_spread, unemployment_momentum, real_rate, dollar_regime), insider_cluster_v1, pead_short_v1, pead_predrift_v1 — plus regime_gate composition primitive enabling low_vol_factor_v1. Full backtest pending to measure net impact.
+- 2026-04-27 update: `momentum_factor_v1` retest on 666-ticker S&P 500 universe CONFIRMED FAILED — FACTOR ON Sharpe 0.193 vs FACTOR OFF 0.684, delta -0.491. The 39-ticker failure (-0.19) was NOT a concentration-risk artifact; the factor genuinely underperforms on this universe and time window. Weight stays 0.0.
+- Recommended next step: run full backtest to measure Sharpe impact of Phase 2.10 additions; then Step 6B (GA fitness upgrade) + Engine D gene vocabulary expansion.
+- See: `docs/Progress_Summaries/2026-04-24_strategic_pivot.md`, `memory/project_lifecycle_vindicated_universe_expansion_2026_04_25.md`, `memory/project_factor_edge_first_alpha_2026_04_24.md`.
 
 ### MEDIUM
 
