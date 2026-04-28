@@ -43,14 +43,13 @@ class WalkForwardOptimizer:
         full_timeline = pd.to_datetime(list(self.data_map.values())[0].index)
         start_dt = pd.to_datetime(start_date)
         
-        # Align start
-        # find closest index
+        # Align start — find closest index.  pandas 2.0 removed the
+        # `method='nearest'` kwarg from Index.get_loc; use get_indexer instead.
         try:
-             start_idx = full_timeline.get_loc(start_dt, method='nearest')
-             if isinstance(start_idx,  (slice, np.ndarray)): # handle duplicates
-                 start_idx = start_idx[0]
-        except:
-             start_idx = 0
+            indexer = full_timeline.get_indexer([start_dt], method="nearest")
+            start_idx = int(indexer[0]) if len(indexer) and indexer[0] != -1 else 0
+        except Exception:
+            start_idx = 0
              
         current_idx = start_idx
         

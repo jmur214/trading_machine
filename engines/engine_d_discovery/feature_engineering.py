@@ -343,19 +343,26 @@ class FeatureEngineer:
         These are constant across the DataFrame (same regime for all bars in a batch).
         For bar-by-bar regime, the caller should pass per-bar regime_meta.
         """
-        # Trend state
-        trend = regime_meta.get("trend", "unknown")
+        # Trend state — prefer the structured `trend_regime["state"]` (5-axis
+        # output from regime_detector.detect_regime), fall back to the top-level
+        # backward-compat key.  Bull/bear/range labels live here.
+        trend = (regime_meta.get("trend_regime") or {}).get("state") \
+            or regime_meta.get("trend", "unknown")
         df["Regime_Bull"] = int(trend == "bull")
         df["Regime_Bear"] = int(trend == "bear")
         df["Regime_Range"] = int(trend == "range")
 
-        # Volatility state
-        vol = regime_meta.get("volatility", "unknown")
+        # Volatility state — same shape rules as trend.
+        vol = (regime_meta.get("volatility_regime") or {}).get("state") \
+            or regime_meta.get("volatility", "unknown")
         df["Regime_VolHigh"] = int(vol in ("high", "shock"))
         df["Regime_VolLow"] = int(vol == "low")
 
-        # Correlation state
-        corr = regime_meta.get("correlation", "unknown")
+        # Correlation state — only exists nested under `correlation_regime`;
+        # there is no top-level `"correlation"` backward-compat key.  The prior
+        # code read the missing key and silently set Regime_CorrSpike=0 for
+        # every bar of every TreeScanner hunt.
+        corr = (regime_meta.get("correlation_regime") or {}).get("state", "unknown")
         df["Regime_CorrSpike"] = int(corr in ("spike", "elevated"))
 
         # Composite scores

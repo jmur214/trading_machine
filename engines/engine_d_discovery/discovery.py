@@ -730,25 +730,19 @@ class DiscoveryEngine:
             result["robustness_survival"] = float(survival_rate)
 
             # ---- Gate 3: WFO Degradation ----
+            # WalkForwardOptimizer signature: ctor takes data_map, then
+            # `run_optimization(strategy_spec, start_date, train_months,
+            # test_months)`.  candidate_spec already has the required
+            # module/class/edge_id keys, so it doubles as strategy_spec.
             wfo_degradation = 0.0
             try:
                 from engines.engine_d_discovery.wfo import WalkForwardOptimizer
-                wfo = WalkForwardOptimizer()
-
-                # WFO needs an EdgeTemplate-like class. Wrap the edge.
-                class _WFOWrapper:
-                    def __init__(self, edge_instance):
-                        self._edge = edge_instance
-
-                    @classmethod
-                    def sample_params(cls):
-                        return {}
-
-                    def __call__(self):
-                        return self._edge
-
+                wfo = WalkForwardOptimizer(data_map=data_map)
                 wfo_result = wfo.run_optimization(
-                    _WFOWrapper(edge), data_map, n_configs=1,
+                    candidate_spec,
+                    start_date=start_date,
+                    train_months=12,
+                    test_months=3,
                 )
                 if wfo_result and "degradation" in wfo_result:
                     wfo_degradation = float(wfo_result["degradation"])
@@ -756,7 +750,12 @@ class DiscoveryEngine:
                     result["wfo_oos_sharpe"] = float(wfo_result.get("oos_sharpe", 0.0))
                     result["wfo_is_sharpe"] = float(wfo_result.get("is_sharpe_avg", 0.0))
             except Exception as e:
-                print(f"[DISCOVERY] WFO check skipped: {e}")
+                # Re-raise programmer errors (TypeError, AttributeError) — these
+                # were what hid the prior interface-mismatch bug.  Only swallow
+                # genuine runtime issues (data shape, insufficient bars).
+                if isinstance(e, (TypeError, AttributeError)):
+                    raise
+                print(f"[DISCOVERY] WFO check skipped: {type(e).__name__}: {e}")
 
             result["wfo_degradation"] = wfo_degradation
 
@@ -803,14 +802,22 @@ class DiscoveryEngine:
                     b_history = b_controller.run(start_date, end_date)
 
                     if b_history:
-                        b_equity = pd.Series([h["equity"] for h in b_history])
+                        # Same datetime-index requirement as Gate 1 (line 651) —
+                        # MetricsEngine.cagr() does (end - start).days on the
+                        # equity_curve.index, which fails on RangeIndex.
+                        b_equity = pd.Series(
+                            [h["equity"] for h in b_history],
+                            index=pd.to_datetime([h["timestamp"] for h in b_history]),
+                        )
                         b_metrics = MetricsEngine.calculate_all(b_equity)
                         universe_b_sharpe = float(b_metrics.get("Sharpe", 0.0))
                     else:
                         universe_b_sharpe = 0.0
 
             except Exception as e:
-                print(f"[DISCOVERY] Gate 5 (Universe B) failed: {e}")
+                # Log the exception type so future schema-drift bugs surface
+                # instead of being swallowed as "Gate 5 skipped".
+                print(f"[DISCOVERY] Gate 5 (Universe B) failed: {type(e).__name__}: {e}")
 
             result["universe_b_sharpe"] = universe_b_sharpe
             result["universe_b_n_tickers"] = universe_b_n_tickers
