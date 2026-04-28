@@ -475,3 +475,169 @@ def test_realistic_total_cost_competitive_on_mega_caps():
     assert realistic_bps < 10.0, (
         f"Realistic mega-cap cost should be cheaper than legacy 10 bps; got {realistic_bps:.4f}"
     )
+
+
+# ---------------------------------------------------------------------------
+# ExecutionSimulator integration
+#
+# Today ExecutionSimulator._apply_slippage does not pass qty to the model.
+# These tests verify two things:
+#   1. The realistic model still works correctly through the simulator —
+#      no crashes, returns sane fills.
+#   2. Without qty, only the half-spread term applies. (Integration to
+#      pass qty through to the simulator is deferred per the v2 plan
+#      Phase 0.1 follow-on work.)
+# ---------------------------------------------------------------------------
+
+def test_execution_simulator_with_realistic_model_no_crash():
+    """Drop-in replacement: ExecutionSimulator works with realistic model."""
+    from backtester.execution_simulator import ExecutionSimulator
+
+    sim = ExecutionSimulator(slippage_bps=10.0, slippage_model="realistic")
+    order = {"ticker": "TEST", "side": "long", "qty": 100}
+    bar = pd.Series({"Open": 100.0, "High": 101.0, "Low": 99.0,
+                     "Close": 100.0, "PrevClose": 100.0})
+    fill = sim.fill_at_next_open(order, bar)
+    # Series input → mega-cap fallback → 1 bps half-spread → 100 + 0.01% = 100.01
+    assert fill is not None
+    assert fill["fill_price"] == pytest.approx(100.01, abs=0.001)
+
+
+def test_execution_simulator_realistic_model_uses_half_spread_only_pre_qty_wiring():
+    """Until the simulator passes qty, the realistic model emits only the
+    bucketed half-spread (no market impact). Documents the gap so the
+    follow-on wiring change has a regression test waiting for it."""
+    from backtester.execution_simulator import ExecutionSimulator
+
+    sim = ExecutionSimulator(slippage_bps=10.0, slippage_model="realistic")
+    # Pass a Series, not a DataFrame — Series input ALWAYS falls back to
+    # mega-cap floor regardless of qty wiring. We're documenting current
+    # behavior, not asserting a specific bps under realistic conditions.
+    order = {"ticker": "TEST", "side": "long", "qty": 1_000_000}
+    bar = pd.Series({"Open": 100.0, "High": 101.0, "Low": 99.0,
+                     "Close": 100.0, "PrevClose": 100.0})
+    fill = sim.fill_at_next_open(order, bar)
+    # Whatever qty we pass, with a Series bar we get the 1bps mega-cap floor.
+    assert fill["fill_price"] == pytest.approx(100.01, abs=0.001), (
+        "Series bar should always produce mega-cap floor regardless of qty"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Property-style sweeps — cover the parameter space
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize("adv_usd,expected_half_spread", [
+    (10_000_000_000, 1.0),    # $10B mega-cap
+    (1_000_000_000, 1.0),     # $1B mega-cap boundary
+    (500_000_000, 1.0),       # $500M boundary (mega)
+    (499_999_999, 5.0),       # just below mega → mid
+    (200_000_000, 5.0),       # mid-cap interior
+    (100_000_000, 5.0),       # mid boundary
+    (99_999_999, 15.0),       # just below mid → small
+    (10_000_000, 15.0),       # small interior
+    (1_000_000, 15.0),        # tiny → small
+])
+def test_half_spread_bucketing_full_sweep(adv_usd, expected_half_spread):
+    """Full sweep of ADV bucket boundaries with flat-price data."""
+    cfg = {"model_type": "realistic"}
+    model = get_slippage_model(cfg)
+    # Choose close=$10 so daily_volume = adv_usd / 10.
+    df = _make_bar_data_flat(n_days=30, close=10.0, daily_volume=adv_usd / 10.0)
+    bps = model.calculate_slippage_bps("TEST", df, "buy", qty=None)
+    assert bps == pytest.approx(expected_half_spread), (
+        f"ADV ${adv_usd:,} should bucket to {expected_half_spread} bps; got {bps}"
+    )
+
+
+@pytest.mark.parametrize("qty_multiplier,expected_impact_multiplier", [
+    (1, 1.0),
+    (4, 2.0),    # sqrt(4) = 2
+    (9, 3.0),    # sqrt(9) = 3
+    (16, 4.0),   # sqrt(16) = 4
+    (100, 10.0), # sqrt(100) = 10
+])
+def test_market_impact_sqrt_law_full_sweep(qty_multiplier, expected_impact_multiplier):
+    """Verify Almgren-Chriss sqrt(qty) scaling at multiple multipliers."""
+    cfg = {"model_type": "realistic", "impact_coefficient": 0.5}
+    model = get_slippage_model(cfg)
+    df = _make_bar_data(
+        n_days=30, close=50.0, daily_volume=4_000_000, daily_return_std=0.02
+    )
+    base_qty = 1000
+    bps_base = model.calculate_slippage_bps("TEST", df, "buy", qty=base_qty)
+    bps_scaled = model.calculate_slippage_bps(
+        "TEST", df, "buy", qty=base_qty * qty_multiplier,
+    )
+    half_spread = 5.0  # mid-cap bucket
+    impact_base = bps_base - half_spread
+    impact_scaled = bps_scaled - half_spread
+    if qty_multiplier == 1:
+        assert impact_scaled == pytest.approx(impact_base, rel=0.001)
+    else:
+        assert impact_scaled == pytest.approx(
+            expected_impact_multiplier * impact_base, rel=0.01
+        ), (
+            f"qty × {qty_multiplier} should give impact × √{qty_multiplier}; "
+            f"got {impact_scaled / impact_base:.3f}× expected {expected_impact_multiplier}×"
+        )
+
+
+@pytest.mark.parametrize("side", ["long", "buy", "cover"])
+def test_buy_side_aliases_all_pay_more(side):
+    cfg = SlippageConfig(model_type="realistic")
+    model = RealisticSlippageModel(cfg)
+    out = model.apply_slippage(100.0, 25.0, side)
+    assert out > 100.0
+
+
+@pytest.mark.parametrize("side", ["short", "sell", "exit"])
+def test_sell_side_aliases_all_receive_less(side):
+    cfg = SlippageConfig(model_type="realistic")
+    model = RealisticSlippageModel(cfg)
+    out = model.apply_slippage(100.0, 25.0, side)
+    assert out < 100.0
+
+
+# ---------------------------------------------------------------------------
+# Determinism and idempotency
+# ---------------------------------------------------------------------------
+
+def test_realistic_model_deterministic_across_calls():
+    """Same inputs → same outputs. No hidden state."""
+    cfg = {"model_type": "realistic"}
+    model = get_slippage_model(cfg)
+    df = _make_bar_data(n_days=30, close=50.0, daily_volume=4_000_000)
+    bps_1 = model.calculate_slippage_bps("TEST", df, "buy", qty=1000)
+    bps_2 = model.calculate_slippage_bps("TEST", df, "buy", qty=1000)
+    bps_3 = model.calculate_slippage_bps("TEST", df, "buy", qty=1000)
+    assert bps_1 == bps_2 == bps_3
+
+
+def test_realistic_model_does_not_mutate_input():
+    """The input DataFrame is read-only — never written to in-place."""
+    cfg = {"model_type": "realistic"}
+    model = get_slippage_model(cfg)
+    df = _make_bar_data(n_days=30, close=50.0, daily_volume=4_000_000)
+    df_before = df.copy(deep=True)
+    _ = model.calculate_slippage_bps("TEST", df, "buy", qty=1000)
+    pd.testing.assert_frame_equal(df, df_before)
+
+
+def test_realistic_model_returns_finite_for_realistic_inputs():
+    """Sweep a realistic parameter grid; never NaN, never Inf, never negative."""
+    cfg = {"model_type": "realistic"}
+    model = get_slippage_model(cfg)
+    for close in [5.0, 50.0, 500.0]:
+        for vol_per_day in [100_000, 1_000_000, 10_000_000]:
+            for vol_std in [0.005, 0.01, 0.03, 0.05]:
+                df = _make_bar_data(
+                    n_days=30, close=close, daily_volume=vol_per_day,
+                    daily_return_std=vol_std,
+                )
+                for qty in [None, 100, 10_000, 100_000]:
+                    bps = model.calculate_slippage_bps("TEST", df, "buy", qty=qty)
+                    assert math.isfinite(bps), f"NaN/Inf bps for qty={qty}"
+                    assert bps >= 0.0, f"Negative bps {bps} for qty={qty}"
+                    # Sanity upper bound: half_spread (≤15) + impact_cap (≤100) = 115
+                    assert bps <= 115.0, f"Bps {bps:.1f} exceeds sanity ceiling"
