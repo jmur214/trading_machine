@@ -92,7 +92,7 @@ The HIGH severity finding `[HIGH] System Sharpe 0.4 on 109-ticker universe vs SP
 - [x] **Step 5: PEAD variants** (2026-04-27). Shipped: `pead_short_v1` (negative surprise, 63-day hold), `pead_predrift_v1` (fires only when pre-drift < 5%). 17 tests. Both at weight 0.5.
 - [x] **Step 6A: BH-FDR correction** (2026-04-27). `monte_carlo_permutation_test` now applies Benjamini-Hochberg FDR adjustment when `n_tests > 1`. Wired into `mode_controller._run_discovery_cycle` as two-pass batch correction. Closes false-positive hole.
 - [x] **Step 6B: GA fitness function upgrade** (2026-04-27). See Phase δ entry above.
-- [ ] **Step 6C: Transfer test as 5th gate** — train on 109-ticker universe A, evaluate on S&P 500 minus 109 (universe B). Add as Gate 5 in `discovery.py`. ~1-2 days.
+- [x] **Step 6C: Transfer test as 5th gate** (commit fe1eabe). `DiscoveryEngine._load_universe_b()` samples tickers NOT in the production universe from `data/processed/`; `validate_candidate()` runs the candidate edge on this out-of-universe sample and requires `universe_b_sharpe > 0` (nan skips the gate gracefully if no universe-B data exists). Gate 5 result stored in `result["universe_b_sharpe"]` and included in `passed_all_gates`. 13 unit tests in `tests/test_discovery_gate5.py`.
 - [x] **Step 7: Engine D gene vocabulary expansion** (2026-04-27). Macro + earnings gene types added. See Phase δ above.
 
 ### Roadmap (after Step 6, alpha + hardening lanes)
