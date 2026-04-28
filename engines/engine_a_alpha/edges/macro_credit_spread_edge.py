@@ -18,11 +18,20 @@ Why credit spreads:
   Subtracting cancels the common 10Y leg, leaving Baa-Aaa — the
   pure credit-quality slope.
 
-Tilt mapping (computed from the cache's full historical mean and
-stdev):
-- Wide spread (>= mean + 1 stdev): -0.3 (stress regime, defensive bias)
-- Tight spread (<= mean - 1 stdev): +0.3 (risk-on regime)
+Tilt mapping (computed from a *rolling* 5-year window of the spread,
+ending at the current bar — no look-ahead):
+- Wide spread (>= rolling_mean + 1 rolling_stdev): -0.3 (stress, defensive)
+- Tight spread (<= rolling_mean - 1 rolling_stdev): +0.3 (risk-on)
 - Anywhere between: 0 (neutral)
+
+Why rolling instead of full-history mean/stdev: BAA-AAA goes back to
+the 1980s including extreme 2008-crisis spikes. Computing mean+stdev
+over the full series gives thresholds biased toward old regimes — on
+2021-2024 data the spread is structurally low so it almost never
+crosses `full_mean ± 1*full_std`, and the edge emits 0 tilt for ~100%
+of bars. A trailing 5y window adapts the thresholds to the current
+regime: if BAA-AAA has been quiet for 5 years, a smaller widening
+counts as a stress signal.
 
 Cache behavior: reads `BAA10Y` and `AAA10Y` via `MacroDataManager.
 load_cached`. Neither is in the curated registry yet, so on a fresh
@@ -55,8 +64,16 @@ class MacroCreditSpreadEdge(EdgeBase):
     DEFAULT_PARAMS = {
         "baa_series": "BAA10Y",
         "aaa_series": "AAA10Y",
-        # Number of stdevs from the historical mean that defines wide/tight.
+        # Number of stdevs from the trailing-window mean that defines wide/tight.
         "stdev_threshold": 1.0,
+        # Trailing window for the mean/stdev calculation, in calendar days.
+        # 5 years matches typical regime-cycle length while leaving enough
+        # samples for stable moments. BAA10Y/AAA10Y are daily series.
+        "lookback_days": 1825,
+        # Minimum samples required in the trailing window before the edge
+        # will fire. Prevents firing on early-history data where the
+        # window is mostly empty.
+        "min_window_samples": 252,
         # Magnitudes of the tilt. Kept small so this edge modulates rather
         # than dominates per-ticker signals.
         "stress_score": -0.3,
@@ -67,9 +84,9 @@ class MacroCreditSpreadEdge(EdgeBase):
         super().__init__()
         self.params = dict(self.DEFAULT_PARAMS)
         self._spread_cache: pd.Series | None = None
+        self._rolling_mean: pd.Series | None = None
+        self._rolling_stdev: pd.Series | None = None
         self._cache_loaded = False
-        self._mean: float | None = None
-        self._stdev: float | None = None
 
     @classmethod
     def sample_params(cls):
@@ -122,8 +139,18 @@ class MacroCreditSpreadEdge(EdgeBase):
         spread = (joined["baa"] - joined["aaa"]).sort_index()
 
         self._spread_cache = spread
-        self._mean = float(spread.mean())
-        self._stdev = float(spread.std(ddof=0))
+
+        # Rolling stats — uses calendar days (`time-based offset`) so the
+        # window is well-defined even when the series has irregular gaps
+        # (FRED occasionally has missing days). `min_periods` ensures the
+        # window has enough data to be statistically meaningful before any
+        # value is emitted; otherwise rolling returns NaN and the edge
+        # abstains.
+        lookback = int(self.params.get("lookback_days", 1825))
+        min_periods = int(self.params.get("min_window_samples", 252))
+        window = f"{lookback}D"
+        self._rolling_mean = spread.rolling(window, min_periods=min_periods).mean()
+        self._rolling_stdev = spread.rolling(window, min_periods=min_periods).std(ddof=0)
         return self._spread_cache
 
     @staticmethod
@@ -145,9 +172,14 @@ class MacroCreditSpreadEdge(EdgeBase):
                 pass
         return series.sort_index()
 
-    def _spread_at(self, as_of: pd.Timestamp) -> float | None:
+    def _stats_at(self, as_of: pd.Timestamp) -> tuple[float, float, float] | None:
+        """Return (spread_value, rolling_mean, rolling_stdev) at `as_of`,
+        all computed from the trailing 5-year window ending at `as_of`.
+        Returns None if insufficient data, abstaining via zero tilt."""
         series = self._ensure_spread_loaded()
         if series is None or series.empty:
+            return None
+        if self._rolling_mean is None or self._rolling_stdev is None:
             return None
         try:
             ts = pd.Timestamp(as_of)
@@ -156,25 +188,28 @@ class MacroCreditSpreadEdge(EdgeBase):
         except Exception:
             return None
         try:
-            val = series.asof(ts)
+            spread_val = series.asof(ts)
+            mean_val = self._rolling_mean.asof(ts)
+            stdev_val = self._rolling_stdev.asof(ts)
         except Exception:
             return None
-        if pd.isna(val):
+        if pd.isna(spread_val) or pd.isna(mean_val) or pd.isna(stdev_val):
             return None
-        return float(val)
+        return float(spread_val), float(mean_val), float(stdev_val)
 
     def compute_signals(self, data_map, now):
         zero_scores = {ticker: 0.0 for ticker in data_map}
 
-        spread = self._spread_at(now)
-        if spread is None or self._mean is None or self._stdev is None:
+        stats = self._stats_at(now)
+        if stats is None:
             return zero_scores
-        if self._stdev <= 0:
+        spread, mean_val, stdev_val = stats
+        if stdev_val <= 0:
             return zero_scores
 
         k = float(self.params.get("stdev_threshold", 1.0))
-        wide_threshold = self._mean + k * self._stdev
-        tight_threshold = self._mean - k * self._stdev
+        wide_threshold = mean_val + k * stdev_val
+        tight_threshold = mean_val - k * stdev_val
 
         if spread >= wide_threshold:
             tilt = float(self.params.get("stress_score", -0.3))
