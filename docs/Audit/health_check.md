@@ -59,7 +59,12 @@ then LOW. Within each severity, list newest at the top.
 
 ### LOW
 
-*No active LOW-severity findings.*
+### [LOW] Lifecycle must not modify edge statuses during OOS backtesting
+- Engine: F (Governance) + backtesting methodology
+- First flagged: 2026-04-28
+- Status: **resolved 2026-04-28** — `lifecycle_readonly` mode shipped
+- Description: Running lifecycle on the same OOS window multiple times caused a cascade: each run retired more edges that underperformed in that window, making the result non-reproducible. Fixed by adding `LifecycleConfig.readonly: bool = False`. When `True`, all gate evaluations run and events are returned, but `_save_registry()` and `_append_history()` are skipped — the same OOS window always produces the same result regardless of how many times it's run.
+- Wire-up: `GovernorConfig.lifecycle_readonly: bool = False` added; `governor_settings.json` carries the key. Set `lifecycle_readonly: true` in governor_settings to enter OOS measurement mode. 2 new tests in `tests/test_lifecycle_manager.py` (21/21 pass): `test_readonly_mode_does_not_write_registry`, `test_readonly_mode_does_not_append_history`.
 
 ---
 

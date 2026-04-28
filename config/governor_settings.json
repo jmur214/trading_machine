@@ -19,5 +19,6 @@
   "lifecycle_enabled": true,
   "lifecycle_retirement_margin": 0.3,
   "lifecycle_min_trades": 100,
-  "lifecycle_min_days": 90
+  "lifecycle_min_days": 90,
+  "lifecycle_readonly": false
 }

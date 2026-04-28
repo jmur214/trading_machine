@@ -63,6 +63,9 @@ class GovernorConfig:
     lifecycle_retirement_margin: float = 0.3  # edge_sharpe must undershoot benchmark by this
     lifecycle_min_trades: int = 100
     lifecycle_min_days: int = 90
+    # Read-only: evaluate gates but do not write to registry/history CSV.
+    # Set True for OOS backtesting so re-runs of the same window give the same result.
+    lifecycle_readonly: bool = False
 
     # autonomous allocation evaluation (Phase 8)
     allocation_evaluation_enabled: bool = True
@@ -573,6 +576,7 @@ class StrategyGovernor:
                 retirement_min_trades=int(getattr(self.cfg, 'lifecycle_min_trades', 100)),
                 retirement_min_days=int(getattr(self.cfg, 'lifecycle_min_days', 90)),
                 retirement_margin=float(getattr(self.cfg, 'lifecycle_retirement_margin', 0.3)),
+                readonly=bool(getattr(self.cfg, 'lifecycle_readonly', False)),
             )
             registry_path = self.state_path.parent / "edges.yml"
             history_path = self.state_path.parent / "lifecycle_history.csv"

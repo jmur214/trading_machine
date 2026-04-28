@@ -92,6 +92,12 @@ class LifecycleConfig:
     max_retirements_per_cycle: int = 1
     max_pauses_per_cycle: int = 2
 
+    # Read-only mode: evaluate gates and return events but do NOT write to
+    # registry or history CSV. Use for OOS backtesting where lifecycle
+    # decisions should be observed but not committed, so re-running the
+    # same window gives the same result.
+    readonly: bool = False
+
 
 @dataclass
 class LifecycleEvent:
@@ -306,16 +312,25 @@ class LifecycleManager:
                         events.append(ev)
                         retirements_used += 1
 
-        # Persist registry + history
+        # Persist registry + history (skipped in readonly mode)
         if events:
-            self._save_registry(edges)
-            self._append_history(events)
-            for ev in events:
-                log.info(
-                    f"[Lifecycle] {ev.edge_id}: {ev.old_status} → {ev.new_status}  "
-                    f"gate={ev.triggering_gate}  edge_sharpe={ev.edge_sharpe:.2f}  "
-                    f"benchmark_sharpe={ev.benchmark_sharpe:.2f}  trades={ev.trade_count}"
-                )
+            if self.cfg.readonly:
+                for ev in events:
+                    log.info(
+                        f"[Lifecycle][READONLY] would fire {ev.edge_id}: "
+                        f"{ev.old_status} → {ev.new_status}  gate={ev.triggering_gate}  "
+                        f"edge_sharpe={ev.edge_sharpe:.2f}  "
+                        f"benchmark_sharpe={ev.benchmark_sharpe:.2f}  trades={ev.trade_count}"
+                    )
+            else:
+                self._save_registry(edges)
+                self._append_history(events)
+                for ev in events:
+                    log.info(
+                        f"[Lifecycle] {ev.edge_id}: {ev.old_status} → {ev.new_status}  "
+                        f"gate={ev.triggering_gate}  edge_sharpe={ev.edge_sharpe:.2f}  "
+                        f"benchmark_sharpe={ev.benchmark_sharpe:.2f}  trades={ev.trade_count}"
+                    )
 
         return events
 

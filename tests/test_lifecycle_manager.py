@@ -617,3 +617,73 @@ def test_paused_retirement_disabled_when_min_days_zero(tmp_path):
 
     assert statuses["legacy_paused_v1"] == "paused"
     assert not any(ev.new_status == "retired" for ev in events)
+
+
+# ---------------------------------------------------------------------------
+# readonly mode: events returned but registry + history left unchanged
+# ---------------------------------------------------------------------------
+
+def test_readonly_mode_does_not_write_registry(tmp_path):
+    """In readonly mode, gates fire and events are returned but registry is NOT written."""
+    registry_path = tmp_path / "edges.yml"
+    history_path = tmp_path / "lifecycle_history.csv"
+    cfg = LifecycleConfig(
+        enabled=True,
+        readonly=True,
+        paused_retirement_min_days=90,
+        retirement_margin=0.3,
+        max_retirements_per_cycle=2,
+    )
+    lcm = LifecycleManager(cfg=cfg, registry_path=registry_path, history_path=history_path)
+
+    pause_ts = "2024-09-01T00:00:00+00:00"
+    _write_pause_history(history_path, "bad_edge_v1", pause_ts)
+    _seed_registry(registry_path, [
+        {"edge_id": "bad_edge_v1", "status": "paused",
+         "category": "technical", "module": "m", "version": "1.0.0", "params": {}},
+    ])
+    registry_mtime_before = registry_path.stat().st_mtime
+
+    rng = np.random.default_rng(0)
+    losing = rng.normal(loc=-5.0, scale=20.0, size=150)
+    trades = _make_trades({"bad_edge_v1": losing}, start="2024-01-01")
+    as_of = pd.Timestamp("2025-01-01", tz="UTC")
+
+    events = lcm.evaluate(trades, benchmark_sharpe=0.87, as_of=as_of)
+
+    # Events are returned (gate logic ran)
+    assert any(ev.new_status == "retired" for ev in events)
+
+    # Registry file was NOT modified
+    assert registry_path.stat().st_mtime == registry_mtime_before
+    statuses = {e["edge_id"]: e["status"]
+                for e in yaml.safe_load(registry_path.read_text())["edges"]}
+    assert statuses["bad_edge_v1"] == "paused"  # still paused, not retired
+
+
+def test_readonly_mode_does_not_append_history(tmp_path):
+    """In readonly mode, lifecycle history CSV is not written despite gate firing."""
+    registry_path = tmp_path / "edges.yml"
+    history_path = tmp_path / "lifecycle_history.csv"
+    cfg = LifecycleConfig(
+        enabled=True,
+        readonly=True,
+        pause_loss_fraction_threshold=-0.1,  # easy to trigger
+        pause_min_trades=5,
+        max_pauses_per_cycle=2,
+    )
+    lcm = LifecycleManager(cfg=cfg, registry_path=registry_path, history_path=history_path)
+    _seed_registry(registry_path, [
+        {"edge_id": "loser_v1", "status": "active",
+         "category": "technical", "module": "m", "version": "1.0.0", "params": {}},
+    ])
+
+    rng = np.random.default_rng(7)
+    losing = rng.normal(loc=-20.0, scale=5.0, size=60)
+    trades = _make_trades({"loser_v1": losing}, start="2024-01-01")
+
+    events = lcm.evaluate(trades, benchmark_sharpe=0.0)
+
+    # Gate fired (events returned) but history file should NOT exist
+    assert any(ev.new_status == "paused" for ev in events)
+    assert not history_path.exists()
