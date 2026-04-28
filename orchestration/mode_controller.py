@@ -810,17 +810,24 @@ class ModeController:
         # weight (default 0.25x) so the lifecycle revival gate has continuous
         # post-pause data to work with. Without this, paused edges would be
         # silenced entirely → no trades → no revival evidence → paused forever.
+        #
+        # PAUSED_MAX_WEIGHT caps the post-multiplier weight so edges with
+        # inflated pre-pause alpha_settings weights (e.g. atr_breakout at 2.5)
+        # don't dominate the signal ensemble during soft-pause. Without the cap,
+        # 2.5 × 0.25 = 0.625 is still higher than most active edges at 0.5,
+        # causing the paused edge to drive attribution and sizing.
         PAUSED_WEIGHT_MULTIPLIER = 0.25
+        PAUSED_MAX_WEIGHT = 0.5  # paused edges cannot exceed a typical active edge weight
         _paused_ids = {
             s.edge_id for s in EdgeRegistry().get_all_specs() if s.status == "paused"
         }
         paused_count = 0
         for eid in list(edge_weights.keys()):
             if eid in _paused_ids:
-                edge_weights[eid] *= PAUSED_WEIGHT_MULTIPLIER
+                edge_weights[eid] = min(edge_weights[eid] * PAUSED_WEIGHT_MULTIPLIER, PAUSED_MAX_WEIGHT)
                 paused_count += 1
         if paused_count:
-            print(f"[RUN_BACKTEST] Applied {PAUSED_WEIGHT_MULTIPLIER}x soft-pause weight to {paused_count} edge(s)")
+            print(f"[RUN_BACKTEST] Applied {PAUSED_WEIGHT_MULTIPLIER}x soft-pause weight (max {PAUSED_MAX_WEIGHT}) to {paused_count} edge(s)")
         alpha = AlphaEngine(
             edges=loaded_edges,
             edge_weights=edge_weights,

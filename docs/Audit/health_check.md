@@ -25,14 +25,22 @@ then LOW. Within each severity, list newest at the top.
 ### [HIGH] System Sharpe 0.4 on 109-ticker universe vs SPY 0.88 in-sample
 - Engine: System-level (Alpha + Risk + Portfolio composition)
 - First flagged: 2026-04-25
-- Status: **substantially resolved 2026-04-27** — Phase 2.10 lifted Sharpe to 0.855
+- Status: **partially resolved — 0.855 figure is pre-lifecycle, not a stable baseline**
 - Description: Universe expansion from 39 to 109 tickers exposed that the system underperforms SPY by ~0.5 Sharpe on a broader equity universe. The previously-reported Sharpe 0.979 was a curated-mega-cap-tech artifact. Existing edges don't generalize beyond the original 39 names; lifecycle correctly paused 2 of 14 (`atr_breakout_v1`, `momentum_edge_v1`) but no replacement alpha was queued.
-- 2026-04-27 Phase 2.10 full backtest result (2021-01-04 → 2024-12-31, 109-ticker universe): **Sharpe 0.855** (vs 0.403 post-lifecycle baseline, vs SPY ~0.88). Delta: **+0.452 Sharpe**. CAGR 4.86%, MDD -11.43% (worse by 2.4pp vs 0.403 baseline — more positions = more peak-to-trough; absolute still contained). 9 new edges: 4 macro regime-tilts, insider_cluster_v1, pead_short_v1, pead_predrift_v1, low_vol_factor_v1 (regime-gated), BH-FDR + GA fitness + gene vocabulary all shipped.
-- Remaining gap: Sharpe 0.855 vs SPY in-sample ~0.88. Need walk-forward OOS validation before declaring victory. Discovery loop now has correct gene vocabulary + fitness function to find more alpha autonomously.
-- Recommended next step: Step 6C (transfer test as 5th gate) + autonomous discovery cycle run.
-- See: `docs/Progress_Summaries/2026-04-27_session.md`, commits dfb0627, f06afb2-b1928c9, aa1cb65, da196b1, 1600e45, 53d5c07, 7db6625, 45abf0e.
+- 2026-04-27 Phase 2.10 full backtest result: **Sharpe 0.855** (run d134e488) — but this was the run that GENERATED the lifecycle pause decisions. `atr_breakout_v1` (weight 2.5) and `momentum_edge_v1` (weight 1.5) were still at full weight during this run and contributed +$2,694 and +$1,569 respectively. Post-pause, subsequent in-sample runs show Sharpe 0.161–0.677 depending on governor learned-affinity state.
+- 2026-04-28 in-sample re-run with paused edges at 0.25x soft-pause: **Sharpe 0.161** (run daf4ad4d). Per-edge breakdown shows `momentum_edge_v1` went from +$1,569 to -$888 at reduced weight; `gap_fill_v1` went from +$151 to -$1,080; "Unknown" exit losses went from -$3,681 to -$11,241. Governor learned-affinity state is a significant contributor to variance between runs.
+- Remaining gap: true post-lifecycle Phase 2.10 Sharpe needs to be established with `--no-governor` to isolate the pure alpha contribution. The 0.855 figure should be treated as the pre-governance upper bound, not the operational Sharpe.
+- Recommended next step: (1) Run `--no-governor` in-sample to establish alpha-only baseline; (2) walk_forward_phase210.py year-by-year validation; (3) consider retiring atr_breakout/momentum_edge entirely instead of soft-pausing to avoid signal contamination.
+- See: `docs/Progress_Summaries/2026-04-27_session.md`, commits dfb0627, f06afb2-b1928c9, aa1cb65, da196b1, 1600e45, 53d5c07, 7db6625, 45abf0e. Also `scripts/walk_forward_phase210.py`.
 
 ### MEDIUM
+
+### [MEDIUM] Soft-paused edges with high alpha_settings weights still dominate signal ensemble
+- Engine: A (AlphaEngine / SignalProcessor) + F (lifecycle soft-pause design)
+- First flagged: 2026-04-28
+- Status: not started
+- Description: The soft-pause 0.25x multiplier is applied to the governor's position-sizing weights, but the edge's *signal ensemble weight* (from `alpha_settings.prod.json`) is the starting point. `atr_breakout_v1` has ensemble weight 2.5 — after 0.25x soft-pause it becomes 0.625, still competitive with active edges at 0.5-1.0. This means soft-paused edges still dominate signal attribution and drive trade frequency (2371 trades in the 2026-04-28 in-sample run, vs 51 for `volume_anomaly_v1` at weight 1.0). `momentum_edge_v1` at 0.375 soft-pause weight flipped from +$1,569 to -$888 at reduced weight — the edge that was profitable at 1.5 loses at 0.375 because its signal quality is marginal, not strong enough to overcome costs at lower contribution.
+- Recommended next step: When a lifecycle pause fires, ALSO cap the edge's `alpha_settings` ensemble weight at 0.25x (or some configured cap, e.g. max 0.5). This prevents inflated pre-pause weights from contaminating the soft-pause period. Alternatively: retire atr_breakout_v1 and momentum_edge_v1 outright (skip soft-pause) since they both have enough historical data for lifecycle evaluation — the revival gate has nothing to evaluate if soft-paused evidence is noisy due to weight inflation.
 
 ### [MEDIUM] Soft-paused edges at 0.25x are primary driver of 2025 OOS underperformance
 - Engine: F (Governance — lifecycle soft-pause weight policy)

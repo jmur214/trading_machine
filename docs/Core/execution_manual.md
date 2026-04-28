@@ -76,6 +76,16 @@ Output: a 3-row report with OOS Sharpe, CAGR, MDD, WR per variant. Acceptance fo
 
 Date windows are hardcoded in the script (TRAIN_START/END, EVAL_START/END); edit those constants to test other splits.
 
+```bash
+# Phase 2.10 year-by-year walk-forward: run all 9 Phase 2.10 edges on each
+# calendar year (2021-2024) independently with --no-governor. Reports per-year
+# Sharpe vs SPY delta table. Backs up + restores governor state automatically.
+PYTHONHASHSEED=0 python -m scripts.walk_forward_phase210
+
+# Run specific years only:
+PYTHONHASHSEED=0 python -m scripts.walk_forward_phase210 --years 2022 2023 2024
+```
+
 ---
 
 ### AUTONOMOUS MODE (THE "ONE BUTTON")
