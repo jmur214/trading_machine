@@ -22,6 +22,13 @@ then LOW. Within each severity, list newest at the top.
 
 ### HIGH
 
+### [MEDIUM] validate_candidate uses full data_map extent instead of configured backtest window — Gate 1 takes ~35 min/candidate
+- Engine: D
+- First flagged: 2026-04-28
+- Status: not started
+- Description: `discovery.py::validate_candidate` lines 631-632 derive `start_date` and `end_date` from `data_map[first_ticker].index[0]` and `[-1]`. The data_map fed by `mode_controller._run_discovery_cycle` is the full price-history parquet (2020-04 → 2026-04, ~6 years for current cache) including the 1-year warmup window. So Gate 1's "quick backtest" runs 6 years of data on 109 tickers per candidate — observed empirically at ~30-35 min per Gate 1. Combined with Gates 2-5, each candidate takes ~2 hours. With the cycle cap of 10 candidates this is ~20 hours per discovery run, making the autonomous loop impractical.
+- Recommended next step: Have validate_candidate accept (or look up) a "validation window" — e.g. last 12-24 months — for Gate 1's quick filter. Gate 3 (WFO) already does proper multi-window OOS via train_months/test_months params, so a short Gate 1 window is fine for the cheap pass/fail filter. Either honor `cfg_bt["start_date"]`/`end_date` from backtest_settings, or expose `validation_start_date`/`validation_end_date` parameters to the mode_controller call site.
+
 ### [HIGH] RuleBasedEdge requires FeatureEngineer-computed columns that are absent from validation data_map
 - Engine: D (with A as the affected receiver — `RuleBasedEdge.check_signal`)
 - First flagged: 2026-04-28
