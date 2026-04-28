@@ -49,14 +49,6 @@ then LOW. Within each severity, list newest at the top.
 - Description: Resolved. `SignalProcessor` now accepts `regime_gates: Dict[str, Dict[str, float]]` in its constructor. Per-edge gate maps Engine E `regime_summary` labels ("benign", "stressed", "crisis") to weight multipliers [0,1]. Gate multiplies `w` in the weighted-mean aggregation; missing labels default to 1.0; `regime_meta=None` defaults to "benign". `low_vol_factor_v1` re-enabled at weight 0.5 with gate `{benign:0.15, stressed:1.0, crisis:1.0}`. 8 new tests in `tests/test_signal_processor_regime_gate.py` covering all edge cases.
 - See: commit aa1cb65, `tests/test_signal_processor_regime_gate.py`, `data/governor/edges.yml` (low_vol_factor_v1 entry).
 
-### [MEDIUM] Engine D's GA gene vocabulary searches a strip-mined space
-- Engine: D (Discovery)
-- First flagged: 2026-04-24
-- Status: open — strategic decision, no code work yet
-- Description: Engine D's `_create_random_gene` mutates random combinations of technical-indicator genes (RSI thresholds, ATR multipliers, day-of-week, intraday range). The space has been mined to ≈zero alpha by 40+ years of professional quant work. Yesterday's Engine D run produced 132 failed candidates. Adding new technical-pattern genes won't help; the space is the problem.
-- Recommended next step: re-architect the gene vocabulary to search across (a) factor-space (which factors / windows / weighting / sector-neutralization), (b) macro-feature space (FRED-driven signal compositions now that the data layer exists), and (c) earnings-event space (PEAD parameters, surprise-magnitude thresholds). Per the strategic pivot doc, this is item #6 — substantial work, ~1-2 weeks.
-- See: `docs/Progress_Summaries/2026-04-24_strategic_pivot.md` items #5 (Engine D fitness function fix) + future restructuring; `memory/project_factor_edge_first_alpha_2026_04_24.md`.
-
 ### [MEDIUM] Lifecycle audit-trail / registry-state divergence detection missing
 - Engine: F (Governance)
 - First flagged: 2026-04-25
@@ -72,6 +64,12 @@ then LOW. Within each severity, list newest at the top.
 ---
 
 ## Resolved (last 90 days)
+
+### [MEDIUM] Engine D's GA gene vocabulary searches a strip-mined space (2026-04-24)
+- Engine: D (Discovery)
+- Resolved: 2026-04-27
+- Description: `CompositeEdge` now evaluates `"macro"` (10% probability — T10Y2Y yield curve, VIX level, UNRATE unemployment delta) and `"earnings"` (5% — EPS surprise % look-back) gene types. Both use lazy instance-level caching. Gene vocabulary weights: technical 40%→35%, regime 10%→5%, fundamental 15%→10%. GA now discovers macro-conditional and earnings-event combinations.
+- See: commit 45abf0e, `tests/test_composite_edge_macro_earnings.py`.
 
 ### [HIGH] EdgeRegistry.ensure() silently overrode lifecycle status (2026-04-25)
 - Engine: A (EdgeRegistry, used by F's lifecycle)
