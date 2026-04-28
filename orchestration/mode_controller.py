@@ -924,8 +924,8 @@ class ModeController:
             try:
                 spy_df = data_map.get("SPY")
                 if spy_df is not None and not spy_df.empty:
-                    regime_meta = regime_detector.detect(spy_df)
-                    print(f"[DISCOVERY] Regime context: {regime_meta}")
+                    regime_meta = regime_detector.detect_regime(spy_df, data_map=data_map)
+                    print(f"[DISCOVERY] Regime context: {regime_meta.get('regime_summary', regime_meta)}")
             except Exception as re_err:
                 print(f"[DISCOVERY] Regime detection skipped: {re_err}")
 

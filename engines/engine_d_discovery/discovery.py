@@ -647,7 +647,13 @@ class DiscoveryEngine:
             if not history:
                 return result
 
-            equity_curve = pd.Series([h["equity"] for h in history])
+            # Index by timestamp so MetricsEngine.cagr() can compute date deltas.
+            # Without this the index is a RangeIndex (ints) and `(end - start).days`
+            # raises AttributeError: 'int' object has no attribute 'days'.
+            equity_curve = pd.Series(
+                [h["equity"] for h in history],
+                index=pd.to_datetime([h["timestamp"] for h in history]),
+            )
 
             from core.metrics_engine import MetricsEngine
             metrics = MetricsEngine.calculate_all(equity_curve)

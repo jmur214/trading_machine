@@ -68,7 +68,25 @@ class RuleBasedEdge(EdgeTemplate):
     def setup(self):
         # Nothing specific to setup; logic is stateless per bar
         pass
-        
+
+    def compute_signals(self, data_map: Dict[str, pd.DataFrame], as_of=None) -> Dict[str, float]:
+        """Wrap `check_signal()` per ticker so the standard signal_collector
+        interface (`compute_signals`) returns a {ticker: score} mapping.
+
+        Without this wrapper, `RuleBasedEdge` instances produced flat equity
+        curves in discovery validation (Sharpe = 0.00) because the collector
+        couldn't find a method to call.
+        """
+        scores: Dict[str, float] = {}
+        for t, df in data_map.items():
+            sig = self.check_signal(df)
+            if sig is None:
+                continue
+            direction = 1.0 if sig.get("signal") == "long" else -1.0
+            confidence = float(sig.get("confidence", 0.0))
+            scores[t] = direction * confidence
+        return scores
+
     def check_signal(self, data: pd.DataFrame) -> Dict[str, Any]:
         """
         Validate rule against LATEST bar.
