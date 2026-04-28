@@ -945,10 +945,14 @@ class ModeController:
                 try:
                     result = discovery.validate_candidate(cand, data_map)
 
-                    # Store validation Sharpe for GA fitness tracking
+                    # Store validation metrics for GA fitness tracking.
+                    # fitness_score is the OOS-weighted composite; validation_sharpe
+                    # retained for backwards-compatibility / logging.
                     if "params" not in cand:
                         cand["params"] = {}
                     cand["params"]["validation_sharpe"] = result.get("sharpe", 0.0)
+                    cand["params"]["fitness_score"] = result.get("fitness_score", 0.0)
+                    cand["params"]["wfo_oos_sharpe"] = result.get("wfo_oos_sharpe", 0.0)
 
                     if result.get("passed_all_gates", False):
                         cand["status"] = "active"

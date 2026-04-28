@@ -252,14 +252,17 @@ class DiscoveryEngine:
             eid = edge.get("edge_id", "")
             if "composite" not in eid and edge.get("origin") != "genetic_algorithm":
                 continue
-            # Look for validation results stored in params or metrics
             params = edge.get("params", {})
-            sharpe = params.get("validation_sharpe", None)
-            if sharpe is not None:
-                fitnesses[eid] = float(sharpe)
-            # Also check status — active edges get a fitness bonus
+            # Prefer composite fitness_score (OOS-weighted) over in-sample validation_sharpe.
+            fitness_val = params.get("fitness_score", None)
+            if fitness_val is None:
+                fitness_val = params.get("validation_sharpe", None)
+            if fitness_val is not None:
+                fitnesses[eid] = float(fitness_val)
+            # Active edges without stored fitness get a baseline so they're
+            # not invisible to tournament selection.
             if edge.get("status") == "active" and eid not in fitnesses:
-                fitnesses[eid] = 0.5  # baseline for active edges
+                fitnesses[eid] = 0.5
 
         return fitnesses
 
@@ -648,8 +651,11 @@ class DiscoveryEngine:
                 wfo_result = wfo.run_optimization(
                     _WFOWrapper(edge), data_map, n_configs=1,
                 )
-                if wfo_result and "degradation_ratio" in wfo_result:
-                    wfo_degradation = float(wfo_result["degradation_ratio"])
+                if wfo_result and "degradation" in wfo_result:
+                    wfo_degradation = float(wfo_result["degradation"])
+                if wfo_result:
+                    result["wfo_oos_sharpe"] = float(wfo_result.get("oos_sharpe", 0.0))
+                    result["wfo_is_sharpe"] = float(wfo_result.get("is_sharpe_avg", 0.0))
             except Exception as e:
                 print(f"[DISCOVERY] WFO check skipped: {e}")
 
@@ -693,6 +699,19 @@ class DiscoveryEngine:
                 print(f"[DISCOVERY] {candidate_spec['edge_id']} PASSED all gates: {gate_summary}")
             else:
                 print(f"[DISCOVERY] {candidate_spec['edge_id']} FAILED gates: {gate_summary}")
+
+            # Composite fitness score — used by GA as selection signal.
+            # Formula: 0.5*OOS_Sharpe + 0.3*survival_rate + 0.2*degradation_ratio
+            # OOS Sharpe comes from Gate 3 WFO; falls back to in-sample if WFO skipped.
+            # Higher is better. Penalizes in-sample-only fits.
+            oos_sh = result.get("wfo_oos_sharpe", sharpe)
+            is_sh = result.get("wfo_is_sharpe", 0.0) or sharpe
+            degradation_ratio = min(1.0, max(0.0, oos_sh / is_sh)) if is_sh > 0 else 0.0
+            result["fitness_score"] = (
+                0.5 * oos_sh
+                + 0.3 * float(survival_rate)
+                + 0.2 * degradation_ratio
+            )
 
             return result
 
