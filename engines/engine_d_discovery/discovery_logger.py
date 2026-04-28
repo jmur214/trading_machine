@@ -82,6 +82,8 @@ class DiscoveryLogger:
             "adjusted_significance_p": result.get("adjusted_significance_p"),
             "bh_fdr_threshold": result.get("bh_fdr_threshold"),
             "significance_threshold": result.get("significance_threshold"),
+            "universe_b_sharpe": result.get("universe_b_sharpe"),
+            "universe_b_n_tickers": result.get("universe_b_n_tickers"),
             "passed_all_gates": result.get("passed_all_gates", False),
             "promoted": promoted,
         })

@@ -33,9 +33,14 @@ class DiscoveryEngine:
     3. Save candidates to registry for validation.
     """
     
-    def __init__(self, registry_path: str = "data/governor/edges.yml"):
+    def __init__(
+        self,
+        registry_path: str = "data/governor/edges.yml",
+        processed_data_dir: str = "data/processed",
+    ):
         self.registry_path = Path(registry_path)
         self.registry_path.parent.mkdir(parents=True, exist_ok=True)
+        self._processed_data_dir = Path(processed_data_dir)
         self.templates: List[Type[EdgeTemplate]] = [
             RSIBounceEdge,
             ValueTrapEdge,
@@ -507,6 +512,63 @@ class DiscoveryEngine:
             
         print(f"[DISCOVERY] Registry saved. New: {new_count}, Updated: {update_count}. Path: {self.registry_path}")
 
+    def _load_universe_b(
+        self,
+        prod_tickers: set,
+        n_sample: int = 50,
+        seed: int = 42,
+    ) -> Dict[str, pd.DataFrame]:
+        """
+        Load a random sample of tickers NOT in the production universe.
+
+        Reads directly from `self._processed_data_dir` (CSV fallback only —
+        no Parquet, no network). Skips files shorter than 100 rows so that
+        thinly-traded or delisted names don't pollute the Gate 5 result.
+
+        Parameters
+        ----------
+        prod_tickers : set
+            The production universe (data_map keys). Universe B = all
+            cached tickers minus this set.
+        n_sample : int
+            Maximum number of universe-B tickers to load. 50 is enough to
+            detect universe-specificity while keeping Gate 5 cost under ~50%
+            of the production backtest.
+        seed : int
+            Reproducible random selection within a cycle.
+
+        Returns
+        -------
+        dict — ticker → DataFrame, possibly empty if no universe-B data found.
+        """
+        import numpy as np
+
+        all_csvs = {
+            f.stem.replace("_1d", "")
+            for f in self._processed_data_dir.glob("*_1d.csv")
+        }
+        candidates = sorted(all_csvs - prod_tickers)
+
+        if not candidates:
+            return {}
+
+        rng = np.random.RandomState(seed)
+        sampled: List[str] = rng.choice(
+            candidates, size=min(n_sample, len(candidates)), replace=False,
+        ).tolist()
+
+        dm_b: Dict[str, pd.DataFrame] = {}
+        for ticker in sampled:
+            csv_path = self._processed_data_dir / f"{ticker}_1d.csv"
+            try:
+                df = pd.read_csv(csv_path, index_col=0, parse_dates=True)
+                if not df.empty and len(df) >= 100:
+                    dm_b[ticker] = df
+            except Exception:
+                pass
+
+        return dm_b
+
     def validate_candidate(
         self,
         candidate_spec: Dict[str, Any],
@@ -703,6 +765,50 @@ class DiscoveryEngine:
 
             result["significance_p"] = float(sig_p)
 
+            # ---- Gate 5: Universe B generalization ----
+            # Run the same edge on a sample of S&P 500 tickers NOT in the
+            # production universe. Sharpe must be > 0. If an edge only works
+            # on the 109 tickers we trained on, it is universe-overfit — the
+            # alpha has been mined from the specific names, not the market.
+            # "nan" means the gate was skipped (degenerate: no universe-B data
+            # available) — the edge is not penalized for infrastructure gaps.
+            universe_b_sharpe: float = float("nan")
+            universe_b_n_tickers: int = 0
+            try:
+                dm_b = self._load_universe_b(prod_tickers=set(data_map.keys()))
+                universe_b_n_tickers = len(dm_b)
+
+                if not dm_b:
+                    print(f"[DISCOVERY] Gate 5 skipped: no universe-B tickers available")
+                else:
+                    b_alpha = AlphaEngine(edges={candidate_spec["edge_id"]: edge}, debug=False)
+                    b_risk = RiskEngine({"risk_per_trade_pct": 0.01})
+                    b_logger = CockpitLogger(out_dir="/tmp/discovery_gate5", flush_each_fill=False)
+
+                    b_controller = BacktestController(
+                        data_map=dm_b,
+                        alpha_engine=b_alpha,
+                        risk_engine=b_risk,
+                        cockpit_logger=b_logger,
+                        exec_params={"slippage_bps": 5.0},
+                        initial_capital=100_000,
+                        batch_flush_interval=99999,
+                    )
+                    b_history = b_controller.run(start_date, end_date)
+
+                    if b_history:
+                        b_equity = pd.Series([h["equity"] for h in b_history])
+                        b_metrics = MetricsEngine.calculate_all(b_equity)
+                        universe_b_sharpe = float(b_metrics.get("Sharpe", 0.0))
+                    else:
+                        universe_b_sharpe = 0.0
+
+            except Exception as e:
+                print(f"[DISCOVERY] Gate 5 (Universe B) failed: {e}")
+
+            result["universe_b_sharpe"] = universe_b_sharpe
+            result["universe_b_n_tickers"] = universe_b_n_tickers
+
             # ---- Final gate check ----
             # If `significance_threshold` is None, the orchestrator will
             # re-evaluate Gate 4 after BH-FDR batch correction; treat it as
@@ -714,17 +820,27 @@ class DiscoveryEngine:
                 sig_passed = sig_p < significance_threshold
                 sig_threshold_for_log = significance_threshold
 
+            # Gate 5: nan means skipped (no universe-B data) — don't penalize.
+            import math
+            universe_b_passed = math.isnan(universe_b_sharpe) or universe_b_sharpe > 0
+
             passed = (
                 sharpe > 0
                 and survival_rate >= 0.7
                 and sig_passed
+                and universe_b_passed
             )
             result["passed_all_gates"] = passed
             result["significance_threshold"] = sig_threshold_for_log
 
+            b_sharpe_str = (
+                "skipped" if math.isnan(universe_b_sharpe)
+                else f"{universe_b_sharpe:.2f}"
+            )
             gate_summary = (
                 f"Sharpe={sharpe:.2f}, survival={survival_rate:.0%}, "
-                f"wfo_deg={wfo_degradation:.2f}, p={sig_p:.3f}"
+                f"wfo_deg={wfo_degradation:.2f}, p={sig_p:.3f}, "
+                f"univ_b={b_sharpe_str}({universe_b_n_tickers}t)"
             )
             if passed:
                 print(f"[DISCOVERY] {candidate_spec['edge_id']} PASSED all gates: {gate_summary}")

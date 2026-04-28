@@ -34,7 +34,10 @@ class AutonomousEvolution:
     
     def __init__(self, root_dir: str):
         self.root = Path(root_dir)
-        self.discovery = DiscoveryEngine(registry_path=str(self.root / "data" / "governor" / "edges.yml"))
+        self.discovery = DiscoveryEngine(
+            registry_path=str(self.root / "data" / "governor" / "edges.yml"),
+            processed_data_dir=str(self.root / "data" / "processed"),
+        )
         self.discovery_logger = DiscoveryLogger(
             log_path=str(self.root / "data" / "research" / "discovery_log.jsonl")
         )
@@ -115,10 +118,15 @@ class AutonomousEvolution:
             survival = metrics.get("robustness_survival", 0.0)
             sig_p = metrics.get("significance_p", 1.0)
             adj_p = metrics.get("adjusted_significance_p", float("nan"))
+            univ_b_sharpe = metrics.get("universe_b_sharpe", float("nan"))
+            univ_b_n = metrics.get("universe_b_n_tickers", 0)
 
+            import math as _math
+            b_str = "skipped" if _math.isnan(univ_b_sharpe) else f"{univ_b_sharpe:.2f}"
             logger.info(
                 f"   > Metrics: Sharpe={sharpe:.2f} | Sortino={sortino:.2f} | "
-                f"Survival={survival*100:.0f}% | p={sig_p:.3f} | adj_p={adj_p:.3f}"
+                f"Survival={survival*100:.0f}% | p={sig_p:.3f} | adj_p={adj_p:.3f} | "
+                f"UnivB={b_str}({univ_b_n}t)"
             )
 
             # Gating Logic (Tier 1 Filters)
@@ -160,6 +168,12 @@ class AutonomousEvolution:
                 rejection_reason = (
                     f"Failed BH-FDR significance (raw p={sig_p:.3f}, "
                     f"adj p={adj_p:.3f}, alpha=0.05)"
+                )
+            elif not (_math.isnan(univ_b_sharpe) or univ_b_sharpe > 0):
+                passed = False
+                rejection_reason = (
+                    f"Failed Gate 5 universe-B generalization "
+                    f"(Sharpe={univ_b_sharpe:.2f} on {univ_b_n} OOS tickers)"
                 )
 
             self.discovery_logger.log_validation(cand["edge_id"], metrics, promoted=False)
