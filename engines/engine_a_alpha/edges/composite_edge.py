@@ -153,6 +153,10 @@ class CompositeEdge(EdgeBase, EdgeTemplate):
             return self._calc_microstructure_val(df, gene)
         elif g_type == "intermarket":
             return self._calc_intermarket_val(df, as_of, gene)
+        elif g_type == "macro":
+            return self._calc_macro_val(as_of, gene)
+        elif g_type == "earnings":
+            return self._calc_earnings_val(ticker, as_of, gene)
 
         return None
 
@@ -416,6 +420,99 @@ class CompositeEdge(EdgeBase, EdgeTemplate):
             aligned = asset_df["Close"].reindex(index).ffill()
             ret = aligned.pct_change(window)
             val = ret.iloc[-1]
+            return float(val) if not pd.isna(val) else None
+        except Exception:
+            return None
+
+    # ------------------------------------------------------------------
+    # Macro gene evaluation — economy-wide FRED signals
+    # ------------------------------------------------------------------
+
+    def _calc_macro_val(self, as_of, gene):
+        """Look up a FRED macro series value at or before as_of."""
+        indicator = gene.get("indicator")
+        series_map = {
+            "yield_curve": "T10Y2Y",
+            "vix_level": "VIXCLS",
+            "unemployment_delta": "UNRATE",
+        }
+        series_id = series_map.get(indicator)
+        if series_id is None:
+            return None
+
+        # Lazy-load macro cache — one DataFrame per series per instance
+        if not hasattr(self, "_macro_cache"):
+            self._macro_cache: dict = {}
+
+        if series_id not in self._macro_cache:
+            try:
+                from engines.data_manager.macro_data import MacroDataManager
+                df = MacroDataManager().load_cached(series_id)
+                df.index = pd.to_datetime(df.index)
+                self._macro_cache[series_id] = df
+            except Exception:
+                self._macro_cache[series_id] = None
+
+        df = self._macro_cache.get(series_id)
+        if df is None or df.empty:
+            return None
+
+        try:
+            as_of_ts = pd.Timestamp(as_of).normalize()
+            available = df.loc[df.index <= as_of_ts]
+            if available.empty:
+                return None
+            val = float(available["value"].iloc[-1])
+            if pd.isna(val):
+                return None
+
+            # unemployment_delta: month-over-month change in UNRATE
+            if indicator == "unemployment_delta":
+                if len(available) < 2:
+                    return None
+                prev = float(available["value"].iloc[-2])
+                if pd.isna(prev):
+                    return None
+                return val - prev
+
+            return val
+        except Exception:
+            return None
+
+    # ------------------------------------------------------------------
+    # Earnings gene evaluation — per-ticker EPS surprise look-back
+    # ------------------------------------------------------------------
+
+    def _calc_earnings_val(self, ticker, as_of, gene):
+        """Return most recent EPS surprise % for ticker within lookback_days of as_of."""
+        lookback_days = gene.get("lookback_days", 60)
+
+        if not hasattr(self, "_earnings_cache"):
+            self._earnings_cache: dict = {}
+
+        if ticker not in self._earnings_cache:
+            try:
+                from engines.data_manager.earnings_data import EarningsDataManager
+                df = EarningsDataManager(offline=True).load_cached(ticker)
+                if df.empty:
+                    self._earnings_cache[ticker] = None
+                else:
+                    df.index = pd.to_datetime(df.index)
+                    self._earnings_cache[ticker] = df
+            except Exception:
+                self._earnings_cache[ticker] = None
+
+        df = self._earnings_cache.get(ticker)
+        if df is None or df.empty:
+            return None
+
+        try:
+            as_of_ts = pd.Timestamp(as_of).normalize()
+            cutoff = as_of_ts - pd.Timedelta(days=lookback_days)
+            window = df.loc[(df.index > cutoff) & (df.index <= as_of_ts)]
+            if window.empty or "eps_surprise_pct" not in window.columns:
+                return None
+            val = window["eps_surprise_pct"].iloc[-1]
             return float(val) if not pd.isna(val) else None
         except Exception:
             return None

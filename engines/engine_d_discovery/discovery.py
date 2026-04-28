@@ -271,19 +271,21 @@ class DiscoveryEngine:
         Creates a random Gene (Condition) using expanded vocabulary.
 
         Categories (weighted selection):
-        - Technical (40%): RSI, Volatility, SMA Distance, SMA Cross, Donchian,
+        - Technical (35%): RSI, Volatility, SMA Distance, SMA Cross, Donchian,
           Pivot, Momentum ROC, Residual Momentum, Vol Diff
-        - Fundamental (15%): PE, PS, PB, PFCF, Debt
+        - Macro (10%): Yield curve (T10Y2Y), VIX level, unemployment delta
+        - Earnings (5%): EPS surprise % look-back
+        - Fundamental (10%): PE, PS, PB, PFCF, Debt
         - Calendar (10%): Day-of-week, month, quarter-end, opex proximity
         - Microstructure (10%): Overnight gap, close location, intraday range
         - Intermarket (10%): SPY/TLT/GLD returns, SPY-TLT correlation
-        - Regime (10%): Bull/bear/vol context
+        - Regime (5%): Bull/bear/vol context
         - Behavioral (5%): Panic score, herding breadth
         """
         roll = random.random()
 
-        # --- Regime (10%) ---
-        if roll < 0.10:
+        # --- Regime (5%) ---
+        if roll < 0.05:
             return {
                 "type": "regime",
                 "is": random.choice(["bull", "bear", "neutral_low_vol"]),
@@ -291,7 +293,7 @@ class DiscoveryEngine:
             }
 
         # --- Calendar (10%) ---
-        if roll < 0.20:
+        if roll < 0.15:
             indicator = random.choice([
                 "day_of_week_sin", "month_sin",
                 "quarter_end_proximity", "opex_proximity",
@@ -310,7 +312,7 @@ class DiscoveryEngine:
             return gene
 
         # --- Microstructure (10%) ---
-        if roll < 0.30:
+        if roll < 0.25:
             indicator = random.choice([
                 "overnight_gap", "close_location", "intraday_range",
             ])
@@ -327,7 +329,7 @@ class DiscoveryEngine:
             return gene
 
         # --- Intermarket (10%) ---
-        if roll < 0.40:
+        if roll < 0.35:
             indicator = random.choice([
                 "spy_return_5d", "tlt_return_5d", "gld_return_5d", "spy_tlt_corr",
             ])
@@ -341,8 +343,37 @@ class DiscoveryEngine:
                 gene["threshold"] = round(random.choice([-0.3, -0.1, 0.0, 0.2, 0.4]), 2)
             return gene
 
-        # --- Behavioral (5%) ---
+        # --- Macro (10%) — economy-wide FRED signals, all with data back to 2000+ ---
         if roll < 0.45:
+            indicator = random.choice(["yield_curve", "vix_level", "unemployment_delta"])
+            gene = {"type": "macro", "indicator": indicator}
+            if indicator == "yield_curve":
+                # T10Y2Y: inverted (<0) = stress, steep (>1.5) = expansion
+                gene["operator"] = random.choice(["less", "greater"])
+                gene["threshold"] = round(random.choice([-0.5, 0.0, 0.5, 1.0, 1.5]), 2)
+            elif indicator == "vix_level":
+                # VIX: > 20 = elevated vol, > 30 = panic
+                gene["operator"] = random.choice(["less", "greater"])
+                gene["threshold"] = random.choice([15, 20, 25, 30])
+            elif indicator == "unemployment_delta":
+                # UNRATE month-over-month change: positive = worsening labor market
+                gene["operator"] = random.choice(["less", "greater"])
+                gene["threshold"] = round(random.choice([-0.2, -0.1, 0.0, 0.1, 0.2]), 2)
+            return gene
+
+        # --- Earnings (5%) — per-ticker EPS surprise look-back ---
+        if roll < 0.50:
+            gene = {
+                "type": "earnings",
+                "indicator": "eps_surprise_pct",
+                "operator": random.choice(["less", "greater"]),
+                "threshold": round(random.choice([-0.10, -0.05, 0.0, 0.05, 0.10, 0.15]), 2),
+                "lookback_days": random.choice([30, 60, 90]),
+            }
+            return gene
+
+        # --- Behavioral (5%) ---
+        if roll < 0.55:
             indicator = random.choice(["panic_score", "herding_breadth"])
             gene = {"type": "behavioral", "indicator": indicator}
             if indicator == "panic_score":
@@ -362,8 +393,8 @@ class DiscoveryEngine:
             op_choices += ["top_percentile", "bottom_percentile"]
         operator = random.choice(op_choices)
 
-        # --- Fundamental (15%) ---
-        if roll < 0.60:
+        # --- Fundamental (10%) ---
+        if roll < 0.65:
             metric = random.choice([
                 "PE_Ratio", "PS_Ratio", "PB_Ratio", "PFCF_Ratio", "Debt_to_Equity",
             ])
@@ -379,7 +410,7 @@ class DiscoveryEngine:
                     gene["threshold"] = 1.0
             return gene
 
-        # --- Technical (40% — remainder) ---
+        # --- Technical (35% — remainder) ---
         indicators = [
             "rsi", "volatility", "sma_dist_pct",
             "sma_cross", "donchian_breakout", "pivot_position", "momentum_roc",
