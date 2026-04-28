@@ -22,6 +22,20 @@ then LOW. Within each severity, list newest at the top.
 
 ### HIGH
 
+### [HIGH] Engine A alpha_engine references deleted `rsi_mean_reversion` module — bare-except masks 6-month-old broken import
+- Engine: A
+- First flagged: 2026-04-28
+- Status: **resolved 2026-04-28** — dead imports removed, default edge swapped to `rsi_bounce`
+- Description: `alpha_engine.py:251` listed `"rsi_mean_reversion"` in `default_edges`, and `alpha_engine.py:422` did `importlib.import_module("engines.engine_a_alpha.edges.rsi_mean_reversion")`. Module was deleted 2025-11-12. Both call sites were wrapped in `except Exception` blocks that only printed under `is_info_enabled()` — failure was invisible under standard logging. AlphaEngine ran with one fewer default edge for ~6 months.
+- Fix: Replaced both import sites with `rsi_bounce` (the only existing RSI edge); removed orphan `"rsi_mean_reversion": "mean_reversion"` from `signal_processor.EDGE_AFFINITY_MAP`; updated `config/alpha_settings.dev.json` orphan entry; replaced silent `except Exception` with `except ImportError` that raises with diagnostic context. Future default-edge rename will now fail loudly at startup.
+
+### [HIGH] Engine D WFO `_quick_backtest` keys edges dict by edge_id, but AlphaEngine looks up weights by edge_name — WFO runs all edges at default weight 1.0
+- Engine: D (with A as the receiver of the contract drift)
+- First flagged: 2026-04-28
+- Status: **misdiagnosed — closed 2026-04-28**
+- Description: code-health agent claimed `AlphaEngine.edges` is keyed by edge_name (`"momentum_edge"`) in production, but WFO keys by edge_id (`"momentum_edge_v1"`). Verification on 2026-04-28: `mode_controller._load_edges_via_registry` lines 674-679 actually populate `loaded_edges[edge_id] = ...`, and `config/alpha_settings.prod.json::edge_weights` is keyed by edge_id (`"atr_breakout_v1": 2.5`). Both sides of the lookup use edge_id consistently. WFO's `AlphaEngine(edges={spec["edge_id"]: edge})` matches production convention.
+- Real (smaller) issue: WFO does not pass `edge_weights` or `regime_gates` to AlphaEngine, so a single-edge WFO test runs at weight=1.0 with regime_gates bypassed. For a solo WFO test this is the **desired** behavior — there is no other edge to compete with for capital, and you typically want to measure the unconditioned edge. If we ever need to WFO-test a regime-gated edge with its gate active, surface it as a separate finding.
+
 ### [HIGH] Engine D Gate 3 (WFO) is silently disabled — interface mismatch with WalkForwardOptimizer
 - Engine: D
 - First flagged: 2026-04-28
@@ -92,6 +106,31 @@ then LOW. Within each severity, list newest at the top.
 - See: `docs/Progress_Summaries/2026-04-27_session.md`, commits dfb0627, f06afb2-b1928c9, aa1cb65, da196b1, 1600e45, 53d5c07, 7db6625, 45abf0e, efbdf8d. Also `scripts/walk_forward_phase210.py`.
 
 ### MEDIUM
+
+### [MEDIUM] Engine F has a duplicate orchestrator `system_governor.py` (653 lines) that no production path calls
+- Engine: F
+- First flagged: 2026-04-28
+- Status: not started
+- Description: `engines/engine_f_governance/system_governor.py` defines a 653-line `SystemGovernor` class that orchestrates the same loop as `StrategyGovernor.update_from_trade_log` — read trades, compute edge metrics, update weights, persist to `data/governor/edge_weights.json`, append history. It has its own CLI entry (`python -m engines.engine_f_governance.system_governor --once / --watch`) and its own dataclass-based config. Grep across the entire repo shows: every production caller (`mode_controller`, `alpha_engine`, `analytics.edge_feedback`, `scripts.system_validity_check`) imports `StrategyGovernor` from `governor.py`. **Nothing imports `SystemGovernor`** — only the file's own `__main__` runs it. This is the textbook `governor.py` + `system_governor.py` duplicate-with-similar-name pattern called out in the code-health checklist. It also accumulates its own bare-except blocks (29 of them) which represent a separate, drifting maintenance burden.
+- Files: `engines/engine_f_governance/system_governor.py` (the dead one), `engines/engine_f_governance/governor.py` (the canonical one)
+- Recommended next step: Move `system_governor.py` to `Archive/engine_f_governance_legacy/system_governor_2026_04_28.py`. If the `--watch`/polling daemon mode is still wanted, port that one feature onto `StrategyGovernor` as a small CLI wrapper (`scripts/governor_daemon.py`) instead of carrying a 653-line shadow implementation. Verify nothing in `cron`, `launchd`, or live_trader/ shells out to `python -m engines.engine_f_governance.system_governor` before archiving.
+
+### [MEDIUM] Engine A signal_collector silently returns `{}` when an edge defines a typo'd method — same failure class as the just-fixed `check_signal` vs `compute_signals` bug
+- Engine: A
+- First flagged: 2026-04-28
+- Status: not started
+- Description: `SignalCollector._call_edge` (signal_collector.py:23-103) tries four method-name dispatches in order: module-level `compute_signals`, module-level `generate_signals`, class instance with `compute_signals`, class instance with `generate_signals`. Each layer is wrapped in `except Exception as inst_err: …` that only emits a print under `is_debug_enabled("COLLECTOR")` (off in production). If an edge author defines `_compute_signals` (private), or `compute_signal` (singular), or any other typo, the collector falls all the way through and returns `{}` — the edge produces zero signals every bar with no warning. This is exactly the symptom of the `check_signal` vs `compute_signals` bug from the user's recent diagnosis: `RuleBasedEdge` only survives because it explicitly wraps `check_signal()` inside a `compute_signals()` method (rule_based_edge.py:72-89). Any edge that ships with the wrong method name today is invisible. Worse, the dispatch order means a class with both `compute_signals` and `generate_signals` will always use `compute_signals` regardless of what the author intended (edges like `xsec_momentum.py` define both, with subtly different return shapes — class.compute_signals returns a `dict[str, float]`; the module-level `compute_signals` at line 181 returns a `list[dict]`, so the dispatcher's choice silently determines the contract).
+- Files: `engines/engine_a_alpha/signal_collector.py:23-103`, `engines/engine_a_alpha/edges/xsec_momentum.py:31, 139, 181` (triple-defined `compute_signals` — module-level convenience function shadows the class method).
+- Recommended next step: At AlphaEngine startup, validate every registered edge has exactly one of `compute_signals` or `generate_signals` callable, and log a `WARNING` for any edge that has neither. Make the bare-excepts in `_call_edge` re-raise `AttributeError` and `TypeError` so a typo manifests as a startup failure, not a silent zero-signal day. Separately, resolve the `xsec_momentum.py` triple-define: either delete the module-level `compute_signals` (lines 173-187) or document why it exists.
+
+### [MEDIUM] Charter inversion: Engine A signal_processor imports EDGE_CATEGORY_MAP from Engine F's regime_tracker
+- Engine: A (with import dependency on F)
+- First flagged: 2026-04-28
+- Status: not started
+- Description: `engines/engine_a_alpha/signal_processor.py:27` does `from engines.engine_f_governance.regime_tracker import EDGE_CATEGORY_MAP`. EDGE_CATEGORY_MAP is a taxonomy mapping edge name patterns to category labels (`"momentum"`, `"mean_reversion"`, etc.) used by SignalProcessor for the learned-affinity multiplier. Per `engine_charters.md`, Engine A produces signals; Engine F governs lifecycle. A should not depend on F's internal data structures at module-import time — that creates a cycle of intent: SignalProcessor's behaviour now depends on whether F has loaded its tracker module, which means refactoring F's tracker can break A's signal aggregation. The proper layering is for the taxonomy to live in `engines/engine_a_alpha/` (where the edges live) or in `core/` as a shared resource, with F consuming it. Today it lives in F because F was the first to need it for affinity tracking, and A grew an after-the-fact dependency. This is a smaller version of the same charter-inversion that flagged `evolution_controller.py` in F (existing finding above): a piece of the system is in the wrong package, and the dependency direction is reversed from what the charter intends.
+- Charter reference: engine_charters.md Engine A: "Generates buy/sell signals." Engine F: "Lifecycle, governance, weight learning." Authority Boundaries imply A precedes F in the data flow — A should not import F.
+- Files: `engines/engine_a_alpha/signal_processor.py:27`, `engines/engine_f_governance/regime_tracker.py` (where EDGE_CATEGORY_MAP is defined)
+- Recommended next step: Move `EDGE_CATEGORY_MAP` to `engines/engine_a_alpha/edge_taxonomy.py` (new small module), import it from there in both `signal_processor.py` and `regime_tracker.py`. Same content, correct dependency direction. While there, check whether `EDGE_CATEGORY_MAP` is the right shape — it currently has the orphan `"rsi_mean_reversion"` entry referenced in the HIGH finding above.
 
 ### [MEDIUM] Soft-paused edges with high alpha_settings weights still dominate signal ensemble
 - Engine: A (AlphaEngine / SignalProcessor) + F (lifecycle soft-pause design)

@@ -66,7 +66,6 @@ EDGE_AFFINITY_MAP = {
     "xsec_momentum": "momentum",
     "mean_reversion": "mean_reversion",
     "rsi_bounce": "mean_reversion",
-    "rsi_mean_reversion": "mean_reversion",
     "bollinger_reversion": "mean_reversion",
     "trend_following": "trend_following",
     "fundamental": "fundamental",

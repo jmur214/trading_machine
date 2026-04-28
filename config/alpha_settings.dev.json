@@ -24,7 +24,7 @@
   "flip_cooldown_bars": 2,
   "min_edge_contribution": 0.05,
   "edge_weights": {
-    "rsi_mean_reversion": 0.6,
+    "rsi_bounce": 0.6,
     "xsec_meanrev": 0.4
   }
 }

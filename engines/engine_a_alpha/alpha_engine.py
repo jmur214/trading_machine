@@ -246,9 +246,12 @@ class AlphaEngine:
         # 1️⃣ Initialize base edges
         self.edges = dict(edges or {})
         # --- Dynamically import edge modules if only names are given ---
+        # Default edges only fire when caller doesn't supply any explicit edges
+        # (test/sandbox path). Prod always passes loaded_edges via mode_controller.
+        # `rsi_mean_reversion` was removed 2025-11-12; use `rsi_bounce` instead.
         from importlib import import_module
         if not self.edges:
-            default_edges = ["rsi_mean_reversion", "xsec_momentum"]
+            default_edges = ["rsi_bounce", "xsec_momentum"]
             for e in default_edges:
                 try:
                     mod = import_module(f"engines.engine_a_alpha.edges.{e}")
@@ -257,8 +260,13 @@ class AlphaEngine:
                         print(f"[ALPHA][INFO] Registered edge: {e}")
                     else:
                         print(f"[ALPHA][WARN] Edge {e} missing compute_signals()")
-                except Exception as err:
-                    print(f"[ALPHA][ERROR] Could not import edge {e}: {err}")
+                except ImportError as err:
+                    # Programmer error — module path is wrong. Fail loudly.
+                    raise ImportError(
+                        f"Default edge module engines.engine_a_alpha.edges.{e} "
+                        f"could not be imported. If renamed/moved, update "
+                        f"alpha_engine.default_edges. Original error: {err}"
+                    ) from err
 
         # Environment overrides for key thresholds/hygiene
         self._env_enter = os.getenv("ALPHA_ENTER_THRESH")
@@ -416,20 +424,25 @@ class AlphaEngine:
         )
 
 
-        # 5️⃣ Ensure at least the default edges are available if none were supplied
+        # 5️⃣ Ensure at least the default edges are available if none were supplied.
+        # `rsi_mean_reversion` was removed 2025-11-12; use `rsi_bounce` instead.
         if not self.edges:
             try:
-                re = importlib.import_module("engines.engine_a_alpha.edges.rsi_mean_reversion")
-                self.edges["rsi_mean_reversion"] = re
-            except Exception as e:
-                if is_info_enabled() or is_debug_enabled("ALPHA"):
-                    print(f"[ALPHA][WARN] Could not import default edge rsi_mean_reversion: {e}")
+                rb = importlib.import_module("engines.engine_a_alpha.edges.rsi_bounce")
+                self.edges["rsi_bounce"] = rb
+            except ImportError as e:
+                raise ImportError(
+                    "Default edge `rsi_bounce` could not be imported — "
+                    f"alpha_engine fallback path is broken. Original: {e}"
+                ) from e
             try:
                 xm = importlib.import_module("engines.engine_a_alpha.edges.xsec_momentum")
                 self.edges["xsec_momentum"] = xm
-            except Exception as e:
-                if is_info_enabled() or is_debug_enabled("ALPHA"):
-                    print(f"[ALPHA][WARN] Could not import default edge xsec_momentum: {e}")
+            except ImportError as e:
+                raise ImportError(
+                    "Default edge `xsec_momentum` could not be imported. "
+                    f"Original: {e}"
+                ) from e
             if is_info_enabled() or is_debug_enabled("ALPHA"):
                 print(f"[ALPHA][INFO] Default edges in use: {list(self.edges.keys())}")
 
