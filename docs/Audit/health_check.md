@@ -22,6 +22,14 @@ then LOW. Within each severity, list newest at the top.
 
 ### HIGH
 
+### [HIGH] RuleBasedEdge requires FeatureEngineer-computed columns that are absent from validation data_map
+- Engine: D (with A as the affected receiver — `RuleBasedEdge.check_signal`)
+- First flagged: 2026-04-28
+- Status: not started
+- Description: After commit dda474c added `RuleBasedEdge.compute_signals()`, hunter candidates run through Gate 1 — but they still produce Sharpe=0.00 with zero trades. Root cause: `check_signal()` reads `row[feat]` for features like `RSI_14`, `Vol_ZScore`, `Regime_CorrSpike` etc. These columns are only populated by `FeatureEngineer.compute_*` methods during the hunt phase (assembled into `big_data` at `discovery.py::hunt:106`), and are NOT preserved into the validation `data_map` that `validate_candidate` passes to AlphaEngine. The data_map there has only OHLCV columns. `if feat not in row: return None` triggers on every bar, every ticker. Result: hunter Gate 1 Sharpe = 0.00 → fails benchmark threshold → marked failed. The autonomous discovery loop cannot promote any rule discovered by TreeScanner regardless of how good the rule is.
+- Files: `engines/engine_a_alpha/edges/rule_based_edge.py::check_signal`, `engines/engine_d_discovery/discovery.py::validate_candidate` (data_map passed to AlphaEngine without feature engineering), `engines/engine_d_discovery/feature_engineering.py` (where features are computed but only for hunt).
+- Recommended next step: Either (a) `RuleBasedEdge.compute_signals` calls `FeatureEngineer` on the per-ticker DataFrame at signal-time to add the columns its conditions reference, OR (b) `validate_candidate` runs `FeatureEngineer.compute_basic_features()` over `data_map` before instantiating the AlphaEngine. Option (a) is cleaner — keeps the edge self-sufficient and matches how rsi_bounce/atr_breakout compute their features inline. Add a unit test asserting hunter validation produces non-zero Sharpe given a contrived dataset where the rule trivially matches.
+
 ### [HIGH] Engine A alpha_engine references deleted `rsi_mean_reversion` module — bare-except masks 6-month-old broken import
 - Engine: A
 - First flagged: 2026-04-28
