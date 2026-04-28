@@ -933,52 +933,79 @@ class ModeController:
             if all_candidates:
                 discovery.save_candidates(all_candidates)
 
-            # Step 4: VALIDATE -- 4-gate pipeline (backtest -> PBO -> WFO -> significance)
-            queued = discovery.get_queued_candidates(status="candidate")
-            print(f"[DISCOVERY] {len(queued)} candidates queued for validation.")
+            # Step 4: VALIDATE — 4-gate pipeline with BH-FDR batch correction.
+            # Pass significance_threshold=None so Gate 4 is deferred; we collect
+            # all candidates' p-values, apply Benjamini-Hochberg FDR correction
+            # across the batch, then re-evaluate passed_all_gates.
+            from engines.engine_d_discovery.significance import apply_bh_fdr
 
-            promoted = 0
-            failed = 0
-            for cand in queued[:10]:  # Cap at 10 per cycle to limit compute
+            queued = discovery.get_queued_candidates(status="candidate")
+            batch = queued[:10]  # Cap at 10 per cycle to limit compute
+            print(f"[DISCOVERY] {len(queued)} candidates queued for validation ({len(batch)} this cycle).")
+
+            # Pass 1: collect raw metrics, defer Gate 4
+            all_results: list = []
+            for cand in batch:
                 cand_id = cand.get("edge_id", "unknown")
                 print(f"[DISCOVERY] Validating {cand_id}...")
                 try:
-                    result = discovery.validate_candidate(cand, data_map)
-
-                    # Store validation metrics for GA fitness tracking.
-                    # fitness_score is the OOS-weighted composite; validation_sharpe
-                    # retained for backwards-compatibility / logging.
-                    if "params" not in cand:
-                        cand["params"] = {}
-                    cand["params"]["validation_sharpe"] = result.get("sharpe", 0.0)
-                    cand["params"]["fitness_score"] = result.get("fitness_score", 0.0)
-                    cand["params"]["wfo_oos_sharpe"] = result.get("wfo_oos_sharpe", 0.0)
-
-                    if result.get("passed_all_gates", False):
-                        cand["status"] = "active"
-                        promoted += 1
-                        print(
-                            f"[DISCOVERY] PROMOTED {cand_id} "
-                            f"(Sharpe={result['sharpe']:.2f}, "
-                            f"survival={result['robustness_survival']:.0%}, "
-                            f"p={result['significance_p']:.3f})"
-                        )
-                    else:
-                        cand["status"] = "failed"
-                        failed += 1
-
-                    disc_logger.log_validation(cand_id, result, promoted=result.get("passed_all_gates", False))
-                    discovery.save_candidates([cand])
+                    result = discovery.validate_candidate(
+                        cand, data_map, significance_threshold=None,
+                    )
                 except Exception as ve:
                     print(f"[DISCOVERY] Validation error for {cand_id}: {ve}")
+                    result = {"sharpe": 0.0, "significance_p": 1.0, "passed_all_gates": False,
+                              "robustness_survival": 0.0, "fitness_score": 0.0}
+                all_results.append(result)
+
+            # Pass 2: BH-FDR batch correction on Gate 4 p-values
+            raw_p_values = [r.get("significance_p", 1.0) for r in all_results]
+            bh = apply_bh_fdr(raw_p_values, alpha=0.05) if raw_p_values else None
+            if bh is not None:
+                print(
+                    f"[DISCOVERY] BH-FDR over {bh['n_tests']} candidates: "
+                    f"{bh['n_rejected']} rejected, threshold={bh['threshold']:.4f}"
+                )
+                for i, result in enumerate(all_results):
+                    result["adjusted_significance_p"] = bh["adjusted_p_values"][i]
+                    result["passed_all_gates"] = (
+                        result.get("sharpe", 0.0) > 0
+                        and result.get("robustness_survival", 0.0) >= 0.7
+                        and bool(bh["reject_at_alpha"][i])
+                    )
+
+            # Pass 3: write status + fitness metrics back to registry
+            promoted = 0
+            failed = 0
+            for cand, result in zip(batch, all_results):
+                cand_id = cand.get("edge_id", "unknown")
+                if "params" not in cand:
+                    cand["params"] = {}
+                cand["params"]["validation_sharpe"] = result.get("sharpe", 0.0)
+                cand["params"]["fitness_score"] = result.get("fitness_score", 0.0)
+                cand["params"]["wfo_oos_sharpe"] = result.get("wfo_oos_sharpe", 0.0)
+
+                if result.get("passed_all_gates", False):
+                    cand["status"] = "active"
+                    promoted += 1
+                    print(
+                        f"[DISCOVERY] PROMOTED {cand_id} "
+                        f"(Sharpe={result['sharpe']:.2f}, "
+                        f"survival={result.get('robustness_survival', 0):.0%}, "
+                        f"p={result['significance_p']:.3f}, "
+                        f"adj_p={result.get('adjusted_significance_p', float('nan')):.3f})"
+                    )
+                else:
                     cand["status"] = "failed"
-                    discovery.save_candidates([cand])
                     failed += 1
+
+                disc_logger.log_validation(cand_id, result, promoted=result.get("passed_all_gates", False))
+                discovery.save_candidates([cand])
 
             disc_logger.log_cycle_summary(
                 n_hunt_candidates=len(hunt_candidates),
                 n_mutation_candidates=len(mutation_candidates),
-                n_validated=min(len(queued), 10),
+                n_validated=len(batch),
                 n_promoted=promoted,
                 n_failed=failed,
             )
