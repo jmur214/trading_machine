@@ -83,6 +83,11 @@ class LifecycleConfig:
     revival_sharpe: float = 0.5
     revival_wr: float = 0.45
 
+    # Retirement from soft-pause: if an edge has been paused for this many
+    # days AND is still benchmarkrelative-negative, retire it. Prevents paused
+    # edges from accumulating losses at 0.25x indefinitely. Set to 0 to disable.
+    paused_retirement_min_days: int = 90
+
     # Cycle caps
     max_retirements_per_cycle: int = 1
     max_pauses_per_cycle: int = 2
@@ -201,6 +206,23 @@ class LifecycleManager:
         if not edges:
             return []
 
+        # Build a lookup: edge_id → most-recent pause date (UTC).
+        # Used for the paused → retired retirement gate.
+        pause_dates: Dict[str, pd.Timestamp] = {}
+        if self.history_path.exists() and self.history_path.stat().st_size > 0:
+            try:
+                _hist = pd.read_csv(self.history_path)
+                if {"new_status", "edge_id", "timestamp"}.issubset(_hist.columns):
+                    _paused_rows = _hist[_hist["new_status"] == "paused"].copy()
+                    _paused_rows["timestamp"] = pd.to_datetime(
+                        _paused_rows["timestamp"], utc=True, errors="coerce"
+                    )
+                    _paused_rows = _paused_rows.dropna(subset=["timestamp"]).sort_values("timestamp")
+                    for _eid, _grp in _paused_rows.groupby("edge_id"):
+                        pause_dates[_eid] = _grp["timestamp"].iloc[-1]
+            except Exception:
+                pass
+
         events: List[LifecycleEvent] = []
         retirements_used = 0
         pauses_used = 0
@@ -263,6 +285,26 @@ class LifecycleManager:
                         edge_mdd, trade_count, days_active, as_of,
                     )
                     events.append(ev)
+                    continue
+
+                # paused → retired: if the edge has been in soft-pause past
+                # the minimum hold period and is still deeply negative, retire
+                # it. Prevents paused edges bleeding losses at 0.25x forever.
+                if retirements_used < self.cfg.max_retirements_per_cycle:
+                    pause_date = pause_dates.get(edge_id)
+                    days_since_pause = int((as_of - pause_date).days) if pause_date is not None else 0
+                    retire_from_pause_fired, retire_from_pause_gate = (
+                        self._check_retirement_from_paused_gates(
+                            pnls, days_since_pause, edge_sharpe, benchmark_sharpe,
+                        )
+                    )
+                    if retire_from_pause_fired:
+                        ev = self._transition(
+                            edge_spec, "retired", retire_from_pause_gate, edge_sharpe,
+                            benchmark_sharpe, edge_mdd, trade_count, days_active, as_of,
+                        )
+                        events.append(ev)
+                        retirements_used += 1
 
         # Persist registry + history
         if events:
@@ -351,6 +393,50 @@ class LifecycleManager:
         if recent_sharpe > self.cfg.revival_sharpe and recent_wr > self.cfg.revival_wr:
             return True, f"sustained_recovery_sharpe_{recent_sharpe:.2f}_wr_{recent_wr:.2f}"
         return False, "no_recovery"
+
+    def _check_retirement_from_paused_gates(
+        self,
+        pnls: np.ndarray,
+        days_since_pause: int,
+        edge_sharpe: float,
+        benchmark_sharpe: float,
+    ) -> Tuple[bool, str]:
+        """Gates for retiring an edge that is already in soft-pause.
+
+        An edge can be retired from paused state when all of:
+        1. Minimum hold period met: has been soft-paused for at least
+           `paused_retirement_min_days` (default 90). Prevents snap-retiring
+           an edge that was paused yesterday — give the revival gate time.
+        2. Benchmark-relative underperformance: edge_sharpe still below the
+           retirement threshold (same margin as active → retire). If an edge
+           is recovering toward benchmark, don't retire it.
+        3. Not currently reviving: last 20 trades don't show recovery.
+           Protects against retiring an edge whose soft-pause data shows
+           it turning the corner.
+
+        Returns (fired, gate_label).
+        """
+        min_days = self.cfg.paused_retirement_min_days
+        if min_days <= 0:
+            return False, "paused_retirement_disabled"
+
+        if days_since_pause < min_days:
+            return False, f"paused_only_{days_since_pause}d_of_{min_days}d_required"
+
+        threshold = benchmark_sharpe - self.cfg.retirement_margin
+        if edge_sharpe >= threshold:
+            return False, "paused_benchmark_ok"
+
+        revival_slice = pnls[-self.cfg.retirement_revival_window :]
+        if len(revival_slice) >= 5:
+            revival_sharpe = _edge_sharpe_from_pnl(revival_slice)
+            if revival_sharpe > self.cfg.retirement_revival_sharpe:
+                return False, f"paused_currently_reviving_sharpe_{revival_sharpe:.2f}"
+
+        return True, (
+            f"paused_{days_since_pause}d_benchmark_under_"
+            f"{edge_sharpe:.2f}_vs_{benchmark_sharpe:.2f}_margin_{self.cfg.retirement_margin}"
+        )
 
     # ----------------- divergence-detection (Phase α v3) ----------------- #
 

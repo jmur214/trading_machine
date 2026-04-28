@@ -453,3 +453,167 @@ def test_three_edge_integration(lcm_factory):
     # Reviving: should NOT be retired (recent recovery protects)
     # (May still pause if loss-fraction window catches it; that's acceptable.)
     assert statuses["reviving_edge_v1"] != "retired"
+
+
+# ---------------------------------------------------------------------------
+# paused → retired: long-stuck negative edge gets retired from soft-pause
+# ---------------------------------------------------------------------------
+
+def _write_pause_history(history_path: Path, edge_id: str, pause_ts: str) -> None:
+    """Write a lifecycle_history.csv with one pause event for edge_id."""
+    import csv
+    with history_path.open("w", newline="") as f:
+        w = csv.DictWriter(f, fieldnames=[
+            "timestamp", "edge_id", "old_status", "new_status",
+            "triggering_gate", "edge_sharpe", "benchmark_sharpe",
+            "edge_mdd", "trade_count", "days_active", "notes",
+        ])
+        w.writeheader()
+        w.writerow({
+            "timestamp": pause_ts,
+            "edge_id": edge_id,
+            "old_status": "active",
+            "new_status": "paused",
+            "triggering_gate": "loss_fraction_-0.41",
+            "edge_sharpe": -0.33,
+            "benchmark_sharpe": 0.87,
+            "edge_mdd": -0.41,
+            "trade_count": 300,
+            "days_active": 400,
+            "notes": "",
+        })
+
+
+def test_paused_edge_retired_after_min_days(tmp_path):
+    """A paused edge that stays negative past paused_retirement_min_days is retired."""
+    registry_path = tmp_path / "edges.yml"
+    history_path = tmp_path / "lifecycle_history.csv"
+    cfg = LifecycleConfig(
+        enabled=True,
+        paused_retirement_min_days=90,
+        retirement_margin=0.3,
+        max_retirements_per_cycle=2,
+    )
+    lcm = LifecycleManager(cfg=cfg, registry_path=registry_path, history_path=history_path)
+
+    # Edge has been paused 120 days ago — past the 90-day min
+    pause_ts = "2024-09-01T00:00:00+00:00"
+    _write_pause_history(history_path, "bad_edge_v1", pause_ts)
+
+    _seed_registry(registry_path, [
+        {"edge_id": "bad_edge_v1", "status": "paused",
+         "category": "technical", "module": "m", "version": "1.0.0", "params": {}},
+    ])
+    rng = np.random.default_rng(0)
+    losing = rng.normal(loc=-5.0, scale=20.0, size=150)
+    trades = _make_trades({"bad_edge_v1": losing}, start="2024-01-01")
+    as_of = pd.Timestamp("2025-01-01", tz="UTC")
+
+    events = lcm.evaluate(trades, benchmark_sharpe=0.87, as_of=as_of)
+    statuses = {e["edge_id"]: e["status"]
+                for e in yaml.safe_load(registry_path.read_text())["edges"]}
+
+    assert statuses["bad_edge_v1"] == "retired"
+    assert any(ev.new_status == "retired" and ev.edge_id == "bad_edge_v1" for ev in events)
+
+
+def test_paused_edge_not_retired_before_min_days(tmp_path):
+    """A paused edge inside the min-days hold period is NOT retired."""
+    registry_path = tmp_path / "edges.yml"
+    history_path = tmp_path / "lifecycle_history.csv"
+    cfg = LifecycleConfig(
+        enabled=True,
+        paused_retirement_min_days=90,
+        retirement_margin=0.3,
+        max_retirements_per_cycle=2,
+    )
+    lcm = LifecycleManager(cfg=cfg, registry_path=registry_path, history_path=history_path)
+
+    # Paused only 10 days ago — well inside the 90-day hold
+    pause_ts = "2024-12-22T00:00:00+00:00"
+    _write_pause_history(history_path, "fresh_pause_v1", pause_ts)
+
+    _seed_registry(registry_path, [
+        {"edge_id": "fresh_pause_v1", "status": "paused",
+         "category": "technical", "module": "m", "version": "1.0.0", "params": {}},
+    ])
+    rng = np.random.default_rng(0)
+    losing = rng.normal(loc=-5.0, scale=20.0, size=150)
+    trades = _make_trades({"fresh_pause_v1": losing}, start="2024-01-01")
+    as_of = pd.Timestamp("2025-01-01", tz="UTC")
+
+    events = lcm.evaluate(trades, benchmark_sharpe=0.87, as_of=as_of)
+    statuses = {e["edge_id"]: e["status"]
+                for e in yaml.safe_load(registry_path.read_text())["edges"]}
+
+    assert statuses["fresh_pause_v1"] == "paused"
+    assert not any(ev.new_status == "retired" for ev in events)
+
+
+def test_paused_edge_not_retired_when_reviving(tmp_path):
+    """A paused edge with recent recovery in last N trades is NOT retired."""
+    registry_path = tmp_path / "edges.yml"
+    history_path = tmp_path / "lifecycle_history.csv"
+    cfg = LifecycleConfig(
+        enabled=True,
+        paused_retirement_min_days=90,
+        retirement_margin=0.3,
+        revival_sharpe=0.3,
+        revival_wr=0.45,
+        revival_window=20,
+        max_retirements_per_cycle=2,
+    )
+    lcm = LifecycleManager(cfg=cfg, registry_path=registry_path, history_path=history_path)
+
+    pause_ts = "2024-09-01T00:00:00+00:00"
+    _write_pause_history(history_path, "recovering_v1", pause_ts)
+
+    _seed_registry(registry_path, [
+        {"edge_id": "recovering_v1", "status": "paused",
+         "category": "technical", "module": "m", "version": "1.0.0", "params": {}},
+    ])
+    rng = np.random.default_rng(0)
+    # Long losing history, then strong recent recovery in the last 20 trades
+    losing = rng.normal(loc=-5.0, scale=20.0, size=130)
+    winning_recent = rng.normal(loc=20.0, scale=5.0, size=20)
+    trades = _make_trades({"recovering_v1": np.concatenate([losing, winning_recent])}, start="2024-01-01")
+    as_of = pd.Timestamp("2025-01-01", tz="UTC")
+
+    events = lcm.evaluate(trades, benchmark_sharpe=0.87, as_of=as_of)
+    statuses = {e["edge_id"]: e["status"]
+                for e in yaml.safe_load(registry_path.read_text())["edges"]}
+
+    # Revival gate should fire (revived to active), not retired
+    assert statuses["recovering_v1"] == "active"
+
+
+def test_paused_retirement_disabled_when_min_days_zero(tmp_path):
+    """Setting paused_retirement_min_days=0 disables the paused → retired path."""
+    registry_path = tmp_path / "edges.yml"
+    history_path = tmp_path / "lifecycle_history.csv"
+    cfg = LifecycleConfig(
+        enabled=True,
+        paused_retirement_min_days=0,  # disabled
+        retirement_margin=0.3,
+        max_retirements_per_cycle=2,
+    )
+    lcm = LifecycleManager(cfg=cfg, registry_path=registry_path, history_path=history_path)
+
+    pause_ts = "2020-01-01T00:00:00+00:00"  # very old pause
+    _write_pause_history(history_path, "legacy_paused_v1", pause_ts)
+
+    _seed_registry(registry_path, [
+        {"edge_id": "legacy_paused_v1", "status": "paused",
+         "category": "technical", "module": "m", "version": "1.0.0", "params": {}},
+    ])
+    rng = np.random.default_rng(0)
+    losing = rng.normal(loc=-5.0, scale=20.0, size=150)
+    trades = _make_trades({"legacy_paused_v1": losing}, start="2024-01-01")
+    as_of = pd.Timestamp("2025-01-01", tz="UTC")
+
+    events = lcm.evaluate(trades, benchmark_sharpe=0.87, as_of=as_of)
+    statuses = {e["edge_id"]: e["status"]
+                for e in yaml.safe_load(registry_path.read_text())["edges"]}
+
+    assert statuses["legacy_paused_v1"] == "paused"
+    assert not any(ev.new_status == "retired" for ev in events)
