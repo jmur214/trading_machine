@@ -37,10 +37,10 @@ then LOW. Within each severity, list newest at the top.
 ### [MEDIUM] Soft-paused edges at 0.25x are primary driver of 2025 OOS underperformance
 - Engine: F (Governance — lifecycle soft-pause weight policy)
 - First flagged: 2026-04-28
-- Status: not started
-- Description: 2025 OOS backtest (2025-01-01 → 2026-04-17) shows Sharpe 0.173 vs SPY 0.975. Root cause: `atr_breakout_v1` and `momentum_edge_v1` are soft-paused at 0.25x weight, but still generate 3082 + 1642 = 4724 fills and lose -$3,357 + -$1,208 = -$4,565 combined. The positive Phase 2.10 edges generate only +$3,556 total. The paused edges, despite reduced weight, still emit strong-enough signals to dominate position allocation and bleed losses in 2025 tariff/rotation conditions. The 0.25x soft-pause was designed to preserve revival-gate data, but gives no time-decay — an edge that's been soft-paused for 6+ months with continued negative OOS Sharpe should reduce further toward 0.05x.
-- Recommended next step: Add time-decay to `LifecycleManager`: if an edge has been in `soft_pause` status for >90 days AND its trailing-90-day OOS Sharpe is still negative, reduce the soft-pause weight from 0.25x → 0.05x. Requires LifecycleManager to track `pause_date` and compute trailing Sharpe from trade log data.
-- Charter reference: Engine F charter — governance without time-awareness drifts into static policy
+- Status: **partially resolved 2026-04-28** — paused→retired path added (commit 1dca4a5)
+- Description: 2025 OOS backtest (2025-01-01 → 2026-04-17) shows Sharpe 0.173 vs SPY 0.975. Root cause: `atr_breakout_v1` and `momentum_edge_v1` are soft-paused at 0.25x weight, but still generate 3082 + 1642 = 4724 fills and lose -$3,357 + -$1,208 = -$4,565 combined. The positive Phase 2.10 edges generate only +$3,556 total. The paused edges had no lifecycle exit path — they could only revive or stay paused forever.
+- 2026-04-28 partial fix: `LifecycleManager` now has a `paused → retired` transition gate. After `paused_retirement_min_days` (default 90 days), if an edge remains benchmark-negative and is not currently reviving, it gets retired rather than accumulating 0.25x losses indefinitely. 4 new tests, 19/19 lifecycle tests pass.
+- Remaining gap: The 2025 OOS backtest result won't change until the in-sample run fires the retirement (next run with lifecycle=True against 2021-2024 data). After that run, both edges will retire at the 2024-12-31 evaluation point and won't be loaded in the 2025 OOS at all.
 
 ### [MEDIUM] Earnings backend swapped Finnhub → yfinance — PEAD now has training data
 - Engine: A (data_manager — `engines/data_manager/earnings_data.py`)
