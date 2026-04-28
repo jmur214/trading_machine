@@ -32,6 +32,7 @@ if __name__ == "__main__" and os.environ.get("PYTHONHASHSEED") != "0":
 import argparse
 import json
 import shutil
+import time
 from pathlib import Path
 
 from core.benchmark import compute_benchmark_metrics
@@ -126,7 +127,8 @@ def main():
         for bak, dst in [(WEIGHTS_BAK, WEIGHTS), (PERF_BAK, PERF)]:
             if bak.exists():
                 shutil.copy(bak, dst)
-                shutil.move(str(bak), "/tmp/")
+                tmp_dest = f"/tmp/{bak.name}.{int(time.time())}"
+                shutil.move(str(bak), tmp_dest)
                 print(f"[WFO] Restored {dst.name}")
 
     # Summary table

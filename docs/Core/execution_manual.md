@@ -28,6 +28,8 @@ Default: `prod`. Use `--mode sandbox` when you want to run backtests that should
 
 **`--no-governor`** — skips the post-run `governor.update_from_trades()` + `save_weights()` call entirely ([mode_controller.py:838-840](orchestration/mode_controller.py#L838-L840)). The backtest still *reads* current governor state at startup, but does not write. Use for deterministic A/B tests where you want identical state between runs.
 
+**`--reset-governor`** — resets governor learned weights to neutral (1.0 for all edges) at run startup, without touching the persisted `edge_weights.json`. The governor still runs and updates weights during the run, and if `--no-governor` is not also passed, writes the newly learned weights at the end. Use for clean in-sample measurement runs where stale OOS affinity would inject forward-looking signal. Rule of thumb: `--reset-governor` for measurement, `--no-governor` for deterministic A/B anchoring, both together for a completely isolated run. See: `engines/engine_f_governance/governor.py::reset_weights`, `tests/test_governor_reset.py`.
+
 **Note on combining flags:** `--env` and `--mode` are independent. Typical combinations:
 - `--env prod --mode prod` (default): real backtest that updates learned state.
 - `--env prod --mode sandbox`: test a code change against prod configs without polluting main governor.

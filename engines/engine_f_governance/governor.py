@@ -634,6 +634,20 @@ class StrategyGovernor:
         except Exception as e:
             log.debug(f"[Governor] Failed to write feedback history: {e}")
 
+    def reset_weights(self) -> None:
+        """Reset in-memory weights to neutral (1.0 for all edges).
+
+        Does NOT write to disk — the persisted state is unchanged for the next
+        run.  Use this before in-sample measurement runs so that stale OOS
+        affinity learned by the governor doesn't contaminate the result.  This
+        is the backtesting-as-measurement analogue of lifecycle_readonly: the
+        governor's persistent learned state is production state, not
+        measurement state.
+        """
+        self._weights = {}
+        self._regime_weights = {}
+        log.info("[Governor] Weights reset to neutral (1.0) for this run.")
+
     def save_weights(self) -> None:
         """Persist weights to JSON (data/governor/edge_weights.json by default)."""
         out = {"weights": self._weights}

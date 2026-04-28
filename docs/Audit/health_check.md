@@ -46,9 +46,9 @@ then LOW. Within each severity, list newest at the top.
 ### [MEDIUM] Governor learned-affinity from OOS runs contaminates subsequent in-sample backtests
 - Engine: F (Governor — `data/governor/edge_weights.json` persistence)
 - First flagged: 2026-04-28
-- Status: not started
+- Status: **resolved 2026-04-28** — `--reset-governor` flag shipped
 - Description: `edge_weights.json` (the governor's learned SR-based affinity per edge) persists across runs. When OOS backtests run first (especially on adversarial windows like 2025 data), the governor downgrades edge weights that underperform in OOS. Loading those downgraded weights into a subsequent in-sample run injects forward-looking signal: the governor "knows" which edges struggled in 2025 and suppresses them in the 2021-2024 window where they were profitable. Observed 2026-04-28: governor-enabled in-sample run got Sharpe 0.161 vs 0.264 with `--no-governor` — the difference is -0.103 Sharpe from stale/wrong affinity. Resetting to neutral (all weights = 1.0) before in-sample runs restores correct behavior.
-- Recommended next step: The backtest should always start with neutral governor weights (1.0) and train from scratch during the run. Add a `--reset-governor` flag or reset automatically when `--fresh` is used. This is the backtesting-as-measurement analogue of `lifecycle_readonly` — the governor's persistent state is production state, not measurement state.
+- Fix: `StrategyGovernor.reset_weights()` clears `_weights` and `_regime_weights` to empty (→ all edges default to 1.0 in `get_edge_weights()`). Does NOT write to disk — persisted production state is unchanged. Exposed as `--reset-governor` flag in `scripts/run_backtest.py` and `reset_governor=True` parameter in `run_backtest_logic()`. 4 tests in `tests/test_governor_reset.py` cover: clears in-memory weights, does not touch disk, clears regime weights, idempotent. Use: `PYTHONHASHSEED=0 python -m scripts.run_backtest --reset-governor` for clean in-sample measurement.
 
 ### [MEDIUM] Soft-paused edges at 0.25x are primary driver of 2025 OOS underperformance
 - Engine: F (Governance — lifecycle soft-pause weight policy)

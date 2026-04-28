@@ -696,6 +696,7 @@ class ModeController:
         mode: str = "prod",
         fresh: bool = False,
         no_governor: bool = False,
+        reset_governor: bool = False,
         alpha_debug: bool = False,
         override_start: Optional[str] = None,
         override_end: Optional[str] = None,
@@ -790,6 +791,9 @@ class ModeController:
             config_path=str(self.root / "config" / "governor_settings.json"),
             state_path=str(governor_state_path / "edge_weights.json"),
         )
+        if reset_governor:
+            governor.reset_weights()
+            print("[RUN_BACKTEST] Governor weights reset to neutral (1.0) for this run.")
 
         # --- Alpha config with override injection ---
         cfg_alpha = load_json(str(self.root / f"config/alpha_settings.{self.env}.json"))

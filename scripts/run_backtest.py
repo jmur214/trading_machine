@@ -22,6 +22,7 @@ def run_backtest_logic(
     mode="prod",
     fresh=False,
     no_governor=False,
+    reset_governor=False,
     alpha_debug=False,
     override_start=None,
     override_end=None,
@@ -40,6 +41,7 @@ def run_backtest_logic(
         mode=mode,
         fresh=fresh,
         no_governor=no_governor,
+        reset_governor=reset_governor,
         alpha_debug=alpha_debug,
         override_start=override_start,
         override_end=override_end,
@@ -55,6 +57,9 @@ def main():
     parser.add_argument("--fresh", action="store_true", help="Clear prior trades/snapshots before running.")
     parser.add_argument("--alpha-debug", action="store_true", help="Enable verbose alpha/edge debug output.")
     parser.add_argument("--no-governor", action="store_true", help="Skip governor updates.")
+    parser.add_argument("--reset-governor", action="store_true",
+                        help="Reset governor weights to neutral (1.0) before this run. "
+                             "Prevents stale OOS affinity from contaminating in-sample measurement.")
     parser.add_argument("--env", choices=["dev", "prod"], default="prod",
                         help="Use dev or prod configuration set")
     parser.add_argument("--mode", choices=["sandbox", "prod"], default="prod",
@@ -70,6 +75,7 @@ def main():
         mode=args.mode,
         fresh=args.fresh,
         no_governor=args.no_governor,
+        reset_governor=args.reset_governor,
         alpha_debug=args.alpha_debug,
         override_capital=args.capital,
         discover=args.discover,
