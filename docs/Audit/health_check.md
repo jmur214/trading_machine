@@ -49,14 +49,6 @@ then LOW. Within each severity, list newest at the top.
 - Description: Resolved. `SignalProcessor` now accepts `regime_gates: Dict[str, Dict[str, float]]` in its constructor. Per-edge gate maps Engine E `regime_summary` labels ("benign", "stressed", "crisis") to weight multipliers [0,1]. Gate multiplies `w` in the weighted-mean aggregation; missing labels default to 1.0; `regime_meta=None` defaults to "benign". `low_vol_factor_v1` re-enabled at weight 0.5 with gate `{benign:0.15, stressed:1.0, crisis:1.0}`. 8 new tests in `tests/test_signal_processor_regime_gate.py` covering all edge cases.
 - See: commit aa1cb65, `tests/test_signal_processor_regime_gate.py`, `data/governor/edges.yml` (low_vol_factor_v1 entry).
 
-### [MEDIUM] Lifecycle audit-trail / registry-state divergence detection missing
-- Engine: F (Governance)
-- First flagged: 2026-04-25
-- Status: open — refinement; not blocking, but would have caught the registry stomp bug earlier
-- Description: `lifecycle_history.csv` records `<edge>: active → paused` events. The 2026-04-25 registry stomp bug accumulated multiple identical pause events for the same edge across consecutive runs (because the bug reverted the pause between runs). Nothing in the system flagged this anomaly — under correct behavior, the second run should see the edge already paused. A sanity check at lifecycle startup that flags `<id>: <prev> → <new>` events where `prev` doesn't match the registry's actual current value would catch this entire bug class.
-- Recommended next step: add a check in `LifecycleManager.evaluate()` startup that compares the most recent audit-trail entry per edge_id against current registry status; log a warning when they disagree. Cheap, high-signal.
-- See: `memory/project_registry_status_stomp_bug_2026_04_25.md` methodology rule #4.
-
 ### LOW
 
 *No active LOW-severity findings.*
@@ -64,6 +56,12 @@ then LOW. Within each severity, list newest at the top.
 ---
 
 ## Resolved (last 90 days)
+
+### [MEDIUM] Lifecycle audit-trail / registry-state divergence detection missing (2026-04-25)
+- Engine: F (Governance)
+- Resolved: 2026-04-27
+- Description: `LifecycleManager._audit_registry_divergence_check()` was shipped as part of "Phase α v3" (committed before 2026-04-27 session). At the top of `evaluate()`, it reads `lifecycle_history.csv`, extracts the most recent `new_status` per edge via `groupby("edge_id").last()`, then compares against the current registry status in `edges.yml`. Any disagreement logs a `WARNING` with edge_id, audit_trail value, registry value, and a bug-class label (`status_reverted` or `missing_from_registry`). The check is wrapped in `try/except` so it cannot break the lifecycle loop — observability only, not gating. 6 unit tests in `tests/test_lifecycle_manager.py` cover: no-op on empty history, no-op when audit and registry agree, flags status_reverted, flags missing_from_registry, uses most-recent-event correctly, runs silently when evaluate() is called with divergence present.
+- See: `engines/engine_f_governance/lifecycle_manager.py::_audit_registry_divergence_check` (lines 357-449), `tests/test_lifecycle_manager.py` lines 292-420.
 
 ### [MEDIUM] Engine D's GA gene vocabulary searches a strip-mined space (2026-04-24)
 - Engine: D (Discovery)
