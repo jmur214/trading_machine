@@ -444,14 +444,22 @@ class AlphaEngine:
         Expected keys in edge_detail: 'edge' (name), optional 'group', 'category', 'version'.
         Fallbacks ensure JSON-safe primitives.
         """
+        import re as _re
         name = str(edge_detail.get("edge", "Unknown"))
         group = str(edge_detail.get("group", edge_detail.get("category", "technical") or "technical"))
-        version = edge_detail.get("version")
-        try:
-            ver_str = (str(version).strip() if version is not None else "1")
-        except Exception:
-            ver_str = "1"
-        edge_id = f"{name}_v{ver_str}"
+        # Use explicit edge_id if present (avoids double-versioning when name already ends in _v\d+)
+        explicit_id = edge_detail.get("edge_id")
+        if explicit_id:
+            edge_id = str(explicit_id)
+        elif _re.search(r"_v\d+$", name):
+            edge_id = name  # name already carries the version suffix
+        else:
+            version = edge_detail.get("version")
+            try:
+                ver_str = (str(version).strip() if version is not None else "1")
+            except Exception:
+                ver_str = "1"
+            edge_id = f"{name}_v{ver_str}"
         category = str(edge_detail.get("category", group))
         return {"name": name, "group": group, "category": category, "id": edge_id}
 

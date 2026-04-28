@@ -438,14 +438,17 @@ class BacktestController:
                     continue
                 contrib = (s.get("meta", {}) or {}).get("edges_triggered", [])
                 if contrib:
-                    # strongest by |signal*weight|
+                    # strongest by |norm*weight| (edges_triggered uses 'norm', not 'signal')
                     top = max(
                         contrib,
-                        key=lambda c: abs(float(c.get("signal", 0.0)) * float(c.get("weight", 0.0)))
+                        key=lambda c: abs(float(c.get("norm", c.get("signal", 0.0))) * float(c.get("weight", 0.0)))
                     )
                     top_edge_by_ticker[s["ticker"]] = str(top.get("edge", "Unknown"))
                 else:
-                    top_edge_by_ticker[s["ticker"]] = "Unknown"
+                    # edges_triggered is empty (all contributions below min_edge_contribution).
+                    # Fall back to the signal's top-level edge field, which is always set by
+                    # AlphaEngine even when no single edge clears the contribution threshold.
+                    top_edge_by_ticker[s["ticker"]] = s.get("edge", "Unknown")
             except Exception:
                 continue
 
