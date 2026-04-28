@@ -325,7 +325,11 @@ def main():
     lines.append("")
 
     out_path.write_text("\n".join(lines))
-    print(f"[DIAG] Report written to: {out_path.relative_to(ROOT)}")
+    try:
+        display_path = out_path.relative_to(ROOT)
+    except ValueError:
+        display_path = out_path
+    print(f"[DIAG] Report written to: {display_path}")
     print()
     print("---")
     print(f"Total legacy slippage cost (sample): ${total_legacy_dollars:,.0f}")
