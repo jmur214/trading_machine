@@ -574,7 +574,6 @@ class DiscoveryEngine:
         candidate_spec: Dict[str, Any],
         data_map: Dict[str, pd.DataFrame],
         significance_threshold: Optional[float] = 0.05,
-        exec_params: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, float]:
         """
         Multi-gate validation pipeline for edge candidates.
@@ -632,16 +631,12 @@ class DiscoveryEngine:
             start_date = data_map[first_ticker].index[0].isoformat()
             end_date = data_map[first_ticker].index[-1].isoformat()
 
-            # Default to fixed 5bps for cheap discovery scans; callers running
-            # a realistic-cost re-validation pass through `exec_params` with the
-            # ADV-bucketed Almgren-Chriss settings from backtest_settings.json.
-            _exec_params = exec_params if exec_params is not None else {"slippage_bps": 5.0}
             controller = BacktestController(
                 data_map=data_map,
                 alpha_engine=alpha,
                 risk_engine=risk,
                 cockpit_logger=bt_logger,
-                exec_params=_exec_params,
+                exec_params={"slippage_bps": 5.0},
                 initial_capital=100_000,
                 batch_flush_interval=99999,
             )
@@ -800,7 +795,7 @@ class DiscoveryEngine:
                         alpha_engine=b_alpha,
                         risk_engine=b_risk,
                         cockpit_logger=b_logger,
-                        exec_params=_exec_params,
+                        exec_params={"slippage_bps": 5.0},
                         initial_capital=100_000,
                         batch_flush_interval=99999,
                     )
