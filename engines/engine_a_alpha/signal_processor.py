@@ -57,6 +57,30 @@ class EnsembleSettings:
     combine: str = "weighted_mean"  # 'weighted_mean' only for now
 
 
+@dataclass
+class MetaLearnerSettings:
+    """Layer 3 (allocation) meta-learner integration.
+
+    The meta-learner combines tier=feature edge scores into a profile-aware
+    contribution that ADDS to the legacy weighted_sum over tier=alpha edges.
+    This is the Phase 1 architecture from
+    docs/Core/phase1_metalearner_design.md.
+
+    Default OFF for safety: when `enabled=False`, behavior is identical to
+    the legacy linear weighted_sum. Cold-start safe: if `enabled=True` but
+    no trained model exists for the active profile, MetaLearner.predict
+    returns 0.0 and the system falls back to legacy behavior automatically
+    (no exceptions in the hot path).
+
+    The contribution_weight scales how much the meta-learner's prediction
+    is added to the linear sum. Start small (0.1) so a noisy model can't
+    dominate the signal; raise after validation evidence accumulates.
+    """
+    enabled: bool = False
+    profile_name: str = "balanced"
+    contribution_weight: float = 0.1
+
+
 # ----------------------------- Processor ----------------------------- #
 
 EDGE_AFFINITY_MAP = {
@@ -85,6 +109,8 @@ class SignalProcessor:
         edge_weights: Dict[str, float],
         regime_gates: Optional[Dict[str, Dict[str, float]]] = None,
         debug: bool = False,
+        metalearner_settings: Optional[MetaLearnerSettings] = None,
+        edge_tiers: Optional[Dict[str, str]] = None,
     ):
         self.regime = regime
         self.hygiene = hygiene
@@ -92,8 +118,86 @@ class SignalProcessor:
         self.edge_weights = dict(edge_weights or {})
         self.regime_gates = dict(regime_gates or {})
         self.debug = bool(debug)
+        # Layer 3 meta-learner integration. Default OFF — when disabled,
+        # behavior is identical to the legacy linear weighted_sum so this
+        # change is a strict no-op for existing backtests.
+        self.ml_settings = metalearner_settings or MetaLearnerSettings()
+        # Per-edge tier classification from EdgeRegistry (Layer 2).
+        # Maps edge_id -> "alpha" | "feature" | "context". Edges not in
+        # this dict default to "alpha" (legacy linear-sum behavior) so a
+        # caller that doesn't pass tiers gets the pre-Phase-1 contract.
+        self.edge_tiers = dict(edge_tiers or {})
+        # Lazy-loaded MetaLearner — only loaded if enabled. Cold-start safe:
+        # if no model file exists for the active profile, the loaded
+        # instance's predict() returns 0.0 and behavior falls back to legacy.
+        self._metalearner = None
+        if self.ml_settings.enabled:
+            self._metalearner = self._try_load_metalearner()
         if self.debug:
             print(f"[SIGNAL_PROCESSOR] Init with Regime: {self.regime}")
+            print(f"[SIGNAL_PROCESSOR] MetaLearner: enabled={self.ml_settings.enabled}, "
+                  f"profile={self.ml_settings.profile_name}, "
+                  f"trained={self._metalearner.is_trained() if self._metalearner else False}")
+
+    def _try_load_metalearner(self):
+        """Load the trained MetaLearner for the active profile. Cold-start
+        safe — if no model file exists, returns an untrained instance whose
+        predict() returns 0.0 (no impact on signal output)."""
+        try:
+            from engines.engine_a_alpha.metalearner import MetaLearner
+            return MetaLearner.load(profile_name=self.ml_settings.profile_name)
+        except Exception as e:
+            # Any unexpected error (corrupt model file, sklearn version
+            # mismatch, etc.) → fall back to legacy. Better to silently
+            # use the linear sum than crash the backtest.
+            if self.debug:
+                print(f"[SIGNAL_PROCESSOR] MetaLearner load failed: {type(e).__name__}: {e}")
+            return None
+
+    def _metalearner_contribution(
+        self,
+        edge_map: Dict[str, float],
+    ) -> float:
+        """Run the meta-learner over the current bar's tier=feature edge
+        scores and return its scalar contribution.
+
+        Returns 0.0 (no contribution) if:
+          - meta-learner disabled
+          - no model loaded / cold-start
+          - feature mismatch (model trained on different features than
+            available now — common during the first run before the
+            score-based trainer ships)
+          - any unexpected error
+        """
+        if not self.ml_settings.enabled or self._metalearner is None:
+            return 0.0
+        if not self._metalearner.is_trained():
+            return 0.0
+        # Build feature dict from tier=feature edges in the current bar's scores.
+        feature_inputs: Dict[str, float] = {}
+        for edge_name, raw in edge_map.items():
+            if raw is None:
+                continue
+            tier = self.edge_tiers.get(edge_name, "alpha")
+            if tier != "feature":
+                continue
+            try:
+                feature_inputs[edge_name] = float(raw)
+            except Exception:
+                continue
+        if not feature_inputs:
+            return 0.0
+        try:
+            ml_score = self._metalearner.predict(feature_inputs)
+            return float(ml_score) * float(self.ml_settings.contribution_weight)
+        except Exception as e:
+            # Feature mismatch is the common case during the bootstrap phase
+            # (model trained on PnL summaries, inference sees raw scores).
+            # Falling back to 0 keeps the system running on the linear baseline.
+            if self.debug:
+                print(f"[SIGNAL_PROCESSOR] MetaLearner predict failed "
+                      f"({type(e).__name__}): {e} — falling back to linear baseline")
+            return 0.0
 
     # ---- helpers ---- #
 
@@ -254,6 +358,17 @@ class SignalProcessor:
             if self.ensemble.enable_shrink:
                 agg = agg * (1.0 - self.ensemble.shrink_lambda)
 
+            # ----------------- Layer 3: meta-learner contribution -----------------
+            # Adds a profile-aware non-linear term over tier=feature edges.
+            # When disabled or untrained, returns 0 → behavior matches legacy
+            # linear weighted_sum exactly. See MetaLearnerSettings docstring.
+            ml_contribution = self._metalearner_contribution(edge_map)
+            if ml_contribution != 0.0:
+                if self.debug:
+                    print(f"[METALEARNER] {ticker} {now} agg={agg:.4f} + "
+                          f"ml={ml_contribution:.4f} = {agg + ml_contribution:.4f}")
+                agg = agg + ml_contribution
+
             # clamp to [-1, 1] (numerical safety)
             agg = max(-1.0, min(1.0, float(agg)))
 
@@ -261,6 +376,7 @@ class SignalProcessor:
                 "aggregate_score": agg,
                 "regimes": regimes,
                 "edges_detail": details,
+                "ml_contribution": float(ml_contribution),
             }
 
         return out

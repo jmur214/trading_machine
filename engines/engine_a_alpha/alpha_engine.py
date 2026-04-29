@@ -49,7 +49,10 @@ import pandas as pd
 import os
 
 from .signal_collector import SignalCollector
-from .signal_processor import SignalProcessor, RegimeSettings, HygieneSettings, EnsembleSettings
+from .signal_processor import (
+    SignalProcessor, RegimeSettings, HygieneSettings, EnsembleSettings,
+    MetaLearnerSettings,
+)
 from .signal_formatter import SignalFormatter
 
 from typing import Optional
@@ -380,6 +383,16 @@ class AlphaEngine:
             combine="weighted_mean",
         )
 
+        # Layer 3 meta-learner integration. Default OFF — set
+        # `metalearner.enabled: true` in alpha_settings to opt in. When
+        # disabled, behavior is identical to legacy linear weighted_sum.
+        ml_cfg_raw = cfg_raw.get("metalearner", {}) or {}
+        metalearner_settings = MetaLearnerSettings(
+            enabled=bool(ml_cfg_raw.get("enabled", False)),
+            profile_name=str(ml_cfg_raw.get("profile_name", "balanced")),
+            contribution_weight=_coerce_float(ml_cfg_raw.get("contribution_weight", 0.1)),
+        )
+
         self.cfg = AlphaConfig(
             enter_threshold=_coerce_float(self._env_enter if self._env_enter is not None else cfg_raw.get("enter_threshold", 0.2)),
             exit_threshold=_coerce_float(self._env_exit if self._env_exit is not None else cfg_raw.get("exit_threshold", 0.05)),
@@ -396,16 +409,25 @@ class AlphaEngine:
         for k, v in self._edge_weights_external.items():
             self.cfg.edge_weights[k] = _coerce_float(v, 1.0)
 
-        # Load regime gates from EdgeRegistry (edge_id -> {regime -> multiplier})
+        # Load regime gates AND tier classifications from EdgeRegistry in
+        # a single pass (edge_id -> regime_gate / tier).
         try:
             from engines.engine_a_alpha.edge_registry import EdgeRegistry as _ER
+            _all_specs = _ER().get_all_specs()
             _regime_gates = {
                 s.edge_id: s.regime_gate
-                for s in _ER().get_all_specs()
+                for s in _all_specs
                 if s.regime_gate
+            }
+            # Layer 2 tier lookup for the meta-learner — feeds tier=feature
+            # edges into the model, leaves tier=alpha in the linear sum.
+            _edge_tiers = {
+                s.edge_id: (s.tier or "alpha")
+                for s in _all_specs
             }
         except Exception:
             _regime_gates = {}
+            _edge_tiers = {}
 
         # Components
         self.collector = SignalCollector(edges=self.edges, debug=self.cfg.debug)
@@ -416,6 +438,8 @@ class AlphaEngine:
             edge_weights=self.cfg.edge_weights,
             regime_gates=_regime_gates,
             debug=self.cfg.debug,
+            metalearner_settings=metalearner_settings,
+            edge_tiers=_edge_tiers,
         )
         self.formatter = SignalFormatter(
             enter_threshold=self.cfg.enter_threshold,
