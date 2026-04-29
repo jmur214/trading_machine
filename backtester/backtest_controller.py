@@ -137,11 +137,16 @@ class BacktestController:
             except Exception:
                 pass
 
-        # Execution simulator with sane defaults (can be overridden via exec_params)
+        # Execution simulator with sane defaults (can be overridden via exec_params).
+        # `slippage_model` selects between fixed (legacy), volatility, and
+        # realistic (ADV-bucketed half-spread + Almgren-Chriss impact). The
+        # realistic model honors `slippage_extra` for its specific knobs:
+        # impact_coefficient, mega_cap_threshold_usd, etc.
         self.exec = ExecutionSimulator(
             slippage_bps=float(exec_params.get("slippage_bps", 10.0)),
+            slippage_model=str(exec_params.get("slippage_model", "fixed")),
             commission=float(exec_params.get("commission", 0.0)),
-            # Extra realism switches are available via ExecParams; keep defaults here
+            slippage_extra=exec_params.get("slippage_extra"),
         )
 
         # Make logger aware of portfolio (some loggers compute equity diffs)

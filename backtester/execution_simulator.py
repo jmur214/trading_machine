@@ -65,7 +65,8 @@ class ExecutionSimulator:
                  gap_warn: float = 0.50,
                  prefer_close_fallback: bool = True,
                  conservative_intrabar: bool = True,
-                 verbose: bool = True):
+                 verbose: bool = True,
+                 slippage_extra: Optional[Dict[str, Any]] = None):
         self.params = ExecParams(
             slippage_bps=float(slippage_bps),
             slippage_model=str(slippage_model),
@@ -76,13 +77,19 @@ class ExecutionSimulator:
             conservative_intrabar=bool(conservative_intrabar),
             verbose=bool(verbose),
         )
-        
-        # Initialize the slippage model
-        self.model: SlippageModel = get_slippage_model({
+
+        # Initialize the slippage model. `slippage_extra` lets callers
+        # forward model-specific knobs (e.g. impact_coefficient,
+        # mega_cap_threshold_usd for RealisticSlippageModel) without
+        # having to expand this constructor's signature each time.
+        slippage_cfg: Dict[str, Any] = {
             "model_type": self.params.slippage_model,
             "slippage_bps": self.params.slippage_bps,
-            "vol_lookback": self.params.vol_lookback
-        })
+            "vol_lookback": self.params.vol_lookback,
+        }
+        if slippage_extra:
+            slippage_cfg.update(slippage_extra)
+        self.model: SlippageModel = get_slippage_model(slippage_cfg)
 
     # ---------------------------- internals ---------------------------- #
 
@@ -94,9 +101,22 @@ class ExecutionSimulator:
         if self.params.verbose and is_info_enabled("EXEC"):
             print(msg)
 
-    def _apply_slippage(self, price: float, side: str, ticker: str, bar_data: Any) -> float:
-        """Delegate to SlippageModel."""
-        bps = self.model.calculate_slippage_bps(ticker, bar_data, side)
+    def _apply_slippage(
+        self,
+        price: float,
+        side: str,
+        ticker: str,
+        bar_data: Any,
+        qty: int | None = None,
+    ) -> float:
+        """Delegate to SlippageModel.
+
+        ``qty`` is forwarded to the slippage model so size-aware models
+        (RealisticSlippageModel) can compute Almgren-Chriss square-root
+        market impact. Legacy models (FixedSlippageModel,
+        VolatilitySlippageModel) ignore the parameter.
+        """
+        bps = self.model.calculate_slippage_bps(ticker, bar_data, side, qty=qty)
         return self.model.apply_slippage(price, bps, side)
 
     def _extract_bar_prices(self, bar_like: Any) -> Dict[str, float]:
@@ -192,9 +212,10 @@ class ExecutionSimulator:
                 self._log_info(f"[WARN][EXEC] Gap > {self.params.gap_warn:.0%} on {ticker}: "
                                f"prev={prev:.4f}, open={raw:.4f} ({gap:.1%})")
 
-        # Apply slippage using the model
-        traded = self._apply_slippage(raw, side, ticker, next_bar_like)
-        
+        # Apply slippage using the model — forward qty so size-aware
+        # models (RealisticSlippageModel) can compute market impact.
+        traded = self._apply_slippage(raw, side, ticker, next_bar_like, qty=qty)
+
         fill = {
             "ticker": ticker,
             "side": side,
@@ -313,9 +334,10 @@ class ExecutionSimulator:
 
         # For stops/targets we model fill at the *level* (then add slippage).
         paid_side = "sell" if is_long else "buy"
-        
-        # Apply slippage using the model
-        px = self._apply_slippage(level, paid_side, ticker, bar_like)
+
+        # Apply slippage using the model — forward the qty being closed
+        # so size-aware models compute the right market impact for the exit.
+        px = self._apply_slippage(level, paid_side, ticker, bar_like, qty=qty)
 
         fill = {
             "ticker": ticker,

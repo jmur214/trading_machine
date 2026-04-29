@@ -530,10 +530,16 @@ class ModeController:
         self.init_cap: float = float(self.cfg_bt["initial_capital"])
 
         # --- Exec params (slippage/commission) ---
+        # `slippage_model` defaults to 'fixed' for backward compatibility.
+        # Set to 'realistic' in backtest_settings.json to enable
+        # ADV-bucketed half-spread + Almgren-Chriss square-root impact.
         self.exec_params = {
             "slippage_bps": float(self.cfg_bt.get("slippage_bps", 10.0)),
+            "slippage_model": str(self.cfg_bt.get("slippage_model", "fixed")),
             "commission": float(self.cfg_bt.get("commission", 0.0)),
         }
+        if "slippage_extra" in self.cfg_bt:
+            self.exec_params["slippage_extra"] = self.cfg_bt["slippage_extra"]
 
         # --- Prepare data manager ---
         import os as _os
@@ -845,8 +851,14 @@ class ModeController:
 
         exec_params = {
             "slippage_bps": float(self.cfg_bt.get("slippage_bps", 10.0)),
+            "slippage_model": str(self.cfg_bt.get("slippage_model", "fixed")),
             "commission": float(self.cfg_bt.get("commission", 0.0)),
         }
+        # Optional model-specific config block (e.g. realistic-model knobs:
+        # impact_coefficient, mega_cap_threshold_usd, ...). Forwarded as-is
+        # to ExecutionSimulator -> get_slippage_model.
+        if "slippage_extra" in self.cfg_bt:
+            exec_params["slippage_extra"] = self.cfg_bt["slippage_extra"]
 
         # --- Engine E: Regime ---
         regime_detector = RegimeDetector()

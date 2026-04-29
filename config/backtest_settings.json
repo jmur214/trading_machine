@@ -116,5 +116,16 @@
   "timeframe": "1d",
   "initial_capital": 100000.0,
   "commission": 0.0,
-  "promote_to_governor": true
+  "promote_to_governor": true,
+  "slippage_bps": 10.0,
+  "slippage_model": "realistic",
+  "slippage_extra": {
+    "impact_coefficient": 0.5,
+    "adv_lookback": 20,
+    "mega_cap_threshold_usd": 500000000.0,
+    "mid_cap_threshold_usd": 100000000.0,
+    "mega_cap_half_spread_bps": 1.0,
+    "mid_cap_half_spread_bps": 5.0,
+    "small_cap_half_spread_bps": 15.0
+  }
 }
