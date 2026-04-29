@@ -22,6 +22,20 @@ then LOW. Within each severity, list newest at the top.
 
 ### HIGH
 
+### [HIGH] Sharpe-only fitness limits portfolio profile flexibility — multi-metric measurement + config-driven fitness profile needed
+- Engine: A (signal_processor / meta-learner) + D (discovery gates) + F (lifecycle)
+- First flagged: 2026-04-28
+- Status: not started — design ready in `docs/Core/phase1_metalearner_design.md`
+- Description: The realistic-cost backtest produced Sharpe 1.063 (vs SPY 0.875) with under HALF the volatility and HALF the drawdown — but only **6.06% CAGR vs SPY 13.94%**. The system's apparent excellence on Sharpe is partly because Sharpe is volatility-normalized: a 5.7%-vol system beats a 16.5%-vol system on Sharpe even when its absolute return is half. **What's optimal for a low-vol/retiree profile (low drawdown, high Sharpe) is NOT optimal for a growth profile (high CAGR even at higher vol).** Currently every gate, fitness function, and lifecycle decision in the codebase uses Sharpe as the dominant metric. This hardcodes one profile preference into infrastructure that should support multiple.
+- Architectural fix (three-layer separation, per design doc):
+  - **Layer 1 (Existence — alive vs retired):** OBJECTIVE / profile-independent. Lifecycle gates use factor-decomp t-stat, BH-FDR, PBO survival, raw Sharpe vs benchmark. An edge gets retired only for objective reasons (consistently destroying value, no real signal, charter-broken). Profile changes do NOT retire edges.
+  - **Layer 2 (Tier — alpha/feature/context):** OBJECTIVE / profile-independent. Machine-classified from factor-decomp t-stats by the planned `TierClassifier` module. Self-updating, not hand-set.
+  - **Layer 3 (Allocation — how much capital):** SUBJECTIVE / config-driven. The active `FitnessConfig` profile weights Sharpe + Calmar + Sortino + CAGR + MDD into a single fitness score. Profiles in `config/fitness_profiles.yml`: retiree (`0.6 calmar + 0.3 sortino + 0.1 sharpe`), balanced (`0.5 sharpe + 0.3 calmar + 0.2 cagr`), growth (`0.5 cagr + 0.3 sharpe + 0.2 calmar`).
+  - The meta-learner trains against the active profile's fitness target, not raw forward returns.
+- Why this is HIGH (not MEDIUM): every downstream optimization in the system is currently anchored to Sharpe. Without this fix, the v2 plan's "build edges, autonomously combine" architecture is implicitly committing to one risk profile forever. Switching to a different profile later would require code edits across discovery, lifecycle, and signal_processor.
+- Recommended next step: implement during Session N of the meta-learner build (foundation phase). `MetricsEngine.calculate_all` already returns Calmar (commit fb1ba13 era); just add Sortino and Sortino-coverage tests, then add the `FitnessConfig` config layer. The `TierClassifier` rule and Lifecycle objective gates are already designed in the meta-learner design doc.
+- See: `docs/Core/phase1_metalearner_design.md` ("Three-layer architecture" section), `docs/Audit/realistic_cost_backtest_result.md` (the empirical observation that triggered this finding).
+
 ### [MEDIUM] validate_candidate uses full data_map extent instead of configured backtest window — Gate 1 takes ~35 min/candidate
 - Engine: D
 - First flagged: 2026-04-28

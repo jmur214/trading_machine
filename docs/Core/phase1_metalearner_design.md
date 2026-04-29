@@ -40,78 +40,151 @@ v2 doc's framing:
 A linear sum can't express "edge X is good only when regime is bull AND
 edge Y disagrees." A gradient-boosted tree can.
 
-## Three-tier edge taxonomy (prerequisite to combiner)
+## Three-layer architecture: existence vs tier vs allocation
 
-The combiner needs to know which edges are *alphas* (trade directly), which are *features* (input to the model), and which are *context* (regime modifiers). Add to `EdgeSpec`:
+The deepest decision in this design is the **separation of three orthogonal questions**, each answered at a different layer. Conflating them is how systems develop "the model thinks I should kill X but the portfolio still wants it" pathologies.
+
+```
+                   ┌───────────────────────────────────────┐
+Layer 1: EXISTENCE │ Is this edge real or noise?           │ ← OBJECTIVE / universal
+                   │ Decides: alive vs retired              │   Machine-decided
+                   └───────────────────────────────────────┘
+                                    ↓
+                   ┌───────────────────────────────────────┐
+Layer 2: TIER      │ How does the system use this edge?    │ ← OBJECTIVE / universal
+                   │ Decides: alpha vs feature vs context  │   Machine-decided from factor-decomp
+                   └───────────────────────────────────────┘
+                                    ↓
+                   ┌───────────────────────────────────────┐
+Layer 3: ALLOCATION│ Does THIS profile want it, & how much? │ ← SUBJECTIVE / config
+                   │ Decides: capital weight per edge      │   Fitness-metric driven
+                   └───────────────────────────────────────┘
+```
+
+**Profile changes** (e.g. switching from a low-vol/retiree profile to a high-CAGR/growth profile) affect **only Layer 3**. The same edge pool stays alive; allocation re-weights. An edge gets retired only for objective reasons (Layer 1), never because the current profile happened to dislike it.
+
+This is also how multi-strategy quant shops operate: the firm has N strategies; each product re-weights them differently, but a strategy doesn't get killed because one product zero-weighted it.
+
+### Layer 1: Existence (alive vs retired) — objective
+
+Lifecycle gates use **profile-independent** metrics only:
+
+- Factor-decomp t-stat consistently < -2 → significantly destroying value → retire-eligible
+- 90+ days paused with no recovery → retire (existing rule, commit `1dca4a5`)
+- BH-FDR insignificant across multiple test windows → no real signal → retire-eligible
+- Charter-broken (crashes, NaN, integration drift) → retire
+
+These are objective: a system retiring an edge under *any* profile would retire it under *every* profile.
+
+### Layer 2: Tier (alpha / feature / context) — objective, autonomous
+
+Tier classification is **automatic and recurring** based on factor-decomposition diagnostics. The system runs the diagnostic on a schedule (weekly or post-backtest); a scheduler reads each edge's t-stat, alpha%, and regime correlation and assigns:
+
+```
+if factor_tstat > 2 AND alpha_annual > 2%:
+    tier = "alpha"          # standalone — trades directly
+elif 0 < factor_tstat <= 2:
+    tier = "feature"        # informative but not standalone — feeds the meta-learner
+elif factor_tstat <= 0 AND |regime_correlation| > 0.3:
+    tier = "context"        # regime modifier — modifies other edges' weights
+elif factor_tstat < -2 AND days_negative >= 90:
+    tier = "retire-eligible"  # routes to Layer 1 (lifecycle pause→retire)
+else:
+    tier = "feature"        # default — keep as input until enough data accumulates
+```
+
+**This rule supersedes any hand-classified table.** Add `tier` to `EdgeSpec` with a default of `"feature"`. An auxiliary process (call it `TierClassifier`, a Phase 1 module) runs the rule and updates the registry.
 
 ```python
 @dataclass
 class EdgeSpec:
     edge_id: str
     ...
-    tier: Literal["alpha", "feature", "context"] = "alpha"
-    combination_role: Literal["standalone", "input", "gate"] = "standalone"
+    tier: Literal["alpha", "feature", "context"] = "feature"
+    tier_last_updated: Optional[str] = None
+    combination_role: Literal["standalone", "input", "gate"] = "input"
 ```
 
-Initial classification, based on factor-decomp results:
+**Day 1 bootstrap:** the very first run of `TierClassifier` produces a snapshot from the current factor-decomp report. From that point forward the system self-maintains without human edits to `tier`.
 
-| Edge | Current | Proposed tier | Rationale |
-|------|---------|--------------|-----------|
-| `volume_anomaly_v1` | active | **alpha** | t=+4.36, real alpha |
-| `herding_v1` | active | **alpha** | t=+4.49, real alpha |
-| `low_vol_factor_v1` | paused | **feature** | marginal alpha; useful regime signal |
-| `macro_credit_spread_v1` | active | **context** | regime modifier, low standalone alpha |
-| `macro_real_rate_v1` | active | **context** | regime modifier |
-| `macro_dollar_regime_v1` | active | **context** | t<0 standalone — clearly a modifier, not an alpha |
-| `macro_unemployment_momentum_v1` | paused | **context** | regime modifier |
-| `macro_yield_curve_v1` | paused | **context** | regime modifier |
-| `pead_v1`, `pead_short_v1`, `pead_predrift_v1` | active | **feature** | event signals; small standalone alpha but information |
-| `insider_cluster_v1` | active | **feature** | event signal |
-| `gap_fill_v1` | active | **feature** | factor-beta-only |
-| `rsi_bounce_v1`, `bollinger_reversion_v1` | active | **feature** | mean-reversion signals |
-| `panic_v1`, `earnings_vol_v1` | active | **feature** | conditional signals |
-| `atr_breakout_v1`, `momentum_edge_v1` | paused | **paused→retire** | -t > 2 confirms they should retire (already lifecycle-flagged) |
+### Layer 3: Allocation (how much capital) — subjective, config-driven
 
-This is a **schema migration** — every edge in `data/governor/edges.yml`
-gets a tier. Existing tier="alpha" default keeps current behavior; the
-combiner only kicks in when at least one tier="feature" is in scope.
+The fitness function is a **named profile** — a weighted combination of the metrics we always measure. Multiple profiles can coexist; switching is a config flip.
+
+```python
+@dataclass(frozen=True)
+class FitnessConfig:
+    name: str                       # "retiree", "growth", "balanced", etc.
+    weights: Dict[str, float]       # e.g. {"calmar": 0.6, "sortino": 0.3, "sharpe": 0.1}
+    # Optional profile-specific portfolio constraints:
+    target_vol: Optional[float] = None
+    max_drawdown_tolerance: Optional[float] = None
+```
+
+```yaml
+# config/fitness_profiles.yml
+profiles:
+  retiree:
+    weights: {calmar: 0.6, sortino: 0.3, sharpe: 0.1}
+    target_vol: 0.05
+    max_drawdown_tolerance: 0.10
+  balanced:
+    weights: {sharpe: 0.5, calmar: 0.3, cagr: 0.2}
+    target_vol: 0.10
+  growth:
+    weights: {cagr: 0.5, sharpe: 0.3, calmar: 0.2}
+    target_vol: 0.20
+```
+
+- Backtests, the meta-learner training target, and the allocation engine all **read the active profile's fitness function** rather than hardcoding Sharpe.
+- Each edge's metrics are computed *once* (Sharpe, Sortino, Calmar, CAGR, MDD, hit rate by regime) and stored. The fitness function combines them at allocation time.
+- Switching profiles re-weights without re-measuring.
+
+This is the most important architectural decision in this entire doc. **It directly addresses the user feedback that Sharpe-only optimization limits the system.**
 
 ## Architecture
 
+The combiner runs at Layer 3 (allocation). The tier assignments come from Layer 2 (autonomous factor-decomp classifier). Layer 1 (lifecycle/retirement) is upstream — by the time signals reach the combiner, retired edges are already gone.
+
 ```
-                 ┌── tier=alpha edges (2-5 of them) ──┐
-                 │   Direct contribution to score     │
-                 │                                    │
-edge_scores ─────┤── tier=feature edges (~10-30) ─────┤── meta-learner ──→ ticker score [-1, 1]
-                 │   Input to the meta-learner        │
-                 │                                    │
-                 └── tier=context edges (~5-10) ──────┤── modifies meta-learner output
-                                                       │   (regime weight) ─┘
-                                                       │
-                                                       └─→ aggregator ──→ final score
+                 ┌── tier=alpha edges (machine-classified, t > 2) ──┐
+                 │   Direct contribution to score                  │
+                 │                                                  │
+edge_scores ─────┤── tier=feature edges (informative, 0 < t ≤ 2) ──┤── meta-learner ──→ ticker score [-1, 1]
+                 │   Input to the meta-learner                     │   (trained against the
+                 │                                                  │   active profile's fitness)
+                 └── tier=context edges (regime modifiers) ────────┤── modifies meta-learner output
+                                                                    │   (regime weight) ─┘
+                                                                    │
+                                                                    └─→ aggregator ──→ final score
 ```
 
 Concretely, in `signal_processor.process()`:
 
 ```python
 def process(self, raw_scores, regime_meta):
+    # Tier assignments come from EdgeSpec, populated by TierClassifier
+    alphas, features, contexts = split_by_tier(raw_scores, registry)
+
     # 1. Tier-A direct contributions (legacy linear sum, but only over alphas)
-    alpha_score = sum(s * w for s, w in alphas_with_weights)
+    alpha_score = sum(s * w for s, w in alphas)
 
     # 2. Tier-B feature vector for the meta-learner
-    feature_vec = build_feature_vector(raw_scores, regime_meta)
+    feature_vec = build_feature_vector(features, regime_meta)
     if self.metalearner is not None and self.metalearner.is_trained():
         ml_score = self.metalearner.predict(feature_vec)
     else:
-        ml_score = 0.0  # cold-start: no trained model yet
+        ml_score = 0.0  # cold-start: no trained model yet → fall back to alpha_score only
 
     # 3. Tier-C context as a regime modifier
-    regime_mod = compute_regime_modifier(raw_scores, regime_meta)
+    regime_mod = compute_regime_modifier(contexts, regime_meta)
 
     # 4. Combine
     combined = (alpha_score + ml_score) * regime_mod
     return clamp(combined, -1, 1)
 ```
+
+The meta-learner's training target is **the active profile's fitness function applied to forward returns** — not raw forward returns. This means the model learns to optimize what the current portfolio profile actually wants.
 
 ## Choice of meta-learner library
 
@@ -129,10 +202,17 @@ trainer if the architecture is right.
 ## Training pipeline (offline)
 
 ```
-1. Walk-forward fold structure
-   - Train: bars[0 : t]
-   - Validate: bars[t : t + 60]   (held-out, never seen during training)
-   - Refresh annually
+1. Walk-forward rolling folds (NOT fixed 252-day blocks)
+   - At each anchor date t:
+       Train on bars[t-252 : t]    (1 year trailing window)
+       Predict next N=5 days
+       Roll anchor forward by 5 days; repeat
+   - Continuous validation: every 5-day prediction is scored against
+     realized returns as soon as those returns are available
+   - This gives us:
+       statistical power of a 1-year training window
+       iteration speed of "see results in 5-20 days"
+       no 4-month wait on every model change
 
 2. Feature engineering
    - tier=feature edge scores at each bar (per ticker)
@@ -148,22 +228,33 @@ trainer if the architecture is right.
    - Lasso with cross-validation OR mutual information filter
    - Reduce ~30 features → ~10-15 useful inputs
 
-5. Target = next-N-day forward return for the ticker
-   (try N=1, N=5, N=20 in separate models — start with N=5)
+5. Target = profile-aware forward score
+   - Forward N-day return per ticker (N=5 default)
+   - Pass through the active FitnessConfig's weighted metric so the
+     model learns to optimize what THIS profile values, not raw return
+   - Concretely: target_t = fitness_weights · [forward_sharpe_5d,
+     forward_calmar_5d, forward_sortino_5d, forward_return_5d]
+     using the rolling-window estimates over recent bars
 
 6. Train the model on (selected features, target) pairs
    - sklearn GradientBoostingRegressor with reasonable defaults
-   - Output a serialized .joblib model in data/governor/metalearner.pkl
+   - Output a serialized .joblib model in data/governor/metalearner_<profile>.pkl
+     (one model per profile; switching profiles loads a different file)
 
-7. Validate on held-out fold
-   - Compute combined-model OOS Sharpe
-   - Compare to the best single benchmark over the same window
-   - Pass condition: OOS Sharpe > best_benchmark - margin AND t-stat > 2
+7. Continuous validation
+   - Track 5-day predictions vs realized profile-aware target
+   - Promotion gates fire as the rolling window accumulates evidence:
+       30-day rolling MSE
+       30-day rolling correlation with target
+       30-day rolling Sharpe of acting on the model's predictions
 
 8. Promote OR retain old model
-   - If new model beats prior version on the held-out fold by a
-     statistically-significant margin, promote
+   - If new model beats prior version on the rolling window by a
+     statistically-significant margin (e.g. paired t-test p < 0.05
+     on 30-day prediction errors), promote
    - Otherwise keep prior (don't thrash)
+   - 252-day full-window validation is run periodically (quarterly) as
+     a final stamp, but it's not the gating bar for promotion
 ```
 
 ## Inference pipeline (online)
@@ -174,31 +265,49 @@ ms per bar on the 109-ticker universe.
 
 ## What ships in the first build (proposed scope)
 
-**Session N (this design's followup, ~1 day):**
-1. Add `tier` and `combination_role` fields to `EdgeSpec`
-2. Migration: classify all 14 active+paused edges per the table above; `data/governor/edges.yml` gets `tier:` populated
-3. Build `engines/engine_a_alpha/metalearner.py`:
-   - `MetaLearner` class with `fit(X, y)`, `predict(X)`, `save()`, `load()`
+The build is decomposed into three sessions, each with an explicit gate. The user signs off after each session before the next starts. **No session skips ahead — Layer 1 / Layer 2 / Layer 3 build in dependency order.**
+
+**Session N — Foundation (Layers 1 + 2):**
+1. Add `tier`, `tier_last_updated`, `combination_role` fields to `EdgeSpec` (default `tier="feature"`).
+2. Build `engines/engine_a_alpha/tier_classifier.py`:
+   - `TierClassifier` reads factor-decomp report + lifecycle status, applies the rule from "Layer 2: Tier" above, writes back to `edges.yml`.
+   - Idempotent: re-running with the same inputs produces the same output.
+   - Logs every reclassification with the t-stat / alpha that triggered it.
+3. Day-1 bootstrap: run `TierClassifier` once. The output snapshot becomes the system's tier state. From here on the system self-maintains.
+4. Add `FitnessConfig` dataclass + `config/fitness_profiles.yml` with three named profiles (retiree / balanced / growth). Default profile = `balanced`.
+5. Refactor `MetricsEngine.calculate_all` to also return Calmar, Sortino, and a `compute_fitness(profile)` helper that applies a `FitnessConfig`'s weights.
+6. Tests: tier classifier rule correctness; fitness function weighting math; profile-flip leaves edge pool unchanged.
+
+**Gate after Session N:** all 14 edges have machine-assigned tiers; switching the active profile changes allocation outputs but not which edges are alive.
+
+**Session N+1 — Meta-learner (Layer 3 build):**
+7. Build `engines/engine_a_alpha/metalearner.py`:
+   - `MetaLearner(profile_name)` class with `fit(X, y)`, `predict(X)`, `save()`, `load()`
    - sklearn `GradientBoostingRegressor` backend
-   - Cold-start fallback (returns 0.0 when not trained)
-4. Build `scripts/train_metalearner.py`:
-   - Reads tier=feature edge scores from a backtest's snapshots
-   - Builds X, y from features + N-day forward returns
-   - Walk-forward train/validate split
-   - Saves model + validation report to `docs/Audit/metalearner_validation.md`
-5. Tests for fit/predict, cold-start, and feature alignment
+   - Trained on profile-aware forward target (per the training pipeline above)
+   - Cold-start fallback (`predict` returns 0.0 when not trained)
+8. Build `scripts/train_metalearner.py`:
+   - Reads tier=feature edge scores from backtest snapshots
+   - Builds X, y where y = active profile's fitness applied to forward returns
+   - Walk-forward rolling folds with continuous validation
+   - Saves model to `data/governor/metalearner_<profile>.pkl` + report to `docs/Audit/metalearner_validation_<profile>.md`
+9. Adversarial-features audit (Boruta-style with permuted twins)
+10. Tests for fit/predict, cold-start, feature alignment, profile-aware target.
 
-**Session N+1 (~1 day):**
-6. Wire MetaLearner into `signal_processor.process()` per the architecture above
-7. Held-out fold infrastructure (annual refresh)
-8. Adversarial-features audit
-9. Integration test: full backtest with the meta-learner active
-10. Compare combined-model Sharpe vs the linear baseline
+**Gate after Session N+1:** trained meta-learner outperforms linear baseline on rolling-window evidence under the default profile.
 
-**Session N+2 (optional, ~1 day):**
-11. SHAP-based per-trade attribution log (which features drove this trade?)
-12. Migrate to xgboost or lightgbm if speed/expressivity becomes binding
-13. Bayesian model averaging over multiple meta-learners (the v2 "Level 4" path)
+**Session N+2 — Integration (Layer 3 wiring):**
+11. Wire `MetaLearner` into `signal_processor.process()` per the architecture diagram.
+12. New `metalearner_enabled: bool = False` config flag — opt-in for now.
+13. Integration test: full backtest with meta-learner active under each of the 3 profiles.
+14. Comparison report: meta-learner Sharpe vs linear baseline, all 3 profiles, all metrics.
+
+**Gate after Session N+2:** under the `balanced` profile, meta-learner-active backtest produces strictly better fitness score than meta-learner-disabled. Under each other profile, the result reflects the profile's preferences (e.g. `growth` should produce higher CAGR but possibly lower Sharpe — that's success for that profile).
+
+**Session N+3 (optional follow-on):**
+15. SHAP-based per-trade attribution log
+16. Migrate to xgboost or lightgbm if speed/expressivity becomes binding
+17. Bayesian model averaging over multiple meta-learners (v2 "Level 4")
 
 ## Risk and rollback
 
@@ -212,20 +321,41 @@ ms per bar on the 109-ticker universe.
 - **Thrash-protected.** Promotion only when the new model beats prior
   by a statistically-significant margin on the held-out fold.
 
-## Decisions needed from the user before build starts
+## Decisions — approved 2026-04-28
 
-1. **sklearn first vs xgboost first?** Recommend sklearn (no new dep,
-   architecture in faster). Migrate to xgboost as follow-up.
-2. **Forward-return horizon for the target?** N=5 as default; we can
-   train multiple horizons and ensemble.
-3. **Tier classifications above** — anything you'd reclassify? Especially
-   the `paused→retire` recommendation for `atr_breakout_v1` /
-   `momentum_edge_v1` (the lifecycle has 90-day-paused → retire path
-   already; this just makes the retirement happen via the discovery
-   gauntlet instead of waiting for elapsed-days).
-4. **Held-out fold size?** Default 60 days, refresh annually. 252
-   (full year) gives more validation but slower iteration.
+The original four questions and their resolved answers:
 
-Once you sign off on these four, the build can begin. Until then this
-doc is the single source of truth for what the meta-learner is
-supposed to do.
+1. **sklearn first vs xgboost first?** ✅ **sklearn first.** No new
+   dependency; architecture matters more than library; switching to
+   xgboost later is ~5 lines once the design is proven.
+
+2. **Forward-return horizon for the target?** ✅ **N=5 (one trading
+   week).** Defer multi-horizon ensembling to Session N+3. Standard
+   choice in the academic factor literature.
+
+3. **Tier classifications?** ✅ **Made autonomous, not hand-set.** The
+   user's principle "no manual edge tuning" applies. `TierClassifier`
+   computes tiers from factor-decomp t-stats on a recurring schedule.
+   The "day 1 snapshot" produced by the first run replaces what would
+   have been hand-classifications. See "Layer 2: Tier" above for the rule.
+
+4. **Held-out fold size?** ✅ **Walk-forward rolling folds, not fixed
+   blocks.** 1-year trailing training window, predict next 5-20 days,
+   roll forward. Continuous validation as the rolling window
+   accumulates evidence. 252-day full validation is a quarterly stamp,
+   not the gating bar — promotion happens on rolling evidence so we
+   never wait 4 months on a model change.
+
+A fifth decision surfaced in the conversation:
+
+5. **Fitness metric — Sharpe-only or multi-metric?** ✅ **Multi-metric
+   with config-driven profile selection.** All metrics measured on
+   every edge always (Sharpe, Calmar, Sortino, CAGR, MDD, etc.). The
+   active `FitnessConfig` profile (retiree / balanced / growth)
+   determines how those metrics are weighted into a single fitness
+   score for allocation. Layer 1 (lifecycle) uses objective metrics
+   only; Layer 3 (allocation) uses the profile's fitness. **Switching
+   profiles changes allocation, not which edges are alive.**
+
+These five together fully specify the build. Sessions N → N+1 → N+2 can
+proceed sequentially with explicit per-session gates as listed above.
