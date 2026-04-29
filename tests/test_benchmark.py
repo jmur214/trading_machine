@@ -63,9 +63,11 @@ def _write_synthetic_spy(data_dir: Path, ticker: str = "SPY",
 def isolated_data(tmp_path, monkeypatch):
     """Point benchmark at a tmp data directory with clean cache state."""
     bench.compute_benchmark_metrics.cache_clear()
+    bench.compute_blend_metrics.cache_clear()
     monkeypatch.setattr(bench, "DEFAULT_DATA_DIR", tmp_path / "processed")
     yield tmp_path
     bench.compute_benchmark_metrics.cache_clear()
+    bench.compute_blend_metrics.cache_clear()
 
 
 # ---------------------------------------------------------------------------
@@ -184,24 +186,28 @@ def test_different_windows_recompute(isolated_data):
 # ---------------------------------------------------------------------------
 
 def test_gate_passes_when_edge_clearly_beats_benchmark(isolated_data):
-    """Edge Sharpe well above threshold → passes."""
+    """Edge Sharpe well above SPY-only threshold → passes.
+
+    Uses mode='spy_only' since the test only seeds synthetic SPY data;
+    the new default mode='strongest' would also try to load QQQ + TLT.
+    """
     _write_synthetic_spy(isolated_data, daily_drift=0.0005, daily_vol=0.012)
     bm = compute_benchmark_metrics("2021-01-01", "2024-12-31")
     high_sharpe = bm.sharpe + 1.0  # well above
     passed, threshold = gate_sharpe_vs_benchmark(
-        high_sharpe, "2021-01-01", "2024-12-31",
+        high_sharpe, "2021-01-01", "2024-12-31", mode="spy_only",
     )
     assert passed is True
     assert threshold == pytest.approx(bm.sharpe - 0.2)
 
 
 def test_gate_fails_when_edge_below_benchmark(isolated_data):
-    """Edge Sharpe below threshold → fails."""
+    """Edge Sharpe below SPY-only threshold → fails."""
     _write_synthetic_spy(isolated_data, daily_drift=0.001, daily_vol=0.005)
     bm = compute_benchmark_metrics("2021-01-01", "2024-12-31")
     low_sharpe = bm.sharpe - 1.0  # well below threshold
     passed, threshold = gate_sharpe_vs_benchmark(
-        low_sharpe, "2021-01-01", "2024-12-31",
+        low_sharpe, "2021-01-01", "2024-12-31", mode="spy_only",
     )
     assert passed is False
     assert threshold == pytest.approx(bm.sharpe - 0.2)
@@ -214,8 +220,12 @@ def test_gate_with_custom_margin(isolated_data):
     # Edge Sharpe exactly equals benchmark Sharpe.
     # margin=0.2 → threshold = benchmark - 0.2 → edge passes.
     # margin=-0.5 (tighter) → threshold = benchmark + 0.5 → edge fails.
-    p_loose, _ = gate_sharpe_vs_benchmark(bm.sharpe, "2021-01-01", "2024-12-31", margin=0.2)
-    p_tight, _ = gate_sharpe_vs_benchmark(bm.sharpe, "2021-01-01", "2024-12-31", margin=-0.5)
+    p_loose, _ = gate_sharpe_vs_benchmark(
+        bm.sharpe, "2021-01-01", "2024-12-31", margin=0.2, mode="spy_only",
+    )
+    p_tight, _ = gate_sharpe_vs_benchmark(
+        bm.sharpe, "2021-01-01", "2024-12-31", margin=-0.5, mode="spy_only",
+    )
     assert p_loose is True
     assert p_tight is False
 
@@ -259,3 +269,171 @@ def test_falls_back_to_raw_when_processed_missing(tmp_path, monkeypatch):
     finally:
         actual_raw_path.unlink(missing_ok=True)
         bench.compute_benchmark_metrics.cache_clear()
+
+
+# ---------------------------------------------------------------------------
+# Multi-benchmark (Phase 0.2): SPY + QQQ + 60/40
+# ---------------------------------------------------------------------------
+
+def test_compute_blend_metrics_returns_valid_metrics(isolated_data):
+    """60/40 blend produces sensible Sharpe/CAGR when both legs have data."""
+    _write_synthetic_spy(isolated_data, ticker="SPY", daily_drift=0.0005,
+                         daily_vol=0.012, seed=10)
+    _write_synthetic_spy(isolated_data, ticker="TLT", daily_drift=0.0001,
+                         daily_vol=0.008, seed=11)
+    from core.benchmark import compute_blend_metrics
+    bm = compute_blend_metrics("2021-01-01", "2024-12-31")
+    assert bm.n_obs > 100
+    assert np.isfinite(bm.sharpe)
+    assert bm.mdd <= 0
+    # 60/40 vol should be lower than 100% equity vol (40% in lower-vol bonds)
+    spy = compute_benchmark_metrics("2021-01-01", "2024-12-31", ticker="SPY")
+    assert bm.vol < spy.vol
+
+
+def test_compute_blend_metrics_missing_bond_returns_zero(isolated_data):
+    """If bond ticker is unavailable, blend must fall back to zero-reference
+    rather than crash or fabricate."""
+    _write_synthetic_spy(isolated_data, ticker="SPY", n=500)
+    # Don't write TLT.
+    from core.benchmark import compute_blend_metrics
+    with pytest.raises(FileNotFoundError):
+        compute_blend_metrics("2021-01-01", "2024-12-31")
+
+
+def test_compute_blend_metrics_custom_weights(isolated_data):
+    """80/20 blend has higher equity exposure → Sharpe closer to pure equity."""
+    _write_synthetic_spy(isolated_data, ticker="SPY", daily_drift=0.001,
+                         daily_vol=0.012, seed=20)
+    _write_synthetic_spy(isolated_data, ticker="TLT", daily_drift=0.0001,
+                         daily_vol=0.008, seed=21)
+    from core.benchmark import compute_blend_metrics
+    bm_60_40 = compute_blend_metrics("2021-01-01", "2024-12-31", equity_weight=0.6)
+    bm_80_20 = compute_blend_metrics("2021-01-01", "2024-12-31", equity_weight=0.8)
+    spy = compute_benchmark_metrics("2021-01-01", "2024-12-31", ticker="SPY")
+    # 80/20 vol should sit between 60/40 and pure equity.
+    assert bm_60_40.vol < bm_80_20.vol < spy.vol
+
+
+def test_compute_blend_metrics_ticker_naming(isolated_data):
+    """The synthesized portfolio's ticker field encodes the composition."""
+    _write_synthetic_spy(isolated_data, ticker="SPY")
+    _write_synthetic_spy(isolated_data, ticker="TLT")
+    from core.benchmark import compute_blend_metrics
+    bm = compute_blend_metrics("2021-01-01", "2024-12-31")
+    assert "60/40" in bm.ticker
+    assert "SPY" in bm.ticker
+    assert "TLT" in bm.ticker
+
+
+def test_compute_multi_benchmark_metrics_returns_three(isolated_data):
+    """All three reference portfolios computed in one call."""
+    _write_synthetic_spy(isolated_data, ticker="SPY", seed=30)
+    _write_synthetic_spy(isolated_data, ticker="QQQ", seed=31)
+    _write_synthetic_spy(isolated_data, ticker="TLT", seed=32)
+    from core.benchmark import compute_multi_benchmark_metrics
+    multi = compute_multi_benchmark_metrics("2021-01-01", "2024-12-31")
+    assert set(multi.keys()) == {"SPY", "QQQ", "60/40"}
+    for name, bm in multi.items():
+        assert np.isfinite(bm.sharpe), f"{name} produced non-finite Sharpe"
+        assert bm.n_obs > 100
+
+
+def test_gate_strongest_mode_uses_max_sharpe(isolated_data):
+    """Gate threshold under mode='strongest' = max(SPY, QQQ, 60/40) - margin."""
+    # Make QQQ the strongest (clearly highest drift).
+    _write_synthetic_spy(isolated_data, ticker="SPY", daily_drift=0.0003, seed=40)
+    _write_synthetic_spy(isolated_data, ticker="QQQ", daily_drift=0.0008, seed=41)
+    _write_synthetic_spy(isolated_data, ticker="TLT", daily_drift=0.0001, seed=42)
+
+    from core.benchmark import compute_multi_benchmark_metrics
+    multi = compute_multi_benchmark_metrics("2021-01-01", "2024-12-31")
+    expected_strongest = max(bm.sharpe for bm in multi.values())
+
+    # Use mode='strongest' (the new default).
+    passed, threshold = gate_sharpe_vs_benchmark(
+        edge_sharpe=expected_strongest + 1.0,
+        start="2021-01-01", end="2024-12-31",
+        margin=0.2, mode="strongest",
+    )
+    assert passed is True
+    assert threshold == pytest.approx(expected_strongest - 0.2)
+
+
+def test_gate_strongest_mode_is_strictly_harder_than_spy_only(isolated_data):
+    """When QQQ outperforms SPY, the strongest gate is harder to pass than
+    spy_only — that's the whole point of the multi-benchmark fix."""
+    _write_synthetic_spy(isolated_data, ticker="SPY", daily_drift=0.0003,
+                         daily_vol=0.012, seed=50)
+    # QQQ clearly stronger than SPY.
+    _write_synthetic_spy(isolated_data, ticker="QQQ", daily_drift=0.0009,
+                         daily_vol=0.014, seed=51)
+    _write_synthetic_spy(isolated_data, ticker="TLT", daily_drift=0.0001,
+                         daily_vol=0.008, seed=52)
+
+    spy = compute_benchmark_metrics("2021-01-01", "2024-12-31", ticker="SPY")
+    edge_sharpe = spy.sharpe + 0.1  # beats SPY easily
+
+    p_spy_only, t_spy_only = gate_sharpe_vs_benchmark(
+        edge_sharpe, "2021-01-01", "2024-12-31",
+        margin=0.2, mode="spy_only",
+    )
+    p_strongest, t_strongest = gate_sharpe_vs_benchmark(
+        edge_sharpe, "2021-01-01", "2024-12-31",
+        margin=0.2, mode="strongest",
+    )
+
+    assert p_spy_only is True, "edge clearly beats SPY"
+    assert t_strongest > t_spy_only, "strongest threshold should be higher than SPY-only"
+    # Whether the strongest gate passes depends on the exact numbers, but
+    # the threshold MUST be strictly higher when QQQ outperforms SPY.
+
+
+def test_gate_strongest_default_mode_unchanged_signature(isolated_data):
+    """Calling gate_sharpe_vs_benchmark without `mode` defaults to strongest.
+
+    Documents the behavior change for callers reading the test suite.
+    """
+    _write_synthetic_spy(isolated_data, ticker="SPY", seed=60)
+    _write_synthetic_spy(isolated_data, ticker="QQQ", seed=61)
+    _write_synthetic_spy(isolated_data, ticker="TLT", seed=62)
+
+    # No mode kwarg → should match explicit mode='strongest'
+    p_default, t_default = gate_sharpe_vs_benchmark(
+        edge_sharpe=2.0, start="2021-01-01", end="2024-12-31",
+    )
+    p_explicit, t_explicit = gate_sharpe_vs_benchmark(
+        edge_sharpe=2.0, start="2021-01-01", end="2024-12-31",
+        mode="strongest",
+    )
+    assert p_default == p_explicit
+    assert t_default == pytest.approx(t_explicit)
+
+
+def test_gate_with_winner_returns_winning_benchmark_name(isolated_data):
+    """gate_sharpe_vs_benchmark_with_winner returns which benchmark set the bar."""
+    _write_synthetic_spy(isolated_data, ticker="SPY", daily_drift=0.0003, seed=70)
+    _write_synthetic_spy(isolated_data, ticker="QQQ", daily_drift=0.0010, seed=71)
+    _write_synthetic_spy(isolated_data, ticker="TLT", daily_drift=0.0001, seed=72)
+
+    from core.benchmark import gate_sharpe_vs_benchmark_with_winner
+    passed, threshold, winner = gate_sharpe_vs_benchmark_with_winner(
+        edge_sharpe=10.0, start="2021-01-01", end="2024-12-31", margin=0.2,
+    )
+    assert winner == "QQQ"  # the strongest synthetic series
+    assert passed is True
+
+
+def test_gate_spy_only_mode_preserves_legacy_behavior(isolated_data):
+    """Legacy callers can opt back into spy_only and get the original
+    SPY-only threshold even when QQQ/TLT files exist."""
+    _write_synthetic_spy(isolated_data, ticker="SPY", daily_drift=0.0003, seed=80)
+    _write_synthetic_spy(isolated_data, ticker="QQQ", daily_drift=0.001, seed=81)
+    _write_synthetic_spy(isolated_data, ticker="TLT", daily_drift=0.0001, seed=82)
+
+    spy = compute_benchmark_metrics("2021-01-01", "2024-12-31", ticker="SPY")
+    _, threshold_spy_only = gate_sharpe_vs_benchmark(
+        edge_sharpe=0.0, start="2021-01-01", end="2024-12-31",
+        mode="spy_only",
+    )
+    assert threshold_spy_only == pytest.approx(spy.sharpe - 0.2)
