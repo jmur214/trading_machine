@@ -822,6 +822,66 @@ class DiscoveryEngine:
             result["universe_b_sharpe"] = universe_b_sharpe
             result["universe_b_n_tickers"] = universe_b_n_tickers
 
+            # ---- Gate 6: Factor-Decomposition Alpha (Phase 1) ----
+            # Reject candidates whose returns are explained by FF5 + Mom
+            # factor exposure rather than genuine alpha. Threshold:
+            # intercept t-stat > 2 AND alpha annualized > 2%.
+            #
+            # An edge that loads +1.5 on momentum during a momentum regime
+            # *looks* like alpha but is reproducible via MTUM at 15 bps. The
+            # gate pushes the discovery loop to find returns that AREN'T
+            # factor beta in disguise.
+            #
+            # Skip semantics: if factor data isn't available or the edge has
+            # too few daily observations to fit reliably, the gate passes
+            # (don't block on missing diagnostics — other gates already do
+            # their job).
+            factor_alpha_passed = True
+            factor_alpha_reason = "skipped: not run"
+            try:
+                from core.factor_decomposition import (
+                    load_factor_data,
+                    regress_returns_on_factors,
+                    gate_factor_alpha,
+                )
+                # Build daily-return Series from the equity curve. Already
+                # has a datetime index from line 655.
+                daily_ret_series = equity_curve.pct_change().dropna()
+                # Don't auto-download from inside the validation loop —
+                # the diagnostic script handles cache priming. If the
+                # cache is missing, the gate skips (factor_alpha_passed
+                # stays True).
+                factors = load_factor_data(auto_download=False)
+                decomp = regress_returns_on_factors(
+                    returns=daily_ret_series,
+                    factors=factors,
+                    edge_name=candidate_spec.get("edge_id", "?"),
+                )
+                factor_alpha_passed, factor_alpha_reason = gate_factor_alpha(decomp)
+                if decomp is not None:
+                    result["factor_alpha_annualized"] = decomp.alpha_annualized
+                    result["factor_alpha_tstat"] = decomp.alpha_tstat
+                    result["factor_r_squared"] = decomp.r_squared
+            except FileNotFoundError as e:
+                # Factor cache not primed — log and skip (don't block discovery
+                # because the user hasn't run the baseline diagnostic yet).
+                factor_alpha_passed = True
+                factor_alpha_reason = "skipped: factor cache missing"
+                print(f"[DISCOVERY] Gate 6 skipped: {e}")
+            except Exception as e:
+                # Re-raise programmer errors; swallow only legitimate runtime
+                # issues so future schema-drift bugs surface immediately.
+                if isinstance(e, (TypeError, AttributeError)):
+                    raise
+                factor_alpha_passed = True
+                factor_alpha_reason = f"skipped: {type(e).__name__}"
+                print(f"[DISCOVERY] Gate 6 (factor alpha) failed: {type(e).__name__}: {e}")
+
+            result["factor_alpha_passed"] = factor_alpha_passed
+            result["factor_alpha_reason"] = factor_alpha_reason
+            if not factor_alpha_passed:
+                print(f"[DISCOVERY] {candidate_spec['edge_id']} failed Gate 6 ({factor_alpha_reason})")
+
             # ---- Final gate check ----
             # If `significance_threshold` is None, the orchestrator will
             # re-evaluate Gate 4 after BH-FDR batch correction; treat it as
@@ -842,6 +902,7 @@ class DiscoveryEngine:
                 and survival_rate >= 0.7
                 and sig_passed
                 and universe_b_passed
+                and factor_alpha_passed
             )
             result["passed_all_gates"] = passed
             result["significance_threshold"] = sig_threshold_for_log
@@ -853,7 +914,8 @@ class DiscoveryEngine:
             gate_summary = (
                 f"Sharpe={sharpe:.2f}, survival={survival_rate:.0%}, "
                 f"wfo_deg={wfo_degradation:.2f}, p={sig_p:.3f}, "
-                f"univ_b={b_sharpe_str}({universe_b_n_tickers}t)"
+                f"univ_b={b_sharpe_str}({universe_b_n_tickers}t), "
+                f"alpha={factor_alpha_reason}"
             )
             if passed:
                 print(f"[DISCOVERY] {candidate_spec['edge_id']} PASSED all gates: {gate_summary}")

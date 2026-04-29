@@ -35,131 +35,20 @@ Subsequent runs use the cache.
 from __future__ import annotations
 
 import argparse
-import io
-import urllib.request
-import zipfile
-from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional
 
-import numpy as np
 import pandas as pd
 
+from core.factor_decomposition import (
+    DEFAULT_FACTOR_COLS,
+    FactorDecomp,
+    load_factor_data,
+    regress_returns_on_factors,
+)
+
 ROOT = Path(__file__).resolve().parents[1]
-
-# Ken French data library — daily file URLs (publicly hosted by Dartmouth Tuck).
-FF5_URL = "https://mba.tuck.dartmouth.edu/pages/faculty/ken.french/ftp/F-F_Research_Data_5_Factors_2x3_daily_CSV.zip"
-MOM_URL = "https://mba.tuck.dartmouth.edu/pages/faculty/ken.french/ftp/F-F_Momentum_Factor_daily_CSV.zip"
-
-CACHE_DIR = ROOT / "data" / "research"
-FF5_CACHE = CACHE_DIR / "ff5_daily.csv"
-MOM_CACHE = CACHE_DIR / "mom_daily.csv"
-
-
-# ---------------------------------------------------------------------------
-# Data loading
-# ---------------------------------------------------------------------------
-
-def _download_ff_csv(url: str, dest_path: Path) -> None:
-    """Download a Ken French zip file, extract its single CSV, save to dest."""
-    print(f"[FACTOR] Downloading {url}")
-    req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
-    with urllib.request.urlopen(req, timeout=60) as resp:
-        zip_bytes = resp.read()
-    with zipfile.ZipFile(io.BytesIO(zip_bytes)) as zf:
-        names = [n for n in zf.namelist() if n.lower().endswith(".csv")]
-        if not names:
-            raise RuntimeError(f"No CSV in zip from {url}")
-        with zf.open(names[0]) as f:
-            content = f.read()
-    dest_path.parent.mkdir(parents=True, exist_ok=True)
-    dest_path.write_bytes(content)
-    print(f"[FACTOR] Cached → {dest_path.relative_to(ROOT)}")
-
-
-def _parse_ff5_csv(path: Path) -> pd.DataFrame:
-    """Parse a Ken French daily-frequency factor CSV.
-
-    The file is comma-separated with:
-      - a multi-line text preamble (3-5 lines, varies)
-      - a blank line
-      - a header line starting with `,` (date col has no label)
-      - YYYYMMDD,float,float,... data rows
-      - a copyright footer
-
-    Approach: read line by line, detect the header (line starting with a
-    comma + factor names), then load the contiguous rows below it where
-    the first field parses as an 8-digit date.
-    """
-    raw = path.read_text()
-    lines = raw.splitlines()
-
-    # Find header line: starts with comma, contains factor names.
-    header_idx = None
-    for i, line in enumerate(lines):
-        stripped = line.strip()
-        if not stripped.startswith(","):
-            continue
-        if any(tok in stripped for tok in ["Mkt-RF", "Mkt", "Mom"]):
-            header_idx = i
-            break
-    if header_idx is None:
-        raise RuntimeError(f"Could not find header line in {path}")
-
-    # Header looks like ",Mkt-RF,SMB,HML,RMW,CMA,RF" → split, drop empty
-    # leading element from the leading comma, name the date column "Date".
-    cols = [c.strip() for c in lines[header_idx].split(",")]
-    cols = ["Date" if c == "" else c for c in cols]
-
-    # Collect contiguous data rows: first field is an 8-digit date.
-    data_rows: List[str] = []
-    for line in lines[header_idx + 1:]:
-        if "," not in line:
-            if data_rows:
-                # First non-data line after data started → footer reached.
-                break
-            continue
-        first_field = line.split(",", 1)[0].strip()
-        if len(first_field) == 8 and first_field.isdigit():
-            data_rows.append(line)
-        elif data_rows:
-            # Annual-average rows / copyright follow the daily block.
-            break
-
-    if not data_rows:
-        raise RuntimeError(f"No data rows found in {path}")
-
-    df = pd.read_csv(io.StringIO("\n".join(data_rows)), names=cols, header=None)
-    df["Date"] = pd.to_datetime(df["Date"], format="%Y%m%d")
-    factor_cols = [c for c in df.columns if c != "Date"]
-    df[factor_cols] = df[factor_cols].astype(float) / 100.0  # pct → decimal
-    df = df.set_index("Date").sort_index()
-    return df
-
-
-def load_factor_data() -> pd.DataFrame:
-    """Load FF5 + Momentum into a single DataFrame indexed by Date.
-
-    Downloads + caches on first run; uses cache on subsequent runs.
-    """
-    if not FF5_CACHE.exists():
-        _download_ff_csv(FF5_URL, FF5_CACHE)
-    if not MOM_CACHE.exists():
-        _download_ff_csv(MOM_URL, MOM_CACHE)
-
-    ff5 = _parse_ff5_csv(FF5_CACHE)
-    mom = _parse_ff5_csv(MOM_CACHE)
-    # Mom CSV has one factor column "Mom" (or sometimes "Mom   "); normalize.
-    mom.columns = [c.strip() for c in mom.columns]
-    factors = ff5.join(mom, how="inner", rsuffix="_mom")
-    # Standardize column names.
-    factors = factors.rename(columns={
-        "Mkt-RF": "MktRF", "Mkt-Rf": "MktRF",
-        "SMB": "SMB", "HML": "HML", "RMW": "RMW", "CMA": "CMA",
-        "RF": "RF", "Mom": "Mom",
-    })
-    return factors
 
 
 # ---------------------------------------------------------------------------
@@ -209,21 +98,11 @@ def edge_daily_returns(trades: pd.DataFrame, initial_capital: float = 100_000.0)
 
 
 # ---------------------------------------------------------------------------
-# OLS regression
+# OLS regression — see core/factor_decomposition.py for the actual logic
 # ---------------------------------------------------------------------------
 
-@dataclass(frozen=True)
-class FactorDecomp:
-    edge: str
-    n_obs: int
-    raw_sharpe: float
-    alpha_daily: float          # intercept (per-day excess return)
-    alpha_annualized: float     # × 252
-    alpha_tstat: float          # for the intercept
-    r_squared: float
-    betas: Dict[str, float]
-
-
+# Thin wrapper preserving the script's original local function name in case
+# anything else imports it. Delegates to the shared module.
 def regress_edge_on_factors(
     edge_returns: pd.Series,
     factors: pd.DataFrame,
@@ -231,58 +110,15 @@ def regress_edge_on_factors(
 ) -> Optional[FactorDecomp]:
     """OLS: edge_excess_return ~ alpha + sum(beta_i * factor_i).
 
-    Subtract RF from edge return to get excess return (matches Ken French
-    convention). Returns None if not enough overlap.
+    Thin wrapper around `core.factor_decomposition.regress_returns_on_factors`
+    preserving the original argument shape used by this script.
     """
-    aligned = pd.concat(
-        [edge_returns.rename("edge"), factors],
-        axis=1,
-        join="inner",
-    ).dropna()
-    if len(aligned) < 30:
-        return None
-
-    excess = aligned["edge"] - aligned["RF"]
-    X = aligned[factor_cols].values
-    y = excess.values
-
-    # OLS via numpy.linalg.lstsq with intercept column.
-    X_design = np.hstack([np.ones((len(y), 1)), X])
-    coefs, residuals, rank, _ = np.linalg.lstsq(X_design, y, rcond=None)
-    alpha = float(coefs[0])
-    betas = {factor_cols[i]: float(coefs[i + 1]) for i in range(len(factor_cols))}
-
-    # Standard errors of coefficients = sqrt(diag(sigma^2 * (X'X)^-1)).
-    fitted = X_design @ coefs
-    resid = y - fitted
-    n, k = X_design.shape
-    if n - k < 1:
-        return None
-    sigma2 = float((resid @ resid) / (n - k))
-    XtX_inv = np.linalg.pinv(X_design.T @ X_design)
-    var_coefs = sigma2 * np.diag(XtX_inv)
-    se = np.sqrt(np.maximum(var_coefs, 0.0))
-    alpha_tstat = float(alpha / se[0]) if se[0] > 0 else 0.0
-
-    # R^2
-    ss_res = float(resid @ resid)
-    ss_tot = float(((y - y.mean()) ** 2).sum())
-    r2 = 1.0 - ss_res / ss_tot if ss_tot > 0 else 0.0
-
-    # Sharpe of raw return stream (NOT excess) — matches how the rest of the
-    # codebase reports edge Sharpe.
-    raw_std = float(aligned["edge"].std())
-    raw_sharpe = float(aligned["edge"].mean() / raw_std * np.sqrt(252)) if raw_std > 0 else 0.0
-
-    return FactorDecomp(
-        edge=str(edge_returns.name) if edge_returns.name else "?",
-        n_obs=len(aligned),
-        raw_sharpe=raw_sharpe,
-        alpha_daily=alpha,
-        alpha_annualized=alpha * 252,
-        alpha_tstat=alpha_tstat,
-        r_squared=r2,
-        betas=betas,
+    edge_name = str(edge_returns.name) if edge_returns.name else "?"
+    return regress_returns_on_factors(
+        returns=edge_returns,
+        factors=factors,
+        factor_cols=factor_cols,
+        edge_name=edge_name,
     )
 
 
