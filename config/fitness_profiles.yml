@@ -1,0 +1,52 @@
+# config/fitness_profiles.yml
+#
+# Named portfolio profiles for the Layer 3 (allocation) fitness function.
+# See docs/Core/phase1_metalearner_design.md and core/fitness.py for the
+# full architecture.
+#
+# Each profile is a weighted combination of metrics that MetricsEngine
+# already computes. Higher fitness = better. Switching the active profile
+# RE-WEIGHTS the existing edge pool — it does NOT retire edges. Layer 1
+# (lifecycle) decisions are profile-independent.
+#
+# Recognized metric keys (any subset, weights need not sum to 1):
+#   sharpe   — annualized return / annualized vol
+#   sortino  — annualized return / downside vol (cap at 10.0 for no-downside)
+#   calmar   — CAGR / |max drawdown|
+#   cagr     — annualized return as a fraction (CAGR % / 100)
+#   neg_mdd  — -max_drawdown / 100 (positive when drawdown is small)
+
+active_profile: balanced
+
+profiles:
+  # Low-vol / drawdown-controlled. Suits a retiree who values stability
+  # over absolute return. Sharpe + Sortino + Calmar weighted heavily.
+  retiree:
+    weights:
+      calmar: 0.6
+      sortino: 0.3
+      sharpe: 0.1
+    target_vol: 0.05            # 5% annualized portfolio volatility
+    max_drawdown_tolerance: 0.10  # halt at -10% drawdown
+
+  # Default. Balances risk-adjusted (Sharpe), drawdown control (Calmar),
+  # and absolute growth (CAGR). Reasonable starting point for someone
+  # who hasn't picked a profile.
+  balanced:
+    weights:
+      sharpe: 0.5
+      calmar: 0.3
+      cagr: 0.2
+    target_vol: 0.10
+    max_drawdown_tolerance: 0.20
+
+  # Growth-oriented. Suits a long-horizon investor who can tolerate
+  # higher drawdowns in exchange for absolute returns. CAGR is the
+  # dominant term but Sharpe + Calmar still get weight as guardrails.
+  growth:
+    weights:
+      cagr: 0.5
+      sharpe: 0.3
+      calmar: 0.2
+    target_vol: 0.20
+    max_drawdown_tolerance: 0.35

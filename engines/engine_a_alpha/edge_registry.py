@@ -21,6 +21,26 @@ class EdgeSpec:
     # Applied by SignalProcessor on top of alpha_settings edge_weights.
     regime_gate: Optional[Dict[str, float]] = None
 
+    # ------------------------- Phase 1 tier system ------------------------- #
+    # Three-layer architecture (see docs/Core/phase1_metalearner_design.md):
+    #   tier="alpha"    → standalone signal that trades directly (factor t > 2)
+    #   tier="feature"  → input to the meta-learner, not a direct trade signal
+    #   tier="context"  → regime modifier, weights other edges
+    # Machine-classified by `engines/engine_a_alpha/tier_classifier.py` from
+    # factor-decomposition diagnostics. Default "feature" so newly-registered
+    # edges feed the meta-learner until enough data accumulates to promote.
+    tier: str = "feature"  # "alpha" | "feature" | "context"
+    # ISO-8601 timestamp of the last TierClassifier run that touched this
+    # spec. None means tier was never machine-classified (legacy edge or
+    # newly-registered candidate awaiting first run).
+    tier_last_updated: Optional[str] = None
+    # How this edge participates in signal aggregation:
+    #   "standalone" → tier=alpha edges contribute directly to the score
+    #   "input"      → tier=feature edges feed the meta-learner
+    #   "gate"       → tier=context edges modify other edges' weights
+    # Default "input" matches default tier="feature".
+    combination_role: str = "input"  # "standalone" | "input" | "gate"
+
 
 class EdgeRegistry:
     """
@@ -56,6 +76,9 @@ class EdgeRegistry:
                     params=row.get("params") or {},
                     status=row.get("status", "active"),
                     regime_gate=row.get("regime_gate") or None,
+                    tier=row.get("tier", "feature"),
+                    tier_last_updated=row.get("tier_last_updated"),
+                    combination_role=row.get("combination_role", "input"),
                 )
                 specs[spec.edge_id] = spec
             self._specs = specs
@@ -75,6 +98,16 @@ class EdgeRegistry:
             }
             if s.regime_gate:
                 row["regime_gate"] = s.regime_gate
+            # Phase 1 tier fields — only emit when set so legacy registries
+            # without these keys round-trip cleanly. Default tier is "feature"
+            # but we still emit it so the user can see what the system thinks.
+            if s.tier:
+                row["tier"] = s.tier
+            if s.tier_last_updated:
+                row["tier_last_updated"] = s.tier_last_updated
+            if s.combination_role and s.combination_role != "input":
+                # Only emit when non-default to keep the YAML clean.
+                row["combination_role"] = s.combination_role
             rows.append(row)
         data = {"edges": rows}
         self.path.write_text(yaml.safe_dump(data, sort_keys=False))
@@ -143,6 +176,14 @@ class EdgeRegistry:
         owned by Engine F's lifecycle layer per the edges.yml Write Contract
         in PROJECT_CONTEXT.md ("F writes: status field changes").
 
+        Same write-protection applies to the Phase 1 `tier`,
+        `tier_last_updated`, and `combination_role` fields: those are owned
+        by `engines.engine_a_alpha.tier_classifier.TierClassifier` and must
+        not be stomped by import-time `ensure()` calls. Without this guard,
+        every backtest startup would reset tier="feature" on edges the
+        classifier had promoted to "alpha", silently undoing the
+        classification — the same bug class as the 2026-04-25 status-stomp.
+
         Prior bug (fixed 2026-04-25): the previous implementation did
         `if spec.status: s.status = spec.status`, which let the auto-register-
         on-import code (e.g. momentum_edge.py:64) silently stomp the
@@ -156,11 +197,14 @@ class EdgeRegistry:
         if spec.edge_id not in self._specs:
             self.register(spec)
         else:
-            # Merge non-status fields. Status is OWNED by lifecycle/governance.
+            # Merge non-status, non-tier fields. Status is OWNED by lifecycle/
+            # governance; tier fields are OWNED by TierClassifier.
             s = self._specs[spec.edge_id]
             s.category = spec.category or s.category
             s.module = spec.module or s.module
             s.version = spec.version or s.version
             s.params = spec.params or s.params
             # status: intentionally NOT updated — see docstring above
+            # tier / tier_last_updated / combination_role: intentionally NOT
+            # updated either — owned by TierClassifier
             self._save()

@@ -1,6 +1,6 @@
 # Factor Decomposition Baseline
 
-Generated: 2026-04-28T22:45:11
+Generated: 2026-04-28T22:49:12
 Trade log: `data/trade_logs/abf68c8e-1384-4db4-822c-d65894af70a1/trades.csv`
 Factor model: FF5 (Mkt-RF, SMB, HML, RMW, CMA) + Momentum (Mom)
 Edges analyzed: **9**
@@ -21,35 +21,35 @@ Tier-A standalone alphas; edges without become Tier-B features
 
 | Edge | N obs | Raw Sharpe | Alpha (annualized) | Alpha t-stat | R² | Verdict |
 |------|-------|------------|--------------------|--------------|-----|---------|
-| `volume_anomaly_v1` | 170 | 6.07 | +7.4% | +4.92 | 0.02 | 🟢 alpha |
-| `herding_v1` | 66 | 6.70 | +13.6% | +3.65 | 0.11 | 🟢 alpha |
-| `low_vol_factor_v1` | 55 | 1.89 | +0.5% | +1.09 | 0.37 | 🟡 marginal |
-| `macro_credit_spread_v1` | 94 | 2.45 | +0.7% | +1.09 | 0.11 | 🟡 marginal |
-| `pead_predrift_v1` | 75 | 1.73 | +0.2% | +0.78 | 0.04 | 🔴 factor beta |
-| `macro_dollar_regime_v1` | 37 | -0.70 | -0.3% | -0.26 | 0.18 | 🔴 factor beta |
-| `gap_fill_v1` | 84 | -1.24 | -1.9% | -0.74 | 0.11 | 🔴 factor beta |
-| `atr_breakout_v1` | 328 | -1.78 | -4.2% | -2.49 | 0.08 | 🔴 factor beta |
-| `momentum_edge_v1` | 381 | -1.96 | -5.8% | -3.06 | 0.12 | 🔴 factor beta |
+| `herding_v1` | 116 | 7.10 | +10.1% | +4.49 | 0.10 | 🟢 alpha |
+| `volume_anomaly_v1` | 248 | 5.46 | +6.1% | +4.36 | 0.01 | 🟢 alpha |
+| `macro_credit_spread_v1` | 103 | 2.99 | +0.6% | +1.01 | 0.11 | 🟡 marginal |
+| `gap_fill_v1` | 133 | 1.06 | +0.2% | +0.10 | 0.09 | 🔴 factor beta |
+| `low_vol_factor_v1` | 96 | 2.68 | -0.7% | -0.78 | 0.07 | 🔴 factor beta |
+| `pead_predrift_v1` | 85 | 0.84 | -0.5% | -1.33 | 0.08 | 🔴 factor beta |
+| `atr_breakout_v1` | 501 | -1.25 | -3.8% | -3.28 | 0.06 | 🔴 factor beta |
+| `macro_dollar_regime_v1` | 71 | 0.72 | -2.2% | -3.55 | 0.12 | 🔴 factor beta |
+| `momentum_edge_v1` | 583 | -1.89 | -6.2% | -4.32 | 0.11 | 🔴 factor beta |
 
 ## Per-edge factor loadings
 
 | Edge | MktRF | SMB | HML | RMW | CMA | Mom |
 |------|----|----|----|----|----|----|
-| `volume_anomaly_v1` | +0.00 | -0.01 | +0.00 | -0.01 | +0.01 | +0.00 |
-| `herding_v1` | -0.01 | -0.02 | +0.00 | -0.05 | +0.04 | -0.01 |
-| `low_vol_factor_v1` | +0.00 | -0.01 | +0.01 | -0.00 | -0.01 | +0.00 |
-| `macro_credit_spread_v1` | +0.00 | -0.00 | +0.00 | +0.00 | +0.00 | -0.00 |
-| `pead_predrift_v1` | -0.00 | +0.00 | -0.00 | +0.00 | +0.00 | -0.00 |
-| `macro_dollar_regime_v1` | -0.00 | -0.01 | +0.01 | -0.01 | -0.01 | -0.01 |
-| `gap_fill_v1` | -0.00 | +0.00 | +0.04 | -0.02 | -0.04 | +0.01 |
-| `atr_breakout_v1` | +0.03 | -0.02 | +0.00 | +0.00 | +0.04 | -0.00 |
-| `momentum_edge_v1` | +0.04 | -0.02 | +0.03 | -0.02 | +0.03 | -0.01 |
+| `herding_v1` | -0.00 | -0.02 | +0.00 | -0.04 | +0.05 | -0.01 |
+| `volume_anomaly_v1` | +0.00 | -0.01 | +0.00 | -0.01 | +0.01 | -0.00 |
+| `macro_credit_spread_v1` | +0.00 | -0.00 | +0.00 | -0.00 | -0.00 | -0.01 |
+| `gap_fill_v1` | +0.00 | -0.01 | +0.03 | -0.03 | -0.02 | -0.01 |
+| `low_vol_factor_v1` | +0.01 | -0.00 | +0.01 | -0.00 | -0.01 | +0.00 |
+| `pead_predrift_v1` | -0.00 | +0.00 | +0.00 | +0.00 | -0.00 | -0.00 |
+| `atr_breakout_v1` | +0.02 | -0.02 | +0.00 | -0.00 | +0.03 | -0.00 |
+| `macro_dollar_regime_v1` | -0.00 | -0.01 | +0.01 | -0.01 | -0.00 | -0.00 |
+| `momentum_edge_v1` | +0.04 | -0.02 | +0.02 | -0.01 | +0.03 | -0.01 |
 
 ## Interpretation
 
 - **2 edges produce real alpha** (t-stat > 2 AND alpha > 2% annualized).
-- **2 edges are marginal** (1 < t-stat ≤ 2). Possibly real, possibly noise.
-- **5 edges are factor beta in disguise** (t-stat ≤ 1). These can be
+- **1 edges are marginal** (1 < t-stat ≤ 2). Possibly real, possibly noise.
+- **6 edges are factor beta in disguise** (t-stat ≤ 1). These can be
   reproduced by holding factor ETFs at lower cost.
 
 **2 genuine alpha detected.** The Phase 1 meta-learner
