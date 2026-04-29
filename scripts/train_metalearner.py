@@ -33,13 +33,20 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import ast
 import math
+import re
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
+
+# Trade log meta strings sometimes contain numpy reprs like
+# `np.float64(6.31)`, `np.int64(5)` — ast.literal_eval rejects those.
+# Strip the wrapper so the inner literal parses cleanly.
+_NUMPY_REPR_PATTERN = re.compile(r"np\.(?:float64|int64|int32|float32|bool_)\(([^)]+)\)")
 
 from core.fitness import compute_fitness, get_active_profile
 from core.metrics_engine import MetricsEngine
@@ -64,6 +71,76 @@ def find_latest_run(run_id: Optional[str] = None) -> Path:
     if not candidates:
         raise FileNotFoundError("No trade logs found")
     return max(candidates, key=lambda p: p.stat().st_mtime).parent
+
+
+def load_per_edge_daily_raw_scores(trades_path: Path) -> pd.DataFrame:
+    """Build a (date × edge) matrix of MEAN RAW SCORES from the trade
+    log's `meta` JSON column.
+
+    These are the same raw scores that ``SignalProcessor.process``
+    receives at inference time — so a model trained on them
+    composes correctly when wired into the live signal path. This
+    fixes the feature-shape gap noted in the Phase 1 summary.
+
+    Approach: each trade's `meta` field contains an `edges_triggered`
+    list with `raw` scores per edge. We parse that list, flatten to
+    (date, ticker, edge_id, raw) rows, and aggregate to (date, edge_id)
+    means. Bars where no edge fired aren't represented; that matches
+    inference (no signal → no contribution).
+
+    Returns:
+        DataFrame indexed by date with edge_id columns. NaN for
+        (date, edge) pairs where the edge didn't fire that day.
+    """
+    trades = pd.read_csv(trades_path)
+    if "meta" not in trades.columns:
+        raise ValueError("trades.csv has no 'meta' column — cannot extract raw scores")
+    trades = trades.copy()
+    trades["date"] = pd.to_datetime(trades["timestamp"]).dt.normalize()
+    # Only entry trades have new signals; exit fills carry stale meta.
+    if "trigger" in trades.columns:
+        trades = trades[trades["trigger"].astype(str) == "entry"]
+
+    rows: List[Dict[str, object]] = []
+    for _, trade in trades.iterrows():
+        meta_str = trade.get("meta")
+        if not isinstance(meta_str, str):
+            continue
+        # Strip numpy reprs (np.float64(x) → x) so ast can parse.
+        meta_clean = _NUMPY_REPR_PATTERN.sub(r"\1", meta_str)
+        try:
+            meta = ast.literal_eval(meta_clean)
+        except (ValueError, SyntaxError):
+            continue
+        triggered = meta.get("edges_triggered") or []
+        for edge_dict in triggered:
+            if not isinstance(edge_dict, dict):
+                continue
+            edge_id = edge_dict.get("edge_id") or edge_dict.get("edge")
+            raw = edge_dict.get("raw")
+            if edge_id is None or raw is None:
+                continue
+            try:
+                raw_f = float(raw)
+            except (TypeError, ValueError):
+                continue
+            if not math.isfinite(raw_f):
+                continue
+            rows.append({"date": trade["date"], "edge_id": edge_id, "raw": raw_f})
+
+    if not rows:
+        raise ValueError(
+            "No edge raw scores found in trade log meta column. "
+            "Either the run produced no entry trades, or meta JSON has "
+            "the wrong shape."
+        )
+
+    flat = pd.DataFrame(rows)
+    pivot = flat.pivot_table(
+        index="date", columns="edge_id", values="raw",
+        aggfunc="mean",  # daily mean raw score per edge
+    ).sort_index()
+    return pivot
 
 
 def load_per_edge_daily_pnl(trades_path: Path) -> pd.DataFrame:
@@ -107,6 +184,24 @@ def load_portfolio_returns(snapshots_path: Path) -> pd.Series:
 # ---------------------------------------------------------------------------
 # Feature engineering
 # ---------------------------------------------------------------------------
+
+def build_features_from_raw_scores(
+    raw_scores: pd.DataFrame,
+) -> pd.DataFrame:
+    """Build per-bar features from a (date × edge) raw-score matrix.
+
+    Output column names match the edge_ids in ``raw_scores``, which is
+    exactly what ``SignalProcessor._metalearner_contribution`` passes
+    at inference time. This makes the trainer-inference feature shape
+    identical: same column names, same per-bar values.
+
+    NaN handling: bars where an edge didn't fire have NaN raw score.
+    We fill with 0.0 (no opinion) so the model treats absence as
+    neutral — matching the inference path's behavior of skipping
+    edges that didn't produce a score.
+    """
+    return raw_scores.fillna(0.0)
+
 
 def build_features(
     edge_pnl: pd.DataFrame,
@@ -374,6 +469,12 @@ def main():
                         help="Trailing days used to train each fold")
     parser.add_argument("--forward-horizon", type=int, default=5,
                         help="Forward N-day target window")
+    parser.add_argument("--feature-mode", choices=["scores", "pnl"], default="scores",
+                        help="'scores' (default): per-bar raw edge scores from "
+                             "trade log meta — matches inference shape so the "
+                             "trained model composes with SignalProcessor. "
+                             "'pnl': legacy backward-looking PnL summaries (used "
+                             "for offline diagnostics; does NOT match inference).")
     parser.add_argument("--output", default=None,
                         help="Override report path")
     args = parser.parse_args()
@@ -381,6 +482,7 @@ def main():
     # Resolve active profile
     profile = get_active_profile(profile_name=args.profile)
     print(f"[TRAIN] profile={profile.name} weights={profile.weights}")
+    print(f"[TRAIN] feature_mode={args.feature_mode}")
 
     # Locate run + load data
     run_path = find_latest_run(args.run_id)
@@ -388,12 +490,19 @@ def main():
     snapshots_path = run_path / "portfolio_snapshots.csv"
     print(f"[TRAIN] source run: {run_path.relative_to(ROOT)}")
 
-    edge_pnl = load_per_edge_daily_pnl(trades_path)
     portfolio_rets = load_portfolio_returns(snapshots_path)
-    print(f"[TRAIN] {edge_pnl.shape[0]} trading days, {edge_pnl.shape[1]} edges")
 
-    # Features + target
-    X = build_features(edge_pnl, initial_capital=args.initial_capital)
+    # Build features under the chosen mode.
+    if args.feature_mode == "scores":
+        raw_scores = load_per_edge_daily_raw_scores(trades_path)
+        X = build_features_from_raw_scores(raw_scores)
+        print(f"[TRAIN] {X.shape[0]} trading days, {X.shape[1]} edges (score-based)")
+    else:
+        edge_pnl = load_per_edge_daily_pnl(trades_path)
+        X = build_features(edge_pnl, initial_capital=args.initial_capital)
+        print(f"[TRAIN] {edge_pnl.shape[0]} trading days, {edge_pnl.shape[1]} edges (PnL-based)")
+
+    # Target
     y = build_profile_aware_target(
         portfolio_rets, profile, forward_horizon=args.forward_horizon,
     )

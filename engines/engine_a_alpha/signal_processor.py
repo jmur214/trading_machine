@@ -164,36 +164,64 @@ class SignalProcessor:
         Returns 0.0 (no contribution) if:
           - meta-learner disabled
           - no model loaded / cold-start
-          - feature mismatch (model trained on different features than
-            available now — common during the first run before the
-            score-based trainer ships)
+          - feature mismatch that the alignment guard can't recover from
           - any unexpected error
+
+        Sparse-input handling: at training time, every bar is a row with
+        all N trained-feature columns (zeros for non-firing edges). At
+        inference, only edges that fired this bar appear in `edge_map`.
+        We fill any trained feature absent from the current bar with 0.0
+        — this matches the trainer's NaN→0 behavior in
+        ``build_features_from_raw_scores``.
         """
         if not self.ml_settings.enabled or self._metalearner is None:
             return 0.0
         if not self._metalearner.is_trained():
             return 0.0
+
+        trained_features = self._metalearner.feature_names or []
+        if not trained_features:
+            return 0.0
+
         # Build feature dict from tier=feature edges in the current bar's scores.
-        feature_inputs: Dict[str, float] = {}
+        # Start by zero-filling every trained feature, then fill in current-bar
+        # values for the edges that fired this bar AND are tier=feature.
+        feature_inputs: Dict[str, float] = {f: 0.0 for f in trained_features}
+        any_present = False
         for edge_name, raw in edge_map.items():
             if raw is None:
                 continue
             tier = self.edge_tiers.get(edge_name, "alpha")
             if tier != "feature":
                 continue
+            if edge_name not in feature_inputs:
+                # Edge wasn't in the training set — model can't use it.
+                # Drop silently rather than reject.
+                continue
             try:
                 feature_inputs[edge_name] = float(raw)
+                any_present = True
             except Exception:
                 continue
-        if not feature_inputs:
+        if not any_present:
+            # No trained feature edges fired on this bar — model has nothing
+            # to differentiate this bar from the all-zero baseline. Skip.
             return 0.0
         try:
             ml_score = self._metalearner.predict(feature_inputs)
-            return float(ml_score) * float(self.ml_settings.contribution_weight)
+            # Normalize the prediction to [-1, 1] before applying
+            # contribution_weight. Without this, the meta-learner's raw
+            # output can be much wider than the [-1, 1] aggregate score
+            # range (the training target — profile-aware fitness — can
+            # be in [-30, +30] for some profiles), letting the model
+            # dominate the linear sum even at small contribution_weight.
+            # target_clip is set at fit time to max(|y_train|).
+            target_clip = max(self._metalearner.target_clip, 1e-6)
+            ml_norm = float(ml_score) / target_clip
+            ml_norm = max(-1.0, min(1.0, ml_norm))
+            return ml_norm * float(self.ml_settings.contribution_weight)
         except Exception as e:
-            # Feature mismatch is the common case during the bootstrap phase
-            # (model trained on PnL summaries, inference sees raw scores).
-            # Falling back to 0 keeps the system running on the linear baseline.
+            # Defensive: any unexpected predict error → fall back to legacy.
             if self.debug:
                 print(f"[SIGNAL_PROCESSOR] MetaLearner predict failed "
                       f"({type(e).__name__}): {e} — falling back to linear baseline")
