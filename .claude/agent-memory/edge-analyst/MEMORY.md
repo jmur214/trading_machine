@@ -1,0 +1,3 @@
+- [Edge fire-rate analysis 2026-04-28](project_edge_fire_rates_2026_04_28.md) — empirical signal-condition rates on 109-ticker S&P universe; identifies structurally dead edges
+- [Calibration trap on universe size](feedback_universe_calibration_trap.md) — thresholds calibrated on 39-mega-cap universe break on 109-ticker mixed-cap
+- [Full-history thresholds vs window data](feedback_macro_threshold_history_window_mismatch.md) — macro tilt edges that auto-threshold on full FRED history won't fire in the post-2010 low-volatility regime

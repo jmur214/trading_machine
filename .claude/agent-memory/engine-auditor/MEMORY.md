@@ -1,0 +1,3 @@
+- [Engine D drift patterns](engine_d_drift_patterns.md) — bare-except + silent-default is the dominant failure mode in Engine D
+- [Charter boundary violation in F](engine_f_evolution_controller_does_d_work.md) — `engines/engine_f_governance/evolution_controller.py` runs WFO, which is Engine D's responsibility
+- [Equity-series-without-datetime-index bug class](equity_index_bug_class.md) — recurs across Engine D gates because `MetricsEngine.cagr` requires DatetimeIndex

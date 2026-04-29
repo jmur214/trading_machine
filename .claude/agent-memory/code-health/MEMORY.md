@@ -1,0 +1,4 @@
+- [Bare-except pattern is the dominant failure mode](pattern_bare_except_silent_bugs.md) — most "latent bugs" surface as bare-excepts swallowing TypeError/AttributeError/ImportError
+- [Where debt accumulates fastest](pattern_debt_hotspots.md) — orchestrator-style modules (alpha_engine, governor, system_governor, discovery.validate_candidate) collect god-class lines and bare-excepts
+- [Duplicate orchestrator pattern](pattern_duplicate_orchestrators.md) — this codebase tends to grow `system_X.py` next to `X.py` instead of refactoring; check at every scan
+- [Charter-inversion imports](pattern_charter_inversion_imports.md) — A imports F, D imports B/A — symptom of features added in the closest module rather than the right one
