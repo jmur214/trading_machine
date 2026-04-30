@@ -409,8 +409,8 @@ class AlphaEngine:
         for k, v in self._edge_weights_external.items():
             self.cfg.edge_weights[k] = _coerce_float(v, 1.0)
 
-        # Load regime gates AND tier classifications from EdgeRegistry in
-        # a single pass (edge_id -> regime_gate / tier).
+        # Load regime gates, tier classifications, AND paused-edge set from
+        # EdgeRegistry in a single pass.
         try:
             from engines.engine_a_alpha.edge_registry import EdgeRegistry as _ER
             _all_specs = _ER().get_all_specs()
@@ -425,9 +425,17 @@ class AlphaEngine:
                 s.edge_id: (s.tier or "alpha")
                 for s in _all_specs
             }
+            # Phase 2.10d Primitive 2 — paused-edge set drives soft-pause
+            # ceiling in SignalProcessor. Read from the same registry that
+            # mode_controller reads to compute the initial weight cap, so
+            # the two stay in lockstep.
+            _paused_edge_ids = {
+                s.edge_id for s in _all_specs if s.status == "paused"
+            }
         except Exception:
             _regime_gates = {}
             _edge_tiers = {}
+            _paused_edge_ids = set()
 
         # Components
         self.collector = SignalCollector(edges=self.edges, debug=self.cfg.debug)
@@ -440,11 +448,30 @@ class AlphaEngine:
             debug=self.cfg.debug,
             metalearner_settings=metalearner_settings,
             edge_tiers=_edge_tiers,
+            paused_edge_ids=_paused_edge_ids,
+            paused_max_weight=float(cfg_raw.get("paused_max_weight", 0.5)),
         )
         self.formatter = SignalFormatter(
             enter_threshold=self.cfg.enter_threshold,
             exit_threshold=self.cfg.exit_threshold,
             min_edge_contribution=self.cfg.min_edge_contribution,
+        )
+        # Phase 2.10d Primitive 1 — per-bar fill-share ceiling.
+        # Applied AFTER per-ticker signal attribution (top_edge resolved)
+        # and BEFORE downstream RiskEngine sizing. Prevents the bottom-3
+        # edge concentration (83% of 2025 fill share) by construction.
+        # Default cap 0.25 chosen to be 3.3x below the empirical 2025
+        # concentration and well above the natural 1/N share for the
+        # active edge count (~7% with N=14).
+        from engines.engine_a_alpha.fill_share_capper import (
+            FillShareCapper, FillShareCapSettings,
+        )
+        self.fill_share_capper = FillShareCapper(
+            FillShareCapSettings(
+                cap=float(cfg_raw.get("fill_share_cap", 0.25)),
+                min_signals_for_cap=int(cfg_raw.get("fill_share_min_signals", 4)),
+                enabled=bool(cfg_raw.get("fill_share_cap_enabled", True)),
+            )
         )
 
 
@@ -782,7 +809,18 @@ class AlphaEngine:
 
         if is_debug_enabled("ALPHA"):
             print(f"[ALPHA][TRACE] Built {len(signals)} pre-governor signals at {now}")
-            
+
+        # Phase 2.10d Primitive 1 — per-bar fill-share ceiling.
+        # Applied AFTER per-ticker attribution and BEFORE governor /
+        # ML / RiskEngine sizing so that all downstream layers see the
+        # capped strengths. No-op when disabled or below the
+        # min_signals_for_cap threshold.
+        if signals:
+            pre_diag = self.fill_share_capper.diagnose(signals) if self.cfg.debug else None
+            signals = self.fill_share_capper.apply(signals)
+            if self.cfg.debug and pre_diag and pre_diag.get("binds"):
+                print(f"[FILL_SHARE_CAP] {now} binds={pre_diag['binds']}")
+
         # ----------------------------------------------------------------
         # ----------------------------------------------------------------
         # 🤖 AI SIGNAL GATING (Integrated ML)
