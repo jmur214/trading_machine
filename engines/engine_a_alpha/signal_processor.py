@@ -18,8 +18,8 @@ Output schema per ticker:
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import Dict, List, Optional
+from dataclasses import dataclass, field
+from typing import Dict, List, Optional, Set
 
 import numpy as np
 import pandas as pd
@@ -111,6 +111,8 @@ class SignalProcessor:
         debug: bool = False,
         metalearner_settings: Optional[MetaLearnerSettings] = None,
         edge_tiers: Optional[Dict[str, str]] = None,
+        paused_edge_ids: Optional[Set[str]] = None,
+        paused_max_weight: float = 0.5,
     ):
         self.regime = regime
         self.hygiene = hygiene
@@ -118,6 +120,19 @@ class SignalProcessor:
         self.edge_weights = dict(edge_weights or {})
         self.regime_gates = dict(regime_gates or {})
         self.debug = bool(debug)
+        # Phase 2.10d Primitive 2 — soft-pause weight ceiling.
+        # Edges in `paused_edge_ids` (lifecycle status=paused) have their
+        # effective per-bar weight capped at `paused_max_weight` AFTER all
+        # multiplicative adjustments (regime_gate, learned_affinity). The
+        # cap in mode_controller only bounds the *initial* weight; without
+        # this ceiling, regime_gates with values > base/cap can re-amplify
+        # a paused edge back toward full weight. Empirically observed:
+        # low_vol_factor_v1 (status=paused, soft-paused initial weight 0.5)
+        # fired 1,613 times in 2025 because its regime_gate releases it in
+        # stressed regimes (gate[stressed]=1.0 cancels the benign-regime
+        # 0.15 suppression). The cap closes that leak.
+        self.paused_edge_ids: Set[str] = set(paused_edge_ids or set())
+        self.paused_max_weight: float = float(paused_max_weight)
         # Layer 3 meta-learner integration. Default OFF — when disabled,
         # behavior is identical to the legacy linear weighted_sum so this
         # change is a strict no-op for existing backtests.
@@ -370,6 +385,16 @@ class SignalProcessor:
                     current_regime = (advisory.get("regime_summary", "benign")
                                       if advisory else "benign")
                     w *= float(gate.get(current_regime, 1.0))
+
+                # Phase 2.10d Primitive 2 — soft-pause hard ceiling.
+                # Applied AFTER all weight multipliers (initial cap, regime_gate)
+                # so no downstream amplifier can leak a paused edge past its
+                # soft-pause budget. Only fires for edges with status=paused.
+                if edge_name in self.paused_edge_ids and w > self.paused_max_weight:
+                    if self.debug:
+                        print(f"[PAUSED_CAP] {edge_name} weight {w:.3f} clamped "
+                              f"to soft-pause ceiling {self.paused_max_weight:.3f}")
+                    w = self.paused_max_weight
 
                 details.append({"edge": edge_name, "raw": raw_f, "norm": norm, "weight": w})
                 weighted_sum += (norm * w)

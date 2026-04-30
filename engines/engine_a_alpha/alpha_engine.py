@@ -409,8 +409,8 @@ class AlphaEngine:
         for k, v in self._edge_weights_external.items():
             self.cfg.edge_weights[k] = _coerce_float(v, 1.0)
 
-        # Load regime gates AND tier classifications from EdgeRegistry in
-        # a single pass (edge_id -> regime_gate / tier).
+        # Load regime gates, tier classifications, AND paused-edge set from
+        # EdgeRegistry in a single pass.
         try:
             from engines.engine_a_alpha.edge_registry import EdgeRegistry as _ER
             _all_specs = _ER().get_all_specs()
@@ -425,9 +425,17 @@ class AlphaEngine:
                 s.edge_id: (s.tier or "alpha")
                 for s in _all_specs
             }
+            # Phase 2.10d Primitive 2 — paused-edge set drives soft-pause
+            # ceiling in SignalProcessor. Read from the same registry that
+            # mode_controller reads to compute the initial weight cap, so
+            # the two stay in lockstep.
+            _paused_edge_ids = {
+                s.edge_id for s in _all_specs if s.status == "paused"
+            }
         except Exception:
             _regime_gates = {}
             _edge_tiers = {}
+            _paused_edge_ids = set()
 
         # Components
         self.collector = SignalCollector(edges=self.edges, debug=self.cfg.debug)
@@ -440,6 +448,8 @@ class AlphaEngine:
             debug=self.cfg.debug,
             metalearner_settings=metalearner_settings,
             edge_tiers=_edge_tiers,
+            paused_edge_ids=_paused_edge_ids,
+            paused_max_weight=float(cfg_raw.get("paused_max_weight", 0.5)),
         )
         self.formatter = SignalFormatter(
             enter_threshold=self.cfg.enter_threshold,
