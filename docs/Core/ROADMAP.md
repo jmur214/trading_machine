@@ -114,6 +114,226 @@ PySR / gplearn symbolic regression, tsfresh / AutoGluon AutoML, GNN universe mod
 
 Full plan: `~/.claude/plans/foamy-foraging-horizon.md` (mirror, not authoritative — this section is the source of truth).
 
+## Phase 2.10b: OOS Validation Gate — ❌ FAILED (2026-04-29)
+
+> Driven by `docs/Progress_Summaries/Other-dev-opinion/04-29-26_a-and-i.md`.
+> The realistic-cost in-sample Sharpe **1.063** was a hypothesis until
+> OOS confirmed it. **All three questions failed by wide margins.**
+> Full results in `docs/Audit/oos_validation_2026_04.md` (Q1+Q2,
+> branch `oos-validation`) and `docs/Audit/gauntlet_revalidation_2026_04.md`
+> (Q3, branch `gauntlet-revalidation`).
+
+- [x] **Q1: 2025 OOS Sharpe under realistic costs.** ❌ FAIL.
+      Result: **-0.049** (criterion > 0.5). SPY 2025 was 0.955 →
+      system trailed every benchmark by **>1.0 Sharpe** in a strong
+      bull year. Run UUID `72ec531d-7a82-4c2a-97c0-ffb2bf6ddb34`.
+- [x] **Q2: Universe-B Sharpe under realistic costs.** ❌ FAIL.
+      Result: **0.225** vs in-sample 1.063 — a **79% Sharpe collapse**
+      (criterion: not below 0.74). Vol nearly doubled (5.7% → 9.95%),
+      MDD nearly doubled (-10.07% → -18.17%). Universe-B is closer
+      to the system's "true" Sharpe on a representative universe.
+      Run UUID `ee21c681-f8de-4cdb-9adb-a102b4063ca1`.
+- [x] **Q3: `volume_anomaly_v1` + `herding_v1` through 6 gates.** ❌ FAIL.
+      Both edges failed at Gate 1 (the cheapest filter): Sharpe
+      **0.32** and **-0.26** respectively, vs benchmark threshold
+      ~0.68. **`herding_v1` standalone is capital-destroying** under
+      realistic costs (negative Sharpe). The factor-decomp t-stats
+      (+4.36, +4.49) were a **cost-model confound** — the per-edge
+      backtest used hardcoded 5bps slippage; the integration backtest
+      used realistic Almgren-Chriss. Same signal, different costs,
+      opposite verdict.
+
+### Headline diagnosis
+
+The 1.063 in-sample headline was a **double artifact**: favorable
+universe (curated 109 mega/mid caps) AND favorable window (2021-2024
+edge-regime alignment). Real OOS in 2025: -0.049. Real cross-universe:
+0.225. The two "real alphas" weren't standalone alphas at all. The
+infrastructure caught the artifact exactly as designed — Gate 6
+factor-decomp + universe-B sampling + realistic costs together
+falsified the claim. The bones-before-paper philosophy is paying off.
+
+### What this kills, immediately
+
+- **Phase 2.11 (per-ticker meta-learner) — BLOCKED.** Per the failure
+  clause in `forward_plan_2026_04_29.md`. There is no in-sample base
+  to lift via per-ticker training when the in-sample base itself is
+  artifact.
+- **Phase 2.12 (growth-profile config) — BLOCKED.** Same reason. No
+  compounding base to lever into a growth profile.
+- **Phase 2.5 (Moonshot Sleeve) — BLOCKED for now.** The architectural
+  argument still stands (goal C is a real gap), but spinning up a
+  parallel sleeve while the core sleeve doesn't produce alpha is
+  premature. Re-evaluate after Phase 2.10c diagnostics.
+- **`docs/Audit/realistic_cost_backtest_result.md` 1.063 number** is
+  to be re-flagged as in-sample-only with prominent OOS shrinkage
+  callout. Not retracted (the in-sample measurement is real); but
+  cannot continue to be cited as the system's performance.
+
+## Phase 2.10c: Falsification triage (BLOCKING — 2026-04-29)
+
+> Forward-plan failure clauses activated. **No new features.** All
+> remaining work is diagnostic until we know which (if any) of the
+> 13 active edges produce real standalone alpha under realistic
+> costs.
+
+- [ ] **Full standalone gauntlet on all 13 active edges.** Run all
+      6 gates of `validate_candidate` per edge, under realistic costs,
+      on the production universe. The Q3 result (volume_anomaly +
+      herding both fail at Gate 1) gives a strong prior that most
+      will fail. We need to know exactly which (if any) survive.
+      Output: `docs/Audit/full_gauntlet_audit_2026_04.md`.
+- [ ] **Re-run `TierClassifier` with realistic-cost data.** The
+      day-1 bootstrap (commit `55d1ec6`) ran on legacy-cost trade
+      logs. With Q3 confirming the cost-model confound, the entire
+      tier classification is suspect. Re-classify under realistic
+      costs and write the new snapshot.
+- [ ] **Universe-fit decomposition.** Why does universe-B drop 79%?
+      Is it sector composition, liquidity bucket, beta? Pick the
+      most likely structural explanation and document it in
+      `docs/Audit/universe_fit_decomposition_2026_04.md`. This
+      determines whether the "right" production universe is broader,
+      narrower, or just different.
+
+**Phase 2.10c gate:** all three diagnostics complete. Reading these
+together tells us whether the system has any real edge under honest
+costs and on a representative universe — or whether the entire active
+stack is artifact. The next phase is decided by these results, not
+pre-committed.
+
+## Phase 2.11: Per-ticker meta-learner (Session N+1 proper, ~2 weeks) — 🚫 BLOCKED 2026-04-29
+
+> **BLOCKED** by Phase 2.10b failure. The in-sample base this would
+> have lifted is itself artifact. Re-evaluate after Phase 2.10c
+> diagnostics determine whether any real edge exists in the stack.
+>
+> Original framing (preserved for context): Phase 1 N+1 portfolio-level
+> trainer showed +0.056 OOS correlation — barely above coin flip.
+> Per-ticker training was hypothesized to be the real lift.
+
+- [ ] Log per-bar per-ticker edge scores during backtest (route from
+      `alpha_engine.AlphaEngine.run_alpha_logic()` to a parquet the
+      trainer can consume).
+- [ ] `scripts/train_metalearner.py` per-ticker mode with walk-forward
+      rolling folds. One model per ticker (or per ticker-cluster if
+      data is too sparse).
+- [ ] A/B comparison across all three profiles (retiree / balanced /
+      growth) with `metalearner.enabled: true`. Confirm:
+      retiree-profile model produces lowest-vol output, growth-profile
+      model produces highest-CAGR output, all from the same edge pool.
+- [ ] **Phase 1 gate crossing**: meta-learner-active OOS strictly
+      better fitness than disabled. Until then,
+      `metalearner.enabled: false` stays in production config.
+
+## Phase 2.12: Universe configured for growth (~1 week) — 🚫 BLOCKED 2026-04-29
+
+> **BLOCKED** by Phase 2.10b failure. Switching to growth profile
+> requires a compounding base that produces real alpha. The current
+> stack does not (Sharpe -0.049 OOS in 2025, Sharpe 0.225 on
+> universe-B). Re-evaluate after Phase 2.10c determines the real
+> alpha content of the active edge stack.
+>
+> Original framing (preserved for context): the user's stated goals
+> (20-something, 40-year horizon, growth priority) explicitly favor
+> `growth` profile over `balanced` for the core sleeve. Architecture
+> already supports this — most of the work is config, with one
+> small-code addition.
+
+### Config moves (no new code)
+- [ ] Switch active fitness profile to `growth` in
+      `config/fitness_profiles.yml`.
+- [ ] Concentrated-universe mode: cap to top 30–50 names by momentum +
+      liquidity rather than the full 109. **Concentration is itself
+      growth-profile alpha.**
+- [ ] *(Engine B — propose first)* Loosen position sizing:
+      `risk_per_trade_pct` 0.025 → 0.05; sector cap 20% → 30%;
+      single-name cap 5% → 8%.
+- [ ] *(Engine B — propose first)* Allow modest gross leverage
+      (1.1–1.3x) when meta-learner confidence is high.
+
+### Small-code edge additions (growth-flavored)
+- [ ] `momentum_factor_v2` — sector-neutral cross-sectional 12-1
+      momentum (v1 was falsified OOS for concentration reasons).
+- [ ] `earnings_revision_momentum_v1` — long stocks with rising EPS
+      estimate consensus over 3 months.
+- [ ] `breakout_52w_v1` — 52-week breakout with volume confirmation
+      (CAN SLIM / O'Neil).
+- [ ] `qmj_composite_v1` — Quality + Momentum composite (AQR's
+      research-confirmed long top decile of momentum × quality).
+- [ ] `sector_rotation_v1` — long top 3 sectors by 6-month return,
+      monthly rebalance.
+
+**Phase 2.12 honest tradeoff** (per reviewer): expect Sharpe
+1.063 → 0.7–0.9, MDD -10% → -20% to -30%, CAGR 6% → 12–18%. Higher
+growth is NOT higher Sharpe; they can move opposite. The honest
+benchmark for high-growth is leveraged passive (70/30 QQQ/TQQQ),
+not SPY.
+
+## Phase 2.5: Moonshot Sleeve (PARALLEL — NEW 2026-04-29) — 🚫 BLOCKED 2026-04-29
+
+> **BLOCKED** by Phase 2.10b failure. The architectural argument
+> still stands — goal C (asymmetric upside) is a real gap that no
+> amount of core-sleeve tuning will close — but spinning up a
+> parallel sleeve while the core sleeve does not produce alpha is
+> premature. Re-evaluate after Phase 2.10c. Design notes below
+> remain valid; deployment is paused.
+>
+> Original framing (preserved for context): the architectural gap
+> for **goal C** (asymmetric upside / catch moonshots like RKLB,
+> NVDA, BTC). The current core sleeve cannot do this and shouldn't
+> be forced to — Sharpe optimization punishes high-vol positions;
+> 109-name diversification dilutes any 10x to noise; the
+> lifecycle/gauntlet is built around statistical rigor, not
+> narrative-driven theme conviction.
+>
+> The strategy: **venture-capital model applied to public equities.**
+> Hold 30–50 candidates, each sized to lose at most 1–2% of the sleeve
+> if it goes to zero, stop-loss at -50%, upside uncapped. Hit rate
+> 10–30% is fine — the math works only at portfolio level.
+>
+> Suggested allocation for a 20-something:
+> Core (70–75%) + Moonshot (15–20%) + Cash (5–10%).
+>
+> Full design in `docs/Core/forward_plan_2026_04_29.md`.
+
+### Phase 2.5 deliverables (parallel to 2.11/2.12, not blocking)
+
+- [ ] **Universe data layer expansion** — Russell 2000 + IPO last-5y +
+      theme-tagged equities (AI, space, biotech, crypto-equity, EV,
+      semis). 200–400 names, refreshed quarterly. **Explicitly NOT
+      the S&P 100/500 names the core trades.**
+- [ ] **`moonshot` profile** added to `config/fitness_profiles.yml` —
+      Sortino + skewness + upside-capture weights (NOT Sharpe).
+- [ ] **Different gauntlet criteria** for moonshot edges:
+      skewness > 0.5, upside capture > 1.2× downside capture, hit
+      rate ≤ 30% acceptable. Lifecycle (Layer 1) gates remain
+      objective.
+- [ ] **5–7 moonshot edges** through the gauntlet:
+  - [ ] Long-term momentum (12m + 24m) on small/mid-caps
+  - [ ] 52-week breakout with volume confirmation on small-caps
+  - [ ] Earnings beat + raised guidance (persistent 6–12 month signal)
+  - [ ] Insider cluster buying in small-caps (small-cap variant of
+        `insider_cluster_v1`)
+  - [ ] Sentiment velocity — *rate of change* of mentions on
+        Reddit/StockTwits, not absolute level
+  - [ ] High short interest + improving fundamentals (squeeze setups)
+  - [ ] Theme detection (10-K language clustering, quarterly universe
+        pivot — this is the Phase 6 LLM foothold)
+- [ ] *(Engine B — propose first)* **Asymmetric sizing engine** as a
+      parallel module to `risk_engine.py`, runs on the moonshot sleeve
+      only. Trailing stops not fixed exits. Stop-loss at -50%.
+- [ ] *(Engine C — propose first)* **Two-sleeve portfolio engine** —
+      aggregates positions from both sleeves, applies portfolio-level
+      risk caps, does NOT cross-net them.
+
+**Phase 2.5 gate:** moonshot sleeve passes its own walk-forward over
+2018–2024 with skewness > 0.5, hit rate 15–30%, and sleeve-level CAGR
+> Russell 2000 over the same window.
+
+**Phase 2.5 deployment is gated on Phase 3** (kill switches, real
+OMS) — higher risk profile means *more* critical kill switches, not
+fewer. Design and validate now; deploy after Phase 3.
+
 ## Phase 3: From Simulation to Reality
 - [ ] Enforce structural risk diversification logic and cross-sector allocation before advancing trading operations.
 - [ ] Connect the Order Management System (OMS).

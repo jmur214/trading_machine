@@ -22,6 +22,20 @@ then LOW. Within each severity, list newest at the top.
 
 ### HIGH
 
+### [HIGH] In-sample Sharpe 1.063 was a double artifact — system has no validated alpha under honest costs on a representative universe
+- Engine: A (signal_processor / edge stack) + D (discovery / lifecycle decisions made on artifact data)
+- First flagged: 2026-04-29 (Phase 2.10b OOS Validation Gate result)
+- Status: **active — blocking all forward feature work.** Phase 2.10c diagnostic triage required next.
+- Description: Phase 2.10b ran the three OOS gates for the realistic-cost in-sample Sharpe 1.063 result. **All three failed by wide margins:**
+  - **Q1 (2025 OOS, prod 109 universe):** Sharpe **-0.049** vs criterion > 0.5. SPY 2025 was 0.955 — system trailed every benchmark by **>1.0 Sharpe** in a strong bull year. Run UUID `72ec531d-7a82-4c2a-97c0-ffb2bf6ddb34`. Audit: `docs/Audit/oos_validation_2026_04.md`.
+  - **Q2 (universe-B held-out 50, in-sample window):** Sharpe **0.225** vs in-sample 1.063 — a **79% Sharpe collapse** on the same window with held-out tickers. Vol nearly doubled (5.7% → 9.95%), MDD nearly doubled (-10.07% → -18.17%). Run UUID `ee21c681-f8de-4cdb-9adb-a102b4063ca1`.
+  - **Q3 (`volume_anomaly_v1` + `herding_v1` standalone gauntlet under realistic costs):** Both failed Gate 1. Sharpe 0.32 and **-0.26** respectively (`herding_v1` standalone is capital-destroying under honest costs) vs benchmark threshold ~0.68. The prior factor-decomp t-stats of +4.36 and +4.49 were a cost-model confound — `validate_candidate` hardcoded slippage at 5bps while the integration backtest used realistic Almgren-Chriss. Audit: `docs/Audit/gauntlet_revalidation_2026_04.md`.
+- Diagnosis: the 1.063 in-sample headline is a **double artifact** — favorable universe (curated 109 mega/mid caps) AND favorable window (2021-2024). Universe-B at 0.225 is in the same ZIP code as the prior 0.4 baseline noted in `project_lifecycle_vindicated_universe_expansion_2026_04_25.md`. The "two real alphas" claim is falsified.
+- What this kills: Phase 2.11 (per-ticker meta-learner), Phase 2.12 (growth-profile config), Phase 2.5 (Moonshot Sleeve) all blocked until Phase 2.10c diagnostic triage determines whether ANY real alpha exists in the active edge stack.
+- Adjacent bug fix shipped on `gauntlet-revalidation` branch: `engines/engine_d_discovery/discovery.py::validate_candidate` previously hardcoded `slippage_bps=5.0`; agent added `exec_params` override so candidates can be validated under the same cost model the integration backtest uses. **This is a real bug fix independent of the edge result and should land on main.**
+- Recommended next step: Phase 2.10c — full standalone gauntlet on all 13 active edges + TierClassifier rerun with realistic costs + universe-fit decomposition. Single audit doc per diagnostic. **No new features until results are in.**
+- See: `docs/Core/ROADMAP.md` Phase 2.10b/2.10c sections, `docs/Core/forward_plan_2026_04_29.md` "Result" section.
+
 ### [HIGH] Sharpe-only fitness limits portfolio profile flexibility — multi-metric measurement + config-driven fitness profile needed
 - Engine: A (signal_processor / meta-learner) + D (discovery gates) + F (lifecycle)
 - First flagged: 2026-04-28
