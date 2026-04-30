@@ -894,6 +894,13 @@ class ModeController:
                 # Gated by governor.cfg.lifecycle_enabled (default False). Fires
                 # retire/pause/revive transitions and appends to lifecycle_history.csv.
                 governor.evaluate_lifecycle(metrics.trades)
+                # Phase 2.10d Trigger 3: post-backtest tier reclassification.
+                # Gated by governor.cfg.tier_reclassification_enabled (default
+                # False). Re-runs FF5+Mom decomp per edge against the just-finished
+                # backtest's trades.csv and updates `tier`/`combination_role`
+                # in edges.yml so stale classifications self-correct.
+                trades_path = self.root / "data" / "trade_logs" / "trades.csv"
+                governor.evaluate_tiers(trades_path=trades_path)
         except Exception as e:
             print(f"[GOVERNOR][WARN] Could not update governor: {e}")
 
