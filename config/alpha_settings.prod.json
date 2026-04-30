@@ -21,6 +21,11 @@
     "shrink_lambda": 0.35,
     "combine": "weighted_mean"
   },
+  "metalearner": {
+    "enabled": true,
+    "profile_name": "balanced",
+    "contribution_weight": 0.1
+  },
   "flip_cooldown_bars": 3,
   "min_edge_contribution": 0.05,
   "edge_weights": {
