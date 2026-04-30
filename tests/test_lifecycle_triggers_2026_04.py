@@ -390,6 +390,61 @@ class TestTrigger2SustainedNoise:
 # Cross-trigger interaction
 # ============================================================
 
+class TestTrigger3TierClassifierScheduling:
+    """Trigger 3 wires TierClassifier.classify_from_trades to fire after every
+    backtest's lifecycle evaluation. The hook is gated on
+    `tier_reclassification_enabled` and is a no-op when disabled."""
+
+    def _make_governor(self, tmp_path, enabled: bool):
+        """Helper: build a StrategyGovernor with the tier-reclass flag set
+        without writing a real config file. Patches `cfg` directly."""
+        from engines.engine_f_governance.governor import StrategyGovernor
+        gov = StrategyGovernor(
+            config_path=tmp_path / "no_such_config.json",
+            state_path=tmp_path / "weights.json",
+        )
+        gov.cfg.tier_reclassification_enabled = enabled
+        return gov
+
+    def test_governor_evaluate_tiers_no_op_when_disabled(self, tmp_path):
+        """The hook must be a no-op when `tier_reclassification_enabled` is False."""
+        gov = self._make_governor(tmp_path, enabled=False)
+        result = gov.evaluate_tiers(trades_path=tmp_path / "nonexistent_trades.csv")
+        assert result == []
+
+    def test_governor_evaluate_tiers_handles_missing_trade_log(self, tmp_path):
+        """Hook must not crash when the trade log is missing (e.g. before
+        the first backtest writes one)."""
+        gov = self._make_governor(tmp_path, enabled=True)
+        result = gov.evaluate_tiers(trades_path=tmp_path / "nonexistent_trades.csv")
+        assert result == []
+
+    def test_evaluate_tiers_signature_accepts_initial_capital(self):
+        """Verify the public surface — caller can override the
+        normalization basis for paper/live with non-default capital."""
+        import inspect
+        from engines.engine_f_governance.governor import StrategyGovernor
+        sig = inspect.signature(StrategyGovernor.evaluate_tiers)
+        params = list(sig.parameters.keys())
+        assert "trades_path" in params
+        assert "initial_capital" in params
+
+    def test_mode_controller_calls_evaluate_tiers_after_lifecycle(self):
+        """Source-level guard: the post-backtest hook in run_backtest must
+        invoke `governor.evaluate_tiers` AFTER `governor.evaluate_lifecycle`,
+        ordered so tier classifications reflect the latest pause/retire
+        decisions rather than racing them."""
+        ROOT = Path(__file__).resolve().parents[1]
+        src = (ROOT / "orchestration" / "mode_controller.py").read_text()
+        idx_lifecycle = src.find("governor.evaluate_lifecycle(metrics.trades)")
+        idx_tiers = src.find("governor.evaluate_tiers(")
+        assert idx_lifecycle > 0, "evaluate_lifecycle hook missing"
+        assert idx_tiers > 0, "evaluate_tiers hook missing"
+        assert idx_lifecycle < idx_tiers, (
+            "evaluate_tiers must run after evaluate_lifecycle"
+        )
+
+
 class TestTriggerInteraction:
     """Triggers 1 and 2 must not collide. When both could fire, the
     earlier-listed trigger (zero-fill) takes precedence, but a fully-

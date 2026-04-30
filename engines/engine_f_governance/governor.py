@@ -4,7 +4,7 @@ import json
 from dataclasses import dataclass, asdict
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Dict, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
@@ -66,6 +66,17 @@ class GovernorConfig:
     # Read-only: evaluate gates but do not write to registry/history CSV.
     # Set True for OOS backtesting so re-runs of the same window give the same result.
     lifecycle_readonly: bool = False
+
+    # Phase 2.10d Trigger 3 — autonomous TierClassifier post-backtest hook.
+    # When True, after each backtest's lifecycle evaluation runs, the
+    # TierClassifier re-runs its FF5+Mom factor decomposition on every
+    # edge's per-day return stream and updates `tier` + `combination_role`
+    # in edges.yml. Without this, tier classifications are bootstrap-only
+    # and go stale (e.g., the macro KEEP edges in pruning_proposal_2026_04
+    # remained tagged 'retire-eligible' from a prior diagnostic).
+    # Defaults False to match the lifecycle_enabled defense-first stance —
+    # opt-in identically.
+    tier_reclassification_enabled: bool = False
 
     # autonomous allocation evaluation (Phase 8)
     allocation_evaluation_enabled: bool = True
@@ -590,6 +601,64 @@ class StrategyGovernor:
                 log.info(f"[Governor] Lifecycle fired {len(events)} transition(s)")
         except Exception as e:
             log.warning(f"[Governor] Lifecycle evaluation failed: {e}")
+
+    def evaluate_tiers(
+        self,
+        trades_path: Optional[Path] = None,
+        initial_capital: float = 100_000.0,
+    ) -> List[Any]:
+        """Phase 2.10d Trigger 3: post-backtest tier reclassification hook.
+
+        Runs `TierClassifier.classify_from_trades` against the most-recent
+        backtest's `trades.csv`, updating each edge's `tier` and
+        `combination_role` in `edges.yml`. No-op if
+        `tier_reclassification_enabled` is False, or if the trade log is
+        missing.
+
+        Returns the list of TierDecisions (including unchanged ones), so
+        callers can log how many edges changed tier this cycle.
+
+        Wrapped in try/except — tier reclassification must never break the
+        feedback loop upstream. Failures are logged and swallowed.
+        """
+        if not getattr(self.cfg, "tier_reclassification_enabled", False):
+            return []
+        try:
+            from engines.engine_a_alpha.tier_classifier import TierClassifier
+            from engines.engine_a_alpha.edge_registry import EdgeRegistry
+
+            if trades_path is None:
+                trades_path = self.state_path.parent.parent / "trade_logs" / "trades.csv"
+            trades_path = Path(trades_path)
+            if not trades_path.exists():
+                log.info(f"[Governor] Tier reclass: no trade log at {trades_path}, skipping")
+                return []
+
+            registry = EdgeRegistry(
+                store_path=str(self.state_path.parent / "edges.yml")
+            )
+            classifier = TierClassifier(registry=registry)
+            decisions = classifier.classify_from_trades(
+                trades_path=trades_path,
+                initial_capital=initial_capital,
+                write=True,
+            )
+            changed = [d for d in decisions if getattr(d, "changed", False)]
+            if changed:
+                log.info(
+                    f"[Governor] TierClassifier reclassified {len(changed)} edge(s): "
+                    + ", ".join(f"{d.edge_id}({d.prior_tier}→{d.new_tier})"
+                                for d in changed)
+                )
+            else:
+                log.info(
+                    f"[Governor] TierClassifier ran on {len(decisions)} edges, "
+                    "no tier changes this cycle"
+                )
+            return decisions
+        except Exception as e:
+            log.warning(f"[Governor] Tier reclassification failed: {e}")
+            return []
 
     def _apply_allocation_recommendation(self, rec: dict) -> None:
         """Write recommended allocation params to portfolio policy config."""
