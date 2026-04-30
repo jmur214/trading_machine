@@ -22,7 +22,25 @@ then LOW. Within each severity, list newest at the top.
 
 ### HIGH
 
-### [HIGH] In-sample Sharpe 1.063 was a double artifact — system has no validated alpha under honest costs on a representative universe
+### [HIGH] System alpha is real but architecturally wasted — capital rivalry + noise edges drag the ensemble (updated 2026-04-30)
+- Engine: A (signal_processor capital allocation) + C (portfolio engine slot management) + F (lifecycle — partial; pause decisions vindicated, soft-pause weight policy in question)
+- First flagged: 2026-04-29 (as "no validated alpha"); **revised 2026-04-30** after Phase 2.10c per-edge attribution diagnostics resolved the apparent paradox.
+- Status: **active.** Phase 2.10d (pruning + capital allocation diagnostic) is the immediate work.
+- Description: per Phase 2.10c attribution work (audit docs `oos_2025_decomposition_2026_04.md` and `per_edge_per_year_attribution_2026_04.md`), the system *does* have real alpha — but it lives in the ensemble's risk-sizing dampening + edge-timing diversification, not in standalone signals. Specifically:
+  - **Stable contributors (positive every year 2021-2025):** `volume_anomaly_v1` (+1.93% to +4.94%/yr), `herding_v1` (+0.55% to +2.43%/yr).
+  - **Weak-positive diversifiers:** `gap_fill_v1`, `macro_credit_spread_v1`, and 4 others (~+0.5%/yr each).
+  - **Noise / sparse / zero-fill dead weight:** ~9-11 edges contributing nothing or near-zero across 5 years.
+  - **Lifecycle-paused edges (vindicated):** `atr_breakout_v1` (-5.78% in 2022 alone), `momentum_edge_v1` (-9.17% in 2022), `low_vol_factor_v1`. All 3 pause decisions were correct in retrospect.
+- The Q3 standalone-gauntlet failure of `volume_anomaly_v1` and `herding_v1` was a **measurement-vs-test mismatch**, not a falsification: standalone Gate 1 gives full `risk_per_trade_pct` per fill, which crosses the Almgren-Chriss impact knee. In production, risk-per-trade is split across 17 firing signals → sub-knee fills → cost tax stays small → signal survives. See memory `project_ensemble_alpha_paradox_2026_04_30.md`.
+- Three concrete defects identified in Phase 2.10c (Agent A audit doc):
+  1. **Capital rivalry — no per-edge participation floor.** Bottom-3 edges in 2025 (`low_vol_factor_v1`, `atr_breakout_v1`, `momentum_edge_v1`) consumed 83% of fill share for -$5,645 of realized losses; top-2 best-PnL edges got 4.3% of fill share. Un-pausing momentum edges flipped `volume_anomaly_v1` per-fill from +$10.12 to -$1.17.
+  2. **Soft-pause weight leak — `low_vol_factor_v1` fired 1,613 times in 2025** despite being effectively paused (weight 0.5 × regime_gate `{benign:0.15, stressed:1.0, crisis:1.0}`). It contributed -2.53% in 2025 alone, mostly via the regime_gate amplifying it in `market_turmoil`/`crisis` regimes — exactly when it should NOT trade.
+  3. **No regime-aware slot reduction.** April-2025 `market_turmoil` triggered -$3,551 of simultaneous correlated loss across 5 edges in one month (122% of full-year loss). The portfolio engine has no primitive to reduce concurrent slot count in stressed regimes.
+- Why this is HIGH (not MEDIUM): the system's headline performance (1.063 in-sample, -0.049 OOS, 0.225 universe-B) is gated entirely on these three structural issues. Pruning + fixing them is the path to unblocking Phase 2.11/2.12/2.5; not fixing them means the gauntlet never runs out of failure modes to surface.
+- Recommended next step: **Phase 2.10d** (see ROADMAP). Two parallel diagnostics — (A) attribution-based pruning proposal cutting 9-11 noise edges to ~6-7 actives, (B) capital allocation defect investigation with code-change proposals. Then sequential C: re-run 2025 OOS with pruned + structurally-fixed system.
+- Original entry kept below for context, dated 2026-04-29:
+
+### [HIGH] (HISTORICAL — superseded by entry above 2026-04-30) In-sample Sharpe 1.063 was a double artifact — system has no validated alpha under honest costs on a representative universe
 - Engine: A (signal_processor / edge stack) + D (discovery / lifecycle decisions made on artifact data)
 - First flagged: 2026-04-29 (Phase 2.10b OOS Validation Gate result)
 - Status: **active — blocking all forward feature work.** Phase 2.10c diagnostic triage required next.

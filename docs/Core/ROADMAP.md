@@ -170,36 +170,93 @@ falsified the claim. The bones-before-paper philosophy is paying off.
   callout. Not retracted (the in-sample measurement is real); but
   cannot continue to be cited as the system's performance.
 
-## Phase 2.10c: Falsification triage (BLOCKING — 2026-04-29)
+## Phase 2.10c: Falsification triage — REFRAMED (2026-04-29) → mostly resolved (2026-04-30)
 
-> Forward-plan failure clauses activated. **No new features.** All
-> remaining work is diagnostic until we know which (if any) of the
-> 13 active edges produce real standalone alpha under realistic
-> costs.
+> Per the original framing: "no new features until we know which of
+> the 13 active edges produce real standalone alpha." That framing
+> was wrong-headed in retrospect. The Phase 2.10c diagnostic work
+> resolved the Q3 paradox via per-edge per-year attribution and
+> 2025-decomposition: **the system does have real alpha (volume_anomaly_v1,
+> herding_v1, plus weak-positive diversifiers) — it's just being
+> wasted by capital rivalry, noise edges, and missing regime-aware
+> slot reduction.** Standalone Gate 1 was the wrong test for an
+> ensemble system; full standalone gauntlet on all 13/18 edges is
+> NOT useful. Universe-fit decomposition partially answered (Agent B's
+> +impact-knee math: universe-B has lower-liquidity tickers → impact
+> knee bites earlier per fill).
 
-- [ ] **Full standalone gauntlet on all 13 active edges.** Run all
-      6 gates of `validate_candidate` per edge, under realistic costs,
-      on the production universe. The Q3 result (volume_anomaly +
-      herding both fail at Gate 1) gives a strong prior that most
-      will fail. We need to know exactly which (if any) survive.
-      Output: `docs/Audit/full_gauntlet_audit_2026_04.md`.
-- [ ] **Re-run `TierClassifier` with realistic-cost data.** The
-      day-1 bootstrap (commit `55d1ec6`) ran on legacy-cost trade
-      logs. With Q3 confirming the cost-model confound, the entire
-      tier classification is suspect. Re-classify under realistic
-      costs and write the new snapshot.
-- [ ] **Universe-fit decomposition.** Why does universe-B drop 79%?
-      Is it sector composition, liquidity bucket, beta? Pick the
-      most likely structural explanation and document it in
-      `docs/Audit/universe_fit_decomposition_2026_04.md`. This
-      determines whether the "right" production universe is broader,
-      narrower, or just different.
+- [x] **Lifecycle-counterfactual** (2026-04-30, branch `lifecycle-counterfactual`,
+      audit `docs/Audit/lifecycle_counterfactual_2025_2026_04.md`). Un-pausing
+      `atr_breakout_v1` + `momentum_edge_v1` for 2025 OOS lifted Sharpe -0.049 → +0.273
+      (+0.32) but **starved volume_anomaly_v1 (191→19 fills) and herding_v1 (44→2
+      fills)**. Bucket #2: pause helped a little, edges contribute partial signal.
+      Capital rivalry confirmed.
+- [x] **2025 OOS decomposition** (2026-04-30, branch `oos-2025-decomposition`,
+      audit `docs/Audit/oos_2025_decomposition_2026_04.md`). Per-edge per-month
+      PnL + fill counts identified three concrete defect surfaces in
+      `signal_processor`/portfolio engine: no per-edge participation floor,
+      soft-pause weight leak (`low_vol_factor_v1` fired 1,613 times despite being
+      paused), no regime-aware slot reduction (April-2025 `market_turmoil` cliff
+      = -$3,551 simultaneous loss across 5 edges).
+- [x] **Per-edge per-year attribution** (2026-04-30, branch `per-edge-per-year-attribution`,
+      audit `docs/Audit/per_edge_per_year_attribution_2026_04.md`). 16 fired edges across
+      2021-2025: 2 stable + 2 regime-conditional + 6 weak-positive + 6 noise/sparse,
+      6 more registered active are zero-fill dead weight. **All 3 lifecycle pause
+      decisions vindicated** (atr_breakout -5.78% in 2022 alone, momentum_edge -9.17%
+      in 2022). Standalone gauntlet has nothing left to tell us — the integration
+      math reconciles why the two stable contributors fail Gate 1 standalone (impact
+      knee math; see memory `project_ensemble_alpha_paradox_2026_04_30.md`).
+- [N/A] ~~Full standalone gauntlet on all 13 active edges~~ — abandoned.
+      Standalone Gate 1 is the wrong test for an ensemble system. Per-year
+      attribution covers what we actually need to know about edge contribution.
+- [N/A] ~~Re-run TierClassifier with realistic-cost data~~ — abandoned for now.
+      The TierClassifier reads from factor-decomp; the per-year attribution table
+      is a stronger signal at this point. Revisit later if needed.
 
-**Phase 2.10c gate:** all three diagnostics complete. Reading these
-together tells us whether the system has any real edge under honest
-costs and on a representative universe — or whether the entire active
-stack is artifact. The next phase is decided by these results, not
-pre-committed.
+**Phase 2.10c result:** the system has real alpha (~+5% to +10% per year stable +
+~+6% weak-positive diversifier vs ~-9% to -10% noise/dead-weight drag). Forward
+path is structural fix, not new alpha hunting. See Phase 2.10d.
+
+## Phase 2.10d: Pruning + capital allocation fix (BLOCKING — 2026-04-30)
+
+> Phase 2.10c showed alpha exists but is wasted. Phase 2.10d
+> implements the fix in two phases: diagnostic (parallel A+B), then
+> structural (sequential C, requires user approval for Engine B/C
+> code changes).
+
+### Diagnostic (A + B in parallel)
+
+- [ ] **A. Attribution-based pruning proposal** (Agent B specialty —
+      builds on per-year audit). Document per-edge keep/cut decision
+      with justification from the attribution table. Target: 6-7
+      active edges (2 stable + 4-5 weak-positive diversifiers), 9-11
+      cut from active list. Pure config proposal — does NOT modify
+      `data/governor/edges.yml` yet. Output: `docs/Audit/pruning_proposal_2026_04.md`.
+- [ ] **B. Capital allocation defect investigation** (Agent A specialty —
+      builds on 2025 decomposition). Validate the three defect surfaces
+      with hard data and propose specific code-change designs:
+      (1) per-edge participation floor in `signal_processor`,
+      (2) audit/fix of soft-pause weight leak in `low_vol_factor_v1`,
+      (3) regime-aware slot reduction primitive (likely Engine B/C —
+      requires user approval before code change). Output:
+      `docs/Audit/capital_allocation_diagnosis_2026_04.md` with
+      proposals only, NOT code changes.
+
+### Structural (C, sequential after A+B + user approval)
+
+- [ ] **C. Apply pruning + capital allocation fix, re-run 2025 OOS.**
+      Cut the 9-11 noise edges, implement the structural fixes from
+      diagnostic B (with user approval for any Engine B/C touches),
+      re-run 2025 OOS under realistic costs. Compare to Q1 anchor's
+      Sharpe -0.049. **This is the test that decides whether
+      Phase 2.11/2.12/2.5 unblocks.**
+
+**Phase 2.10d gate:** post-fix 2025 OOS Sharpe must clear at least
+SPY's 2025 return-Sharpe minus 0.3 (so > ~0.65) to confirm the
+structural diagnosis. If it doesn't, the pruning/fix isn't enough and
+the system has bigger problems than rivalry. If it does, Phase 2.11
+(per-ticker meta-learner) and Phase 2.12 (growth profile) become live
+again as the next sequence.
 
 ## Phase 2.11: Per-ticker meta-learner (Session N+1 proper, ~2 weeks) — 🚫 BLOCKED 2026-04-29
 
