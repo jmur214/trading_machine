@@ -162,6 +162,22 @@ class LifecycleConfig:
     # cap is appropriate.
     max_noise_pauses_per_cycle: int = 10
 
+    # Trigger 2 ancillary — revival veto for paused edges with heavy
+    # cumulative drag. The legacy revival gate fires on the last-20-trades
+    # Sharpe + WR, but a paused edge that's lost a meaningful fraction of
+    # capital over its lifetime should NOT revive even when a recent slice
+    # looks OK — that pattern is exactly the soft-pause leak (paused at
+    # 0.25x weight, accumulates fills, last 20 happen to look positive,
+    # gets revived to full weight, blows up in the next bad regime).
+    #
+    # Calibration: -0.5% of starting capital cumulative is the threshold.
+    # Tuned against the per-year audit:
+    #   - momentum_edge_v1 (5y cumulative -7.35%, min year -9.17%) → veto
+    #   - low_vol_factor_v1 (5y cumulative -1.95%, min year -2.53%) → veto
+    #   - atr_breakout_v1 (5y cumulative -5.91%, min year -5.78%) → veto
+    # All three were in the pruning_proposal CUT list and lifecycle-paused.
+    revival_veto_cumulative_pct_threshold: float = -0.005
+
     # Cycle caps (legacy gates, unchanged)
     max_retirements_per_cycle: int = 1
     max_pauses_per_cycle: int = 2
@@ -647,6 +663,20 @@ class LifecycleManager:
     ) -> Tuple[bool, str]:
         if len(pnls) < self.cfg.revival_window:
             return False, "insufficient_recent"
+
+        # Phase 2.10d revival veto: an edge whose lifetime cumulative loss
+        # exceeds the threshold cannot revive even with a strong-looking
+        # recent window. The recent slice on a soft-paused edge is biased —
+        # 0.25x sizing happens to look positive over a benign stretch but
+        # the edge's structural pattern is a heavy loser. See
+        # revival_veto_cumulative_pct_threshold for calibration journey.
+        cum_pct = float(pnls.sum()) / max(self.cfg.initial_capital, 1.0)
+        if cum_pct < self.cfg.revival_veto_cumulative_pct_threshold:
+            return False, (
+                f"veto_lifetime_cumulative_{cum_pct:+.4f}_below_"
+                f"{self.cfg.revival_veto_cumulative_pct_threshold:+.4f}"
+            )
+
         recent = pnls[-self.cfg.revival_window :]
         recent_sharpe = _edge_sharpe_from_pnl(recent)
         recent_wr = (recent > 0).mean()

@@ -445,6 +445,93 @@ class TestTrigger3TierClassifierScheduling:
         )
 
 
+class TestRevivalVeto:
+    """A paused edge with heavy lifetime cumulative loss must NOT revive
+    even when its recent 20-trade slice happens to look positive — the
+    soft-pause leak the validation 5-year run exposed."""
+
+    def test_heavy_loser_paused_edge_cannot_revive(self, lcm_factory_lite):
+        """Mimic momentum_edge_v1: lifetime cumulative -7.35% of capital,
+        with a recent 20-trade slice that looks like a strong recovery."""
+        lcm, registry_path, history_path = lcm_factory_lite()
+        _seed_registry(registry_path, [
+            {"edge_id": "heavy_loser", "status": "paused",
+             "category": "technical", "module": "m", "version": "1.0.0",
+             "params": {}},
+        ])
+        # Pause history far enough back that the holding-window check
+        # passes — we want the revival/retire decision to actually happen.
+        with history_path.open("w") as f:
+            f.write(
+                "timestamp,edge_id,old_status,new_status,triggering_gate,"
+                "edge_sharpe,benchmark_sharpe,edge_mdd,trade_count,days_active,notes\n"
+            )
+            f.write(
+                "2024-04-25T00:00:00+00:00,heavy_loser,active,paused,"
+                "loss_fraction_-0.41,-0.30,0.85,-0.41,150,200,\n"
+            )
+        rows = []
+        # 200 trades summing to -$7,350 (-7.35% of $100k starting cap).
+        # Most are losers, but pad the LAST 20 to look revival-strong.
+        # First 180: each -$50 → -$9,000.  Last 20: each +$82.5 → +$1,650.
+        # Total cumulative: -$7,350 → -7.35% — well below the -0.5% veto.
+        early = pd.date_range("2022-01-15", periods=180, freq="3D")
+        for d in early:
+            rows.extend(_entry("heavy_loser", d.isoformat(), pnl_close=-50.0))
+        recent = pd.date_range("2025-09-01", periods=20, freq="3D")
+        for d in recent:
+            rows.extend(_entry("heavy_loser", d.isoformat(), pnl_close=82.5))
+        trades = _make_trades_full(rows)
+
+        lcm.evaluate(trades, benchmark_sharpe=0.875)
+        statuses = {e["edge_id"]: e["status"]
+                    for e in yaml.safe_load(registry_path.read_text())["edges"]}
+        assert statuses["heavy_loser"] != "active", (
+            "heavy lifetime loser must not revive on a 20-trade slice"
+        )
+
+    def test_modest_loser_paused_edge_can_still_revive(self, lcm_factory_lite):
+        """A paused edge whose lifetime cumulative is well above the veto
+        threshold and whose recent slice looks strong should still revive."""
+        lcm, registry_path, history_path = lcm_factory_lite()
+        _seed_registry(registry_path, [
+            {"edge_id": "modest_recover", "status": "paused",
+             "category": "technical", "module": "m", "version": "1.0.0",
+             "params": {}},
+        ])
+        with history_path.open("w") as f:
+            f.write(
+                "timestamp,edge_id,old_status,new_status,triggering_gate,"
+                "edge_sharpe,benchmark_sharpe,edge_mdd,trade_count,days_active,notes\n"
+            )
+            f.write(
+                "2024-04-25T00:00:00+00:00,modest_recover,active,paused,"
+                "loss_fraction_-0.41,-0.30,0.85,-0.41,150,200,\n"
+            )
+        rows = []
+        # 50 trades. First 30: -$10 each = -$300. Last 20: +$120 each = +$2400.
+        # Cumulative +$2100 = +2.1% > -0.5% veto. Recent slice strong → revive.
+        early = pd.date_range("2024-06-01", periods=30, freq="5D")
+        rng = np.random.default_rng(7)
+        early_pnls = rng.normal(loc=-10.0, scale=15.0, size=30)
+        for d, p in zip(early, early_pnls):
+            rows.extend(_entry("modest_recover", d.isoformat(), pnl_close=float(p)))
+        # Recovery slice: positive mean with non-zero variance so Sharpe
+        # can be computed meaningfully.
+        recent = pd.date_range("2025-09-01", periods=20, freq="3D")
+        recent_pnls = rng.normal(loc=120.0, scale=40.0, size=20)
+        for d, p in zip(recent, recent_pnls):
+            rows.extend(_entry("modest_recover", d.isoformat(), pnl_close=float(p)))
+        trades = _make_trades_full(rows)
+
+        lcm.evaluate(trades, benchmark_sharpe=0.5)
+        statuses = {e["edge_id"]: e["status"]
+                    for e in yaml.safe_load(registry_path.read_text())["edges"]}
+        assert statuses["modest_recover"] == "active", (
+            "modest cumulative loss + strong recovery should still revive"
+        )
+
+
 class TestTriggerInteraction:
     """Triggers 1 and 2 must not collide. When both could fire, the
     earlier-listed trigger (zero-fill) takes precedence, but a fully-
