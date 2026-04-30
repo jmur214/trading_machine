@@ -102,6 +102,8 @@ class AdvisoryConfig:
     flip_frequency_lookback: int = 30
     flip_frequency_warning_threshold: int = 3
     transition_matrix_min_bars: int = 100
+    crisis_max_positions: int = 5
+    stressed_max_positions: int = 7
 
 
 @dataclass

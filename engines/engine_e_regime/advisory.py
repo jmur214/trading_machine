@@ -200,6 +200,21 @@ class AdvisoryEngine:
         else:
             suggested_max_positions = 18
 
+        # Phase 2.10d Primitive 3: regime-summary floor on top of correlation-state map.
+        # April-2025 market_turmoil produced -$3,551 simultaneous correlated loss across 5 edges
+        # because the correlation axis was "normal" → suggested_max_positions stayed at 18 even
+        # though regime_summary was "crisis". Apply regime-summary as a hard floor; whichever of
+        # the two values (correlation-state-derived vs regime-summary-derived) is more conservative
+        # wins, preserving the "advisory can only tighten" contract.
+        if regime_summary == "crisis":
+            suggested_max_positions = min(
+                suggested_max_positions, self.cfg.crisis_max_positions
+            )
+        elif regime_summary == "stressed":
+            suggested_max_positions = min(
+                suggested_max_positions, self.cfg.stressed_max_positions
+            )
+
         # --- 7. Edge affinity (dual-source blending) ---
         edge_affinity = self._compute_edge_affinity(
             axis_states, macro_regime, coherence_overrides
