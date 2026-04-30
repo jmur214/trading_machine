@@ -710,6 +710,7 @@ class ModeController:
         exact_edge_ids: Optional[List[str]] = None,
         discover: bool = False,
         override_capital: Optional[float] = None,
+        log_per_ticker_scores: bool = False,
     ) -> dict:
         """
         Full backtest orchestration with all features previously in run_backtest_logic().
@@ -838,16 +839,35 @@ class ModeController:
                 paused_count += 1
         if paused_count:
             print(f"[RUN_BACKTEST] Applied {PAUSED_WEIGHT_MULTIPLIER}x soft-pause weight (max {PAUSED_MAX_WEIGHT}) to {paused_count} edge(s)")
+        # Cockpit logger first — its run_uuid is the join key for the
+        # per-ticker-scores parquet, so we need it before constructing
+        # AlphaEngine when the per-ticker logger is enabled.
+        cockpit = CockpitLogger(out_dir=str(self.root / "data" / "trade_logs"))
+
+        # Phase 2.11 prep — optional per-bar score logger for meta-learner
+        # training. Off by default; the --log-per-ticker-scores CLI flag
+        # threads through ModeController.run_backtest's parameter.
+        per_ticker_logger = None
+        if log_per_ticker_scores:
+            from engines.engine_a_alpha.per_ticker_score_logger import (
+                PerTickerScoreLogger,
+            )
+            per_ticker_logger = PerTickerScoreLogger(
+                run_uuid=cockpit.run_id,
+                out_dir=self.root / "data" / "research" / "per_ticker_scores",
+            )
+            print(f"[RUN_BACKTEST] Per-ticker score logging ENABLED → "
+                  f"data/research/per_ticker_scores/{cockpit.run_id}.parquet")
+
         alpha = AlphaEngine(
             edges=loaded_edges,
             edge_weights=edge_weights,
             config=cfg_alpha,
             debug=True,
             governor=governor,
+            per_ticker_score_logger=per_ticker_logger,
         )
         risk = RiskEngine(self.cfg_risk)
-
-        cockpit = CockpitLogger(out_dir=str(self.root / "data" / "trade_logs"))
 
         exec_params = {
             "slippage_bps": float(self.cfg_bt.get("slippage_bps", 10.0)),
@@ -879,6 +899,16 @@ class ModeController:
         # Flush Logger
         controller.logger.flush()
         controller.logger.close()
+
+        # Flush per-ticker score logger (Phase 2.11 prep). Done outside
+        # any try/except so a parquet write failure surfaces to the user;
+        # the in-memory buffer would otherwise be silently lost. The
+        # logger itself has a CSV fallback for missing parquet engine.
+        if per_ticker_logger is not None:
+            out_path = per_ticker_logger.flush()
+            if out_path is not None:
+                print(f"[RUN_BACKTEST] Per-ticker scores: "
+                      f"{per_ticker_logger.n_rows():,} rows → {out_path}")
 
         # --- Calculate Metrics ---
         metrics = None

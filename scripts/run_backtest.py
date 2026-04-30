@@ -30,6 +30,7 @@ def run_backtest_logic(
     exact_edge_ids=None,
     discover=False,
     override_capital=None,
+    log_per_ticker_scores=False,
 ):
     """
     Backward-compatible programmatic entry point for running a backtest.
@@ -49,6 +50,7 @@ def run_backtest_logic(
         exact_edge_ids=exact_edge_ids,
         discover=discover,
         override_capital=override_capital,
+        log_per_ticker_scores=log_per_ticker_scores,
     )
 
 
@@ -68,6 +70,10 @@ def main():
                         help="Override initial capital (e.g. 5000)")
     parser.add_argument("--discover", action="store_true",
                         help="Run post-backtest discovery cycle (hunt + validate + promote)")
+    parser.add_argument("--log-per-ticker-scores", action="store_true",
+                        help="Emit per-bar per-ticker per-edge scores to "
+                             "data/research/per_ticker_scores/<run_uuid>.parquet "
+                             "for Phase 2.11 meta-learner training.")
     args = parser.parse_args()
 
     stats = run_backtest_logic(
@@ -79,6 +85,7 @@ def main():
         alpha_debug=args.alpha_debug,
         override_capital=args.capital,
         discover=args.discover,
+        log_per_ticker_scores=args.log_per_ticker_scores,
     )
 
     print("\nPerformance Summary")
