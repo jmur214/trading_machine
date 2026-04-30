@@ -5,23 +5,34 @@ Phase 2.10b OOS validation driver. Runs Q1 (2025 OOS, prod universe) or
 Q2 (universe-B held-out tickers, 2021-2024) under the realistic-cost
 slippage model already wired as default in config/backtest_settings.json.
 
-Both modes use --reset-governor for clean state.
+Phase 2.10c precursor: also supports `--task counterfactual` which
+re-runs Q1 with named edges temporarily un-paused (status: paused →
+active in data/governor/edges.yml for the duration of the run, then
+restored). Used to ask: did the lifecycle pause cause 2025 OOS
+underperformance?
+
+All modes use --reset-governor for clean state.
 
 Usage:
     python -m scripts.run_oos_validation --task q1
     python -m scripts.run_oos_validation --task q2
+    python -m scripts.run_oos_validation --task counterfactual \\
+        --unpause-edges atr_breakout_v1,momentum_edge_v1
 """
 
 from __future__ import annotations
 
 import argparse
 import json
+import shutil
 import sys
+from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
-from typing import List, Set
+from typing import Iterable, List, Set
 
 import numpy as np
+import yaml
 
 from orchestration.mode_controller import ModeController
 from core.benchmark import compute_multi_benchmark_metrics
@@ -30,6 +41,44 @@ from core.benchmark import compute_multi_benchmark_metrics
 ROOT = Path(__file__).resolve().parents[1]
 PROCESSED_DIR = ROOT / "data" / "processed"
 RESEARCH_DIR = ROOT / "data" / "research"
+EDGES_YML = ROOT / "data" / "governor" / "edges.yml"
+TRADES_DIR = ROOT / "data" / "trade_logs"
+
+
+@contextmanager
+def temporarily_unpause(edge_ids: Iterable[str]):
+    """Patch data/governor/edges.yml: flip status:paused → active for
+    listed edge_ids for the duration of the run. Restore on exit
+    (success or exception). Edges not currently paused are left alone.
+
+    The on-disk yml is the lifecycle state read by EdgeRegistry — both
+    the soft-pause weight cap in mode_controller.run_backtest and the
+    edge instantiation path key off it.
+    """
+    target = set(edge_ids)
+    backup_path = EDGES_YML.with_suffix(".yml.counterfactual_bak")
+    shutil.copy(EDGES_YML, backup_path)
+
+    with open(EDGES_YML) as f:
+        registry = yaml.safe_load(f)
+
+    flipped: List[str] = []
+    for spec in registry.get("edges", []):
+        if spec.get("edge_id") in target and spec.get("status") == "paused":
+            spec["status"] = "active"
+            flipped.append(spec["edge_id"])
+
+    with open(EDGES_YML, "w") as f:
+        yaml.safe_dump(registry, f, sort_keys=False)
+
+    print(f"[COUNTERFACTUAL] Temporarily un-paused {len(flipped)} edge(s): {flipped}")
+    print(f"[COUNTERFACTUAL] Backup at {backup_path}")
+    try:
+        yield flipped
+    finally:
+        shutil.copy(backup_path, EDGES_YML)
+        backup_path.unlink(missing_ok=True)
+        print(f"[COUNTERFACTUAL] Restored edges.yml from backup")
 
 
 def sample_universe_b(prod_tickers: Set[str], n_sample: int = 50, seed: int = 42) -> List[str]:
@@ -118,6 +167,67 @@ def run_q2() -> dict:
     return summary
 
 
+def run_counterfactual(unpause_edges: List[str]) -> dict:
+    """Re-run Q1 (2025 OOS, prod universe) with named edges flipped
+    paused→active in edges.yml for the duration. Mirrors run_q1() in
+    every other respect.
+    """
+    print(f"[COUNTERFACTUAL] 2025 OOS, prod universe, --reset-governor, "
+          f"un-pausing: {unpause_edges}")
+    before = {p.name for p in TRADES_DIR.iterdir() if p.is_dir() and p.name != "backup"}
+
+    with temporarily_unpause(unpause_edges) as flipped:
+        mc = ModeController(ROOT, env="prod")
+        summary = mc.run_backtest(
+            mode="prod",
+            fresh=False,
+            no_governor=False,
+            reset_governor=True,
+            alpha_debug=False,
+            override_start="2025-01-01",
+            override_end="2025-12-31",
+        )
+
+    run_id = find_run_id(before)
+    summary["run_id"] = run_id
+    summary["window"] = "2025-01-01 to 2025-12-31"
+    summary["universe"] = "prod (109 tickers)"
+    summary["unpaused_edges_requested"] = unpause_edges
+    summary["unpaused_edges_actually_flipped"] = flipped
+    summary["per_edge_stats"] = compute_per_edge_stats(run_id)
+    return summary
+
+
+def compute_per_edge_stats(run_id: str | None) -> dict:
+    """Read trades.csv from the run dir; aggregate fill count + realized
+    PnL by edge. Best-effort — if anything fails, return empty dict.
+    """
+    if not run_id:
+        return {}
+    import pandas as pd
+    trades_path = TRADES_DIR / run_id / f"trades_{run_id}.csv"
+    if not trades_path.exists():
+        trades_path = TRADES_DIR / run_id / "trades.csv"
+    if not trades_path.exists():
+        return {}
+    try:
+        df = pd.read_csv(trades_path)
+    except Exception:
+        return {}
+    if df.empty or "edge" not in df.columns:
+        return {}
+    pnl_col = "pnl" if "pnl" in df.columns else None
+    out: dict = {}
+    for edge, sub in df.groupby("edge"):
+        out[str(edge)] = {
+            "fills": int(len(sub)),
+            "realized_pnl": float(sub[pnl_col].sum()) if pnl_col else None,
+            "long_fills": int((sub.get("side", "") == "long").sum()) if "side" in sub.columns else None,
+            "short_fills": int((sub.get("side", "") == "short").sum()) if "side" in sub.columns else None,
+        }
+    return out
+
+
 def attach_benchmarks(summary: dict, start: str, end: str) -> dict:
     """Add SPY / QQQ / 60-40 metrics over the same window."""
     multi = compute_multi_benchmark_metrics(start=start, end=end)
@@ -136,17 +246,30 @@ def attach_benchmarks(summary: dict, start: str, end: str) -> dict:
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--task", choices=["q1", "q2"], required=True)
+    parser.add_argument("--task", choices=["q1", "q2", "counterfactual"], required=True)
+    parser.add_argument(
+        "--unpause-edges",
+        type=str,
+        default="",
+        help="Comma-separated edge_ids to flip paused→active for the counterfactual run.",
+    )
     args = parser.parse_args()
 
     if args.task == "q1":
         summary = run_q1()
         summary = attach_benchmarks(summary, "2025-01-01", "2025-12-31")
         out_path = RESEARCH_DIR / "oos_validation_q1.json"
-    else:
+    elif args.task == "q2":
         summary = run_q2()
         summary = attach_benchmarks(summary, "2021-01-01", "2024-12-31")
         out_path = RESEARCH_DIR / "oos_validation_q2.json"
+    else:
+        if not args.unpause_edges:
+            parser.error("--task counterfactual requires --unpause-edges")
+        unpause = [e.strip() for e in args.unpause_edges.split(",") if e.strip()]
+        summary = run_counterfactual(unpause)
+        summary = attach_benchmarks(summary, "2025-01-01", "2025-12-31")
+        out_path = RESEARCH_DIR / "oos_validation_counterfactual_2025.json"
 
     summary["task"] = args.task
     summary["timestamp"] = datetime.utcnow().isoformat() + "Z"
