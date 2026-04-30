@@ -88,7 +88,81 @@ class LifecycleConfig:
     # edges from accumulating losses at 0.25x indefinitely. Set to 0 to disable.
     paused_retirement_min_days: int = 90
 
-    # Cycle caps
+    # ----------------------------------------------------------- Phase 2.10d
+    # Trigger 1 — Zero-fill / sparse-fill timeout
+    # Catches the failure mode the existing per-trade gates can't see: an
+    # edge that's registered active but doesn't fire enough to accumulate
+    # the min_trades evidence the retirement gate requires. The zero-fill
+    # registered edges (rsi_bounce_v1, bollinger_reversion_v1, etc.) sit at
+    # status=active forever under the legacy gates because `sub.empty` on
+    # their per-edge slice returns `continue` before any decision fires.
+    #
+    # Spec source: forward_plan_2026_04_30.md Phase 2.10d Task A item 1
+    # ("default 90 days"). Calibrated to 365 days here because pead_v1
+    # (a KEEP edge per pruning_proposal_2026_04.md) has a 290-day max gap
+    # between fills — the literal 90-day default would have falsely tripped
+    # one of the 6 keep-eligible edges. 365d preserves the spec intent
+    # (catch sparse / zero-fill edges) without false-tripping low-frequency
+    # KEEPs. See lifecycle_triggers_validation_2026_04.md for the
+    # calibration journey.
+    zero_fill_lookback_days: int = 365
+    # Below this many entry-fills in the lookback window an edge is
+    # considered dormant. Set to 2 (not 0) to also catch edges that have
+    # exactly 1 fill in 5 years (e.g., value_deep_v1) which strictly
+    # zero-fill semantics would miss.
+    zero_fill_min_fills: int = 2
+    # An already-paused edge needs this many days *and* still-zero-fill to
+    # auto-retire. Cumulative (lookback + this), so 365+365 = 2yrs of
+    # functional inactivity by default before retire.
+    zero_fill_paused_retire_days: int = 365
+    # Cycle caps for the zero-fill triggers — much higher than the
+    # legacy max_pauses cap because these are quasi-static decisions
+    # (a registered edge with 0 fills is unambiguously dormant; we are
+    # not at risk of cascade de-risking on a bad month). The legacy
+    # max_pauses_per_cycle = 2 cap is for active-edges-going-bad, where
+    # cascade caution genuinely matters.
+    max_zero_fill_pauses_per_cycle: int = 50
+    max_zero_fill_retirements_per_cycle: int = 50
+
+    # Trigger 2 — Sustained-noise (per-year contribution)
+    # Catches edges that fire enough to clear Trigger 1 but produce
+    # near-zero net contribution AND have at least one clearly-negative
+    # year. Examples from the 2026-04 audit: panic_v1 (mean -0.03%/yr,
+    # min year -0.16%), value_trap_v1 (mean -0.01%/yr, min year -0.05%).
+    #
+    # The "AND at least one negative year below threshold" clause is the
+    # key calibration choice. A pure |mean| < threshold gate would
+    # false-trip pead_v1 (mean +0.00%/yr, all years 0 or +0.01%); the
+    # negative-year requirement excludes "rarely-fires-and-produces-zero"
+    # which is sparse-but-not-noise.
+    noise_window_years: int = 3
+    # Absolute mean annual contribution (as fraction of starting capital)
+    # below which an edge qualifies as "low-magnitude." 0.001 = 0.10% of
+    # capital per year. Calibrated against the per-year audit:
+    #   - panic_v1 mean -0.03%/yr (|mean|=0.0003) → trips ✓
+    #   - macro_credit_spread_v1 mean +0.15%/yr (|mean|=0.0015) → does
+    #     NOT trip ✓ (preserved as KEEP)
+    # See audit doc for full calibration table.
+    noise_mean_threshold: float = 0.001
+    # An edge's worst-year contribution must be at least this negative
+    # (as fraction of capital) for the noise gate to fire. -0.0003 = -0.03%
+    # of capital. Set just-permissive enough that minor zero-rounding
+    # noise (e.g., -0.011%) doesn't count as "negative year" but a real
+    # losing year (-0.05% or worse) does.
+    noise_negative_year_threshold: float = -0.0003
+    # Minimum fills in the noise window — protects against falsely
+    # tripping brand-new edges with too-small a sample.
+    noise_min_fills_in_window: int = 5
+    # Minimum trade-history span (days) before the noise gate can fire.
+    # Trigger 2 frames its decision in years — it shouldn't be evaluated
+    # against an edge that hasn't even had a full year of trade history.
+    # Set to 365 days = 1 year of trade history minimum.
+    noise_min_history_days: int = 365
+    # Cycle cap — this gate is more nuanced than zero-fill so a moderate
+    # cap is appropriate.
+    max_noise_pauses_per_cycle: int = 10
+
+    # Cycle caps (legacy gates, unchanged)
     max_retirements_per_cycle: int = 1
     max_pauses_per_cycle: int = 2
 
@@ -97,6 +171,11 @@ class LifecycleConfig:
     # decisions should be observed but not committed, so re-running the
     # same window gives the same result.
     readonly: bool = False
+
+    # Initial capital for normalizing per-year PnL into "% of capital"
+    # for Trigger 2. Backtest is currently $100k throughout; surface as
+    # config so paper/live with different starting capital still works.
+    initial_capital: float = 100_000.0
 
 
 @dataclass
@@ -140,6 +219,44 @@ def _edge_loss_fraction(pnls: np.ndarray, window: int = 30) -> float:
     if gross <= 0:
         return 0.0
     return float(recent.sum() / gross)
+
+
+def _per_year_pnl_pct(
+    edge_trades: pd.DataFrame,
+    initial_capital: float,
+    window_years: int,
+    as_of: pd.Timestamp,
+) -> Dict[int, float]:
+    """Compute per-year contribution as fraction of starting capital for
+    one edge over the rolling N-year window ending at `as_of`.
+
+    Inputs:
+      edge_trades : per-edge trade rows with 'pnl' and 'timestamp' columns
+                    (closed trades only — caller filters to pnl.notna()).
+      initial_capital : denominator (e.g. 100_000.0).
+      window_years : how many calendar years back from `as_of` to include.
+      as_of : reference date for the window.
+
+    Output: dict {year: pnl_fraction} for each year in the window. Years
+    where the edge had no closed trades are present with value 0.0 so the
+    caller can distinguish 'didn't fire' from 'fired and produced zero'.
+
+    The window is the last N FULL calendar years that include as_of's year,
+    counted backwards: e.g., as_of=2025-12-31, window_years=3 → 2023, 2024, 2025.
+    """
+    if initial_capital <= 0 or window_years <= 0:
+        return {}
+    last_year = int(as_of.year)
+    years = list(range(last_year - window_years + 1, last_year + 1))
+
+    if edge_trades.empty:
+        return {y: 0.0 for y in years}
+
+    sub = edge_trades.copy()
+    sub["year"] = pd.to_datetime(sub["timestamp"], utc=True, errors="coerce").dt.year
+    sub = sub.dropna(subset=["year"])
+    grouped = sub.groupby("year")["pnl"].sum()
+    return {y: float(grouped.get(y, 0.0)) / initial_capital for y in years}
 
 
 class LifecycleManager:
@@ -194,18 +311,50 @@ class LifecycleManager:
         if trades is None or trades.empty:
             return []
 
-        # Filter to closed trades only
-        tdf = trades.copy()
-        if "pnl" not in tdf.columns or "edge" not in tdf.columns:
+        # Two views of the trade log:
+        #   * `entries_df` — every fill row (uses the 'trigger' column when
+        #     present; else all rows). Trigger 1 measures FIRING rate, which
+        #     means counting entry events, not closed P&L rows.
+        #   * `tdf` — closed trades only (pnl present and non-zero), for the
+        #     existing per-trade gates AND for Trigger 2's per-year P&L
+        #     attribution.
+        if "edge" not in trades.columns:
+            return []
+
+        raw = trades.copy()
+        if "timestamp" in raw.columns:
+            raw["timestamp"] = pd.to_datetime(raw["timestamp"], errors="coerce", utc=True)
+            raw = raw.dropna(subset=["timestamp"])
+
+        if "trigger" in raw.columns:
+            entries_df = raw[raw["trigger"] == "entry"].copy()
+        else:
+            entries_df = raw.copy()
+
+        # Closed trades for legacy + Trigger 2
+        tdf = raw.copy()
+        if "pnl" not in tdf.columns:
             return []
         tdf = tdf[tdf["pnl"].notna() & (tdf["pnl"] != 0)]
-        if tdf.empty:
-            return []
-        if "timestamp" in tdf.columns:
-            tdf["timestamp"] = pd.to_datetime(tdf["timestamp"], errors="coerce", utc=True)
-            tdf = tdf.dropna(subset=["timestamp"])
+
+        # Resolve as_of from the WIDER view so zero-fill timeouts don't
+        # shrink to "as_of = last closed trade" when an edge fires lots of
+        # entries but never produces closed pnls in the window.
         if as_of is None:
-            as_of = tdf["timestamp"].max() if "timestamp" in tdf.columns else pd.Timestamp.now(tz="UTC")
+            if not raw.empty and "timestamp" in raw.columns:
+                as_of = raw["timestamp"].max()
+            elif not tdf.empty and "timestamp" in tdf.columns:
+                as_of = tdf["timestamp"].max()
+            else:
+                as_of = pd.Timestamp.now(tz="UTC")
+
+        # Pre-compute per-edge fill counts in the lookback window. Used
+        # by Trigger 1's firing-rate gate.
+        recent_fill_counts: Dict[str, int] = {}
+        if not entries_df.empty and "timestamp" in entries_df.columns:
+            cutoff = as_of - pd.Timedelta(days=self.cfg.zero_fill_lookback_days)
+            recent = entries_df[entries_df["timestamp"] >= cutoff]
+            recent_fill_counts = recent.groupby("edge").size().to_dict()
 
         # Load registry
         edges = self._load_registry()
@@ -232,13 +381,24 @@ class LifecycleManager:
         events: List[LifecycleEvent] = []
         retirements_used = 0
         pauses_used = 0
+        zero_fill_pauses_used = 0
+        zero_fill_retirements_used = 0
+        noise_pauses_used = 0
+
+        def _all_caps_full() -> bool:
+            return (
+                retirements_used >= self.cfg.max_retirements_per_cycle
+                and pauses_used >= self.cfg.max_pauses_per_cycle
+                and zero_fill_pauses_used >= self.cfg.max_zero_fill_pauses_per_cycle
+                and zero_fill_retirements_used >= self.cfg.max_zero_fill_retirements_per_cycle
+                and noise_pauses_used >= self.cfg.max_noise_pauses_per_cycle
+            )
 
         # Evaluate each edge. Important: the base-edge registry entries (e.g.
         # atr_breakout_v1) don't have a first-activation timestamp; we treat
         # their "age" as the window span of their trades.
         for edge_spec in edges:
-            if retirements_used >= self.cfg.max_retirements_per_cycle and \
-               pauses_used >= self.cfg.max_pauses_per_cycle:
+            if _all_caps_full():
                 break
             edge_id = edge_spec.get("edge_id", "")
             status = edge_spec.get("status", "unknown")
@@ -246,8 +406,52 @@ class LifecycleManager:
                 continue  # candidate/failed/archived not evaluated here
 
             sub = tdf[tdf["edge"] == edge_id]
+            n_recent_fills = int(recent_fill_counts.get(edge_id, 0))
+
+            # ----- Trigger 1: zero-fill / sparse-fill timeout ----- #
+            # This must run BEFORE the legacy `if sub.empty: continue` branch
+            # because zero-fill edges are exactly the ones with empty `sub`
+            # — and the legacy branch silently kept them active forever.
+            if status == "active" and zero_fill_pauses_used < self.cfg.max_zero_fill_pauses_per_cycle:
+                zf_pause_fired, zf_pause_gate = self._check_zero_fill_pause_gate(n_recent_fills)
+                if zf_pause_fired:
+                    # Best-effort metric snapshot. Closed-trade stats may be
+                    # zero/empty for these edges — that's fine, the gate's
+                    # decision is based on firing rate not pnl.
+                    pnls_for_log = sub["pnl"].to_numpy(dtype=float) if not sub.empty else np.array([])
+                    edge_sharpe_for_log = _edge_sharpe_from_pnl(pnls_for_log)
+                    edge_mdd_for_log = _edge_loss_fraction(pnls_for_log)
+                    ev = self._transition(
+                        edge_spec, "paused", zf_pause_gate, edge_sharpe_for_log,
+                        benchmark_sharpe, edge_mdd_for_log, len(pnls_for_log), 0, as_of,
+                    )
+                    events.append(ev)
+                    zero_fill_pauses_used += 1
+                    continue
+
+            if status == "paused" and zero_fill_retirements_used < self.cfg.max_zero_fill_retirements_per_cycle:
+                pause_date = pause_dates.get(edge_id)
+                days_since_pause = int((as_of - pause_date).days) if pause_date is not None else self.cfg.zero_fill_paused_retire_days
+                zf_retire_fired, zf_retire_gate = self._check_zero_fill_paused_retire_gate(
+                    n_recent_fills, days_since_pause,
+                )
+                if zf_retire_fired:
+                    pnls_for_log = sub["pnl"].to_numpy(dtype=float) if not sub.empty else np.array([])
+                    edge_sharpe_for_log = _edge_sharpe_from_pnl(pnls_for_log)
+                    edge_mdd_for_log = _edge_loss_fraction(pnls_for_log)
+                    ev = self._transition(
+                        edge_spec, "retired", zf_retire_gate, edge_sharpe_for_log,
+                        benchmark_sharpe, edge_mdd_for_log, len(pnls_for_log),
+                        days_since_pause, as_of,
+                    )
+                    events.append(ev)
+                    zero_fill_retirements_used += 1
+                    continue
+
+            # Past Trigger 1 → if no closed trades, no further evidence
+            # available. Keep the legacy "no trades, no transition" semantics.
             if sub.empty:
-                continue  # No trades — no evidence — no transition
+                continue
 
             pnls = sub["pnl"].to_numpy(dtype=float)
             trade_count = len(pnls)
@@ -260,6 +464,47 @@ class LifecycleManager:
             else:
                 days_active = 0
 
+            # ----- Trigger 2: sustained-noise (active edges only) ----- #
+            if status == "active" and noise_pauses_used < self.cfg.max_noise_pauses_per_cycle:
+                yearly = _per_year_pnl_pct(
+                    sub, self.cfg.initial_capital, self.cfg.noise_window_years, as_of,
+                )
+                # Count fills in the noise window — uses entries_df so the
+                # "min fills" gate excludes new edges with too-small a
+                # sample regardless of pnl-row distribution.
+                window_cutoff = as_of - pd.Timedelta(days=self.cfg.noise_window_years * 365)
+                if not entries_df.empty:
+                    edge_entries = entries_df[entries_df["edge"] == edge_id]
+                    window_entries = edge_entries[edge_entries["timestamp"] >= window_cutoff]
+                    n_fills_window = int(len(window_entries))
+                    # Use ENTRY span (not closed-pnl span) for days_history.
+                    # An edge that fires throughout 2023-2025 with mostly-zero
+                    # pnls in earlier years should still qualify as "old enough
+                    # to evaluate" — closed-pnl filtering would underestimate
+                    # the real history span.
+                    if not edge_entries.empty:
+                        days_history = int(
+                            (as_of - edge_entries["timestamp"].min()).days
+                        )
+                    else:
+                        days_history = days_active
+                else:
+                    n_fills_window = trade_count
+                    days_history = days_active
+
+                noise_fired, noise_gate = self._check_sustained_noise_pause_gate(
+                    yearly, n_fills_window, days_history,
+                )
+                if noise_fired:
+                    ev = self._transition(
+                        edge_spec, "paused", noise_gate, edge_sharpe, benchmark_sharpe,
+                        edge_mdd, trade_count, days_active, as_of,
+                    )
+                    events.append(ev)
+                    noise_pauses_used += 1
+                    continue
+
+            # ----- Legacy gates ----- #
             if status == "active":
                 # Try pause first (faster-triggered, reversible), then retire.
                 pause_fired, pause_gate = self._check_pause_gates(pnls, trade_count)
@@ -408,6 +653,98 @@ class LifecycleManager:
         if recent_sharpe > self.cfg.revival_sharpe and recent_wr > self.cfg.revival_wr:
             return True, f"sustained_recovery_sharpe_{recent_sharpe:.2f}_wr_{recent_wr:.2f}"
         return False, "no_recovery"
+
+    # ----------------- Phase 2.10d new triggers ----------------- #
+
+    def _check_zero_fill_pause_gate(
+        self,
+        n_recent_fills: int,
+    ) -> Tuple[bool, str]:
+        """Trigger 1 (active → paused). Fires when an edge had fewer than
+        `zero_fill_min_fills` entry events in the last `zero_fill_lookback_days`.
+
+        The gate is **firing-rate**, not pnl-conditional — a registered-active
+        edge that doesn't fire is dormant regardless of how its rare fills
+        performed. Pruning_proposal_2026_04.md cited 5 such registered-active
+        but never-firing edges (rsi_bounce_v1, bollinger_reversion_v1,
+        earnings_vol_v1, insider_cluster_v1, macro_real_rate_v1) plus 3
+        sparse-firing edges (value_deep_v1, pead_short_v1, growth_sales_v1
+        partial). All but growth_sales_v1 should trip this gate.
+        """
+        if n_recent_fills >= self.cfg.zero_fill_min_fills:
+            return False, f"alive_fills_{n_recent_fills}"
+        return True, (
+            f"zero_fill_n_{n_recent_fills}_in_{self.cfg.zero_fill_lookback_days}d"
+        )
+
+    def _check_zero_fill_paused_retire_gate(
+        self,
+        n_recent_fills: int,
+        days_since_pause: int,
+    ) -> Tuple[bool, str]:
+        """Trigger 1 (paused → retired). Fires when an already-paused edge
+        has continued to not fire (still below `zero_fill_min_fills`) AND
+        has been paused at least `zero_fill_paused_retire_days`.
+        """
+        if n_recent_fills >= self.cfg.zero_fill_min_fills:
+            return False, "paused_revived_via_fills"
+        if days_since_pause < self.cfg.zero_fill_paused_retire_days:
+            return False, (
+                f"paused_only_{days_since_pause}d_of_"
+                f"{self.cfg.zero_fill_paused_retire_days}d_required_for_zero_fill_retire"
+            )
+        return True, (
+            f"zero_fill_paused_{days_since_pause}d_n_{n_recent_fills}"
+        )
+
+    def _check_sustained_noise_pause_gate(
+        self,
+        yearly_contributions: Dict[int, float],
+        n_fills_in_window: int,
+        days_history: int,
+    ) -> Tuple[bool, str]:
+        """Trigger 2. Fires on edges whose net contribution over the
+        rolling N-year window is small in absolute terms AND has at
+        least one clearly-negative year.
+
+        Required predicates (all must hold):
+          1. Edge has at least `noise_min_fills_in_window` fills in the
+             window — so the gate doesn't false-trip on brand-new edges
+             with too-small a sample.
+          2. |mean per-year contribution| < `noise_mean_threshold` —
+             low-magnitude over the window.
+          3. min per-year contribution < `noise_negative_year_threshold` —
+             at least one clearly-negative year (rules out pead_v1-style
+             "rarely fires, all years 0-or-positive").
+        """
+        if days_history < self.cfg.noise_min_history_days:
+            return False, (
+                f"insufficient_history_{days_history}d_of_"
+                f"{self.cfg.noise_min_history_days}d_required"
+            )
+        if n_fills_in_window < self.cfg.noise_min_fills_in_window:
+            return False, f"insufficient_fills_{n_fills_in_window}"
+        if not yearly_contributions:
+            return False, "no_yearly_data"
+
+        contributions = list(yearly_contributions.values())
+        mean_contrib = float(np.mean(contributions))
+        min_contrib = float(np.min(contributions))
+
+        if abs(mean_contrib) >= self.cfg.noise_mean_threshold:
+            return False, (
+                f"meaningful_mean_{mean_contrib:+.4f}_vs_"
+                f"threshold_{self.cfg.noise_mean_threshold:+.4f}"
+            )
+        if min_contrib >= self.cfg.noise_negative_year_threshold:
+            return False, (
+                f"no_clearly_negative_year_min_{min_contrib:+.4f}_vs_"
+                f"threshold_{self.cfg.noise_negative_year_threshold:+.4f}"
+            )
+
+        return True, (
+            f"sustained_noise_mean_{mean_contrib:+.4f}_min_year_{min_contrib:+.4f}"
+        )
 
     def _check_retirement_from_paused_gates(
         self,
