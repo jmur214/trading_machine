@@ -237,53 +237,30 @@ you to act on it, as in the 2026-04-29 case):
 ## Coordinating parallel agents (director mode)
 
 When the user puts you in **director mode** — you write prompts that 
-the user pastes to two or more separate Claude instances running in 
-the same repo — the agents share the working tree. **A single shared 
-worktree is RACY for parallel work** and silently corrupted both Phase 
-2.10b runs on 2026-04-29 (Agent 2's commits twice landed on Agent 1's 
-branch due to the shared HEAD; both had to revert and cherry-pick).
+the user pastes to one or more separate Claude Code sessions running 
+on the same project — the full pattern is documented in 
+`docs/Core/MULTI_SESSION_ORCHESTRATION.md`. Read that for the 
+end-to-end flow, including:
 
-**Hard rule going forward: each parallel agent gets its own `git 
-worktree`, not just its own branch.**
+- When multi-session beats in-session subagents
+- The director vs worker role split
+- The worktree + data isolation setup (run 
+  `./scripts/setup_agent_worktree.sh <name> <branch>` per worker)
+- Writing self-contained worker prompts (continuity vs cold-start)
+- Anti-patterns (concurrent writes to `data/governor/`, branch 
+  switching mid-task, etc.)
+- Synchronization patterns (pure parallel, fan-out/fan-in, sequential 
+  rounds, hub-and-spoke, one-slow-plus-N-fast)
 
-### Setup pattern (the user runs this once before dispatching)
+The pattern works for any number of concurrent workers — same setup 
+for 1 or 100. **Hard rule:** each concurrent worker gets its own 
+`git worktree` produced by the setup script; never share a single 
+worktree across concurrent workers.
 
-```bash
-# Create a worktree per agent, off the desired branch
-git worktree add ../trading_machine-agent1 -b oos-validation
-git worktree add ../trading_machine-agent2 -b gauntlet-revalidation
-```
-
-Each Claude instance is then started in its own directory 
-(`../trading_machine-agent1` and `../trading_machine-agent2`), so:
-- HEAD is per-worktree, no race
-- `git status`, `git stash`, `git checkout` are isolated
-- Both agents can run long backtests simultaneously without 
-  stomping each other's working tree
-
-### Director's prompt should include
-
-When you write a parallel-dispatch prompt, name the worktree 
-explicitly so the agent confirms it's running in the right spot:
-
-> "You're working in worktree `../trading_machine-agent1` on branch 
-> `oos-validation`. Confirm with `git rev-parse --show-toplevel && 
-> git branch --show-current` before any commit. Push your branch 
-> to origin when done. Do NOT touch other agents' branches."
-
-### Cleanup when work merges back
-
-After the user merges an agent's branch to main, remove its worktree:
-
-```bash
-git worktree remove ../trading_machine-agent1
-git branch -d oos-validation  # or -D if it had reverted commits
-```
-
-**Single-agent dispatches don't need a worktree** — only when two or 
-more agents are running concurrently. Sequential dispatches (one 
-agent finishes before the next starts) are fine in the main worktree 
-on different branches.
+Single-agent dispatches and sequential rounds (one worker finishes 
+before the next starts) don't need a worktree — they can run in the 
+main worktree on different branches. Worktrees pay off the moment 
+two workers run at the same time.
 
 ---
 

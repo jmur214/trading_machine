@@ -12,6 +12,7 @@ Every file in `docs/Core/` has a specific role. They are not meant to be read al
 | File | Purpose | When to Read |
 |------|---------|-------------|
 | **`SESSION_PROCEDURES.md`** | Operational playbook — "what's next" decision tree (Paths 1–6), ideas-pipeline routing, session-end checklist. | Every session, after `CLAUDE.md`. Re-readable mid-session without re-loading anything else. |
+| **`MULTI_SESSION_ORCHESTRATION.md`** | Full pattern for running multiple parallel Claude Code sessions (one director + N workers). Worktree+data isolation setup, worker-prompt checklist, anti-patterns, synchronization patterns. | When the user puts you in director mode, or when you need to dispatch parallel work. Setup script: `scripts/setup_agent_worktree.sh`. |
 | **`GOAL.md`** | Your north star. Defines the AI's role, links to all reference docs. | First thing, every session. If you feel context drifting, re-read this. |
 | **`PROJECT_CONTEXT.md`** | The architecture bible. 6-Engine system, edge doctrine, current state table, design philosophy. | Once at the start. Re-read when touching engine-level logic. |
 

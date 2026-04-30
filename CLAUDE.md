@@ -94,17 +94,32 @@ You MUST stop and propose first for:
 
 ## Delegation is the default, not the exception
 
-Subagents exist to handle work that doesn't belong in the main 
-conversation. Before doing substantive work yourself, check if a 
-subagent fits.
-
 The main conversation is for direction, synthesis, and decisions. 
 Execution that produces verbose output, requires a specific lens, 
-or could pollute context with exploration noise belongs in a subagent.
+or could pollute context with exploration noise belongs elsewhere.
 
-If a subagent's description matches the task, delegate to it. This 
-is not optional — preserving main-context budget is part of how this 
-system stays usable across long projects.
+Two delegation patterns are first-class. Use whichever fits.
+
+**In-session subagents** (`Agent` tool — `Explore`, `code-health`, 
+etc.). Zero setup. Best when the task fits inside one main session's 
+context budget and returns a small synthesizable report. If a 
+subagent's description matches the task, delegate to it.
+
+**Multi-session orchestration** — one director session + N worker 
+sessions, each in its own git worktree. Best when work spans multiple 
+long-running tasks (multi-hour backtests, big code builds) that 
+would each pollute the director's context. Higher setup cost (one 
+worktree per worker) but unblocks true parallelism. The pattern, 
+setup script, and anti-patterns are in 
+`docs/Core/MULTI_SESSION_ORCHESTRATION.md`.
+
+Default decision: trivial work → do it directly. Small synthesizable 
+task → in-session subagent. Multiple long-running independent tasks 
+→ multi-session orchestration.
+
+Preserving director-context budget across long projects is part of 
+how this system stays usable. Pick the pattern that minimizes 
+director context cost while making real forward progress.
 
 ## Autonomous improvement is encouraged
 
