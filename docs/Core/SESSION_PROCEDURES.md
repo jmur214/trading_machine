@@ -182,6 +182,111 @@ them well; future-you depends on it.
 
 ---
 
+## Post-push outside-opinion review (when user requests)
+
+After committing and pushing at the end of a session, the user 
+sometimes asks Claude (typically a separate instance, in another 
+window or a fresh chat) to review what just shipped — read the 
+docs, see how things have changed, where the project stands, and 
+how to move forward. Those reviewer responses are saved to:
+
+```
+docs/Progress_Summaries/Other-dev-opinion/<MM-DD-YY>_<short-tag>.md
+```
+
+(Example: `04-29-26_a-and-i.md` — "audit-and-improvements" review 
+following the 2026-04-29 push that completed Phase 1.)
+
+**Convention for these files:** if the user sends multiple messages 
+to the reviewer, each follow-up is separated from the previous 
+section by a horizontal underscore divider — a line of underscores 
+(length varies, typically `_____________________`). Each segment 
+below a divider is a new user prompt + the reviewer's response. 
+Treat the file as an interleaved transcript, not a single 
+monolithic essay.
+
+**When you're invoked AS the reviewer** (the session opens with 
+"review this doc" or similar after the user has just pushed):
+1. Read the latest file in `docs/Progress_Summaries/Other-dev-opinion/` 
+   for context on what the prior reviewer said — your assessment 
+   should build on that, not repeat it.
+2. Read `git log --oneline origin/main~20..HEAD` to see what 
+   actually shipped between reviews.
+3. Read the most recent session summary (or two) in 
+   `docs/Progress_Summaries/`.
+4. Compare claims-in-summaries to code reality. Be brutally 
+   honest — that's the whole point of an outside opinion.
+
+**When you're invoked AFTER the reviewer has written their take** 
+(the user pastes a path to a new `Other-dev-opinion/` doc and asks 
+you to act on it, as in the 2026-04-29 case):
+1. Read it at length.
+2. Synthesize a forward-plan update if the doc proposes 
+   architectural or sequencing changes — write to 
+   `docs/Core/forward_plan_<YYYY-MM-DD>.md`. The latest 
+   `forward_plan_*.md` is the live roadmap interpretation; older 
+   ones are historical context.
+3. Update `ROADMAP.md` with any new phases or re-ordering the 
+   plan implies.
+4. Note outstanding empirical questions (e.g., "OOS validation of 
+   X is now load-bearing") in the plan — those become the next 
+   session's first work items.
+
+---
+
+## Coordinating parallel agents (director mode)
+
+When the user puts you in **director mode** — you write prompts that 
+the user pastes to two or more separate Claude instances running in 
+the same repo — the agents share the working tree. **A single shared 
+worktree is RACY for parallel work** and silently corrupted both Phase 
+2.10b runs on 2026-04-29 (Agent 2's commits twice landed on Agent 1's 
+branch due to the shared HEAD; both had to revert and cherry-pick).
+
+**Hard rule going forward: each parallel agent gets its own `git 
+worktree`, not just its own branch.**
+
+### Setup pattern (the user runs this once before dispatching)
+
+```bash
+# Create a worktree per agent, off the desired branch
+git worktree add ../trading_machine-agent1 -b oos-validation
+git worktree add ../trading_machine-agent2 -b gauntlet-revalidation
+```
+
+Each Claude instance is then started in its own directory 
+(`../trading_machine-agent1` and `../trading_machine-agent2`), so:
+- HEAD is per-worktree, no race
+- `git status`, `git stash`, `git checkout` are isolated
+- Both agents can run long backtests simultaneously without 
+  stomping each other's working tree
+
+### Director's prompt should include
+
+When you write a parallel-dispatch prompt, name the worktree 
+explicitly so the agent confirms it's running in the right spot:
+
+> "You're working in worktree `../trading_machine-agent1` on branch 
+> `oos-validation`. Confirm with `git rev-parse --show-toplevel && 
+> git branch --show-current` before any commit. Push your branch 
+> to origin when done. Do NOT touch other agents' branches."
+
+### Cleanup when work merges back
+
+After the user merges an agent's branch to main, remove its worktree:
+
+```bash
+git worktree remove ../trading_machine-agent1
+git branch -d oos-validation  # or -D if it had reverted commits
+```
+
+**Single-agent dispatches don't need a worktree** — only when two or 
+more agents are running concurrently. Sequential dispatches (one 
+agent finishes before the next starts) are fine in the main worktree 
+on different branches.
+
+---
+
 ## When you're stuck
 
 Common stuck states and what to do:
