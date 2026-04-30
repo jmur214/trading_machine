@@ -217,46 +217,158 @@ falsified the claim. The bones-before-paper philosophy is paying off.
 ~+6% weak-positive diversifier vs ~-9% to -10% noise/dead-weight drag). Forward
 path is structural fix, not new alpha hunting. See Phase 2.10d.
 
-## Phase 2.10d: Pruning + capital allocation fix (BLOCKING — 2026-04-30)
+## Phase 2.10d: Autonomous lifecycle extension + capital allocation fix (BLOCKING — 2026-04-30, reframed)
 
-> Phase 2.10c showed alpha exists but is wasted. Phase 2.10d
-> implements the fix in two phases: diagnostic (parallel A+B), then
-> structural (sequential C, requires user approval for Engine B/C
-> code changes).
+> Phase 2.10c showed alpha exists but is wasted. The original 2.10d
+> framing ("hand-pruning proposal" — Agent B classifies which edges
+> to cut, user applies) was caught and corrected mid-dispatch:
+> hand-pruning violates the project's autonomous-system principle
+> (`feedback_no_manual_tuning.md`). The correct fix is to extend the
+> autonomous lifecycle so it detects the failure modes Agent B
+> identified, runs continuously, and applies the same KEEP/CUT
+> decisions on its own — both for the existing 22 edges and for
+> every future edge that decays.
+>
+> Agent B's pruning-proposal audit (branch `pruning-proposal`,
+> `docs/Audit/pruning_proposal_2026_04.md`) is preserved as
+> **ground-truth target** for trigger calibration. It is NOT applied
+> as a config change.
 
-### Diagnostic (A + B in parallel)
+### Tasks A + B in parallel — different engines, low conflict risk
 
-- [ ] **A. Attribution-based pruning proposal** (Agent B specialty —
-      builds on per-year audit). Document per-edge keep/cut decision
-      with justification from the attribution table. Target: 6-7
-      active edges (2 stable + 4-5 weak-positive diversifiers), 9-11
-      cut from active list. Pure config proposal — does NOT modify
-      `data/governor/edges.yml` yet. Output: `docs/Audit/pruning_proposal_2026_04.md`.
-- [ ] **B. Capital allocation defect investigation** (Agent A specialty —
-      builds on 2025 decomposition). Validate the three defect surfaces
-      with hard data and propose specific code-change designs:
-      (1) per-edge participation floor in `signal_processor`,
-      (2) audit/fix of soft-pause weight leak in `low_vol_factor_v1`,
-      (3) regime-aware slot reduction primitive (likely Engine B/C —
-      requires user approval before code change). Output:
-      `docs/Audit/capital_allocation_diagnosis_2026_04.md` with
-      proposals only, NOT code changes.
+- [ ] **A. Autonomous lifecycle trigger extension** (Agent B continuity).
+      Extend `engines/engine_f_governance/lifecycle_manager.py` with
+      the missing detection primitives:
+      1. **Zero-fill timeout trigger.** Edge active with 0 fills over
+         90+ days → auto-pause → 90 days later → auto-retire.
+      2. **Sustained-noise trigger.** Edge with `|mean annual
+         contribution| < threshold` AND no positive year over rolling
+         3-year window → auto-pause. Threshold calibrated from Agent
+         B's per-year attribution table so the 9-11 cut-eligible
+         edges trip it but the 6-7 keep-eligible don't.
+      3. **TierClassifier scheduling.** Wire as a post-backtest hook
+         (already designed, never scheduled). Re-classifies tiers
+         monthly so stale classifications self-correct.
+      4. **Validate** by running extended lifecycle on existing 5-year
+         integration data: the autonomous triggers must produce the
+         same KEEP/CUT decision Agent B reached manually. If they
+         don't, re-tune. **The hand-classified result is the
+         falsifiable spec for the autonomous output.**
+      Output: code in `lifecycle_manager.py` + new tests + audit doc
+      `docs/Audit/lifecycle_triggers_validation_2026_04.md` showing
+      trigger-fire vs hand-classified comparison.
 
-### Structural (C, sequential after A+B + user approval)
+- [ ] **B. Capital allocation structural fixes** (Agent A continuity).
+      Three missing primitives — these are genuine code work, not
+      autonomous decisions:
+      1. **Per-edge participation floor / fill-share ceiling** in
+         `engines/engine_a_alpha/signal_processor.py`. No single edge
+         can consume >X% of fills regardless of its weight. Hard
+         architectural ceiling. The 83% fill-share concentration
+         observed in 2025 should be impossible by construction.
+      2. **Soft-pause weight leak fix** in signal_processor /
+         regime_gate logic. `low_vol_factor_v1` fired 1,613 times in
+         2025 despite being paused because `regime_gate` amplifies
+         weight back to full in stressed regimes — exactly opposite
+         of design intent. Soft-pause must dominate regime_gate
+         amplification.
+      3. **Regime-aware slot reduction primitive** — likely Engine B
+         (Risk) or Engine C (Portfolio). When regime classifier
+         reports `market_turmoil` or `crisis`, cap concurrent active
+         positions to N/2. The April-2025 -$3,551 single-month
+         correlated loss across 5 edges should be impossible by
+         construction. **TOUCHES ENGINE B / C — agent must propose
+         design before implementing.**
+      Output: code on a branch + tests + audit doc
+      `docs/Audit/capital_allocation_fixes_2026_04.md` documenting
+      design + before/after measurements.
 
-- [ ] **C. Apply pruning + capital allocation fix, re-run 2025 OOS.**
-      Cut the 9-11 noise edges, implement the structural fixes from
-      diagnostic B (with user approval for any Engine B/C touches),
-      re-run 2025 OOS under realistic costs. Compare to Q1 anchor's
-      Sharpe -0.049. **This is the test that decides whether
-      Phase 2.11/2.12/2.5 unblocks.**
+### C. Re-run 2025 OOS (sequential, after A + B merge)
 
-**Phase 2.10d gate:** post-fix 2025 OOS Sharpe must clear at least
-SPY's 2025 return-Sharpe minus 0.3 (so > ~0.65) to confirm the
-structural diagnosis. If it doesn't, the pruning/fix isn't enough and
-the system has bigger problems than rivalry. If it does, Phase 2.11
-(per-ticker meta-learner) and Phase 2.12 (growth profile) become live
-again as the next sequence.
+- [ ] **C. Re-run 2025 OOS with extended lifecycle + capital
+      allocation fixes active.** Same window/universe/cost-model as
+      Q1 anchor (UUID `72ec531d-7a82-4c2a-97c0-ffb2bf6ddb34`).
+      Director runs.
+
+### Phase 2.10d gate — recalibrated 2026-04-30 with kill-thesis floor
+
+Pre-committed thresholds (per the 04-30 outside reviewer's
+no-goalpost-moving discipline). Pre-committed BEFORE Agent A and
+Agent B report so the result can't be moved-the-goalposts away:
+
+| Post-fix 2025 OOS Sharpe | Verdict |
+|---|---|
+| **< 0.2** | **Kill thesis.** The alpha foundation is wrong. Pivot harder than 2.10d. The structural fixes were *necessary* but the system has deeper problems than rivalry — possibly the universe, possibly the underlying signals themselves. Stop, regroup, do NOT continue patching. |
+| 0.2 - 0.4 | **Ambiguous.** Fix worked partially. More rivalry/dilution diagnosis needed. Phase 2.11 still blocked. |
+| 0.4 - 0.65 | **Partial pass.** Real lift but trails benchmark significantly. Phase 2.11 (per-ticker meta-learner) becomes the strategic next step (per 04-30 reviewer: meta-learner *is* the structural answer to capital rivalry that the linear allocator can't fully solve). |
+| **> 0.65** | **Full pass.** Phase 2.11 + 2.12 unblock. Goal-B path becomes credible. |
+
+## Phase 2.10e: Reform Gate 1 — ensemble-simulation gate (queued, post-2.10d)
+
+> The 04-30 outside reviewer flagged Q3's standalone-gauntlet failure
+> as a false negative produced by the gauntlet's test geometry not
+> matching the deployment geometry: standalone fills get full
+> `risk_per_trade_pct` and cross the Almgren-Chriss impact knee;
+> ensemble fills stay sub-knee. **The gauntlet is currently rejecting
+> real alphas because of test geometry.** Reform Gate 1 to test
+> candidates *inside a simulated ensemble of the current active set
+> with realistic capital splitting.* Standalone Sharpe becomes one
+> diagnostic, not a gate.
+
+- [ ] Design ensemble-simulation gate in
+      `engines/engine_d_discovery/discovery.py::validate_candidate`.
+      Replace standalone-Sharpe Gate 1 with: candidate edge added to
+      simulated ensemble of active edges, full backtest with realistic
+      capital splitting, benchmark-relative Sharpe of the *candidate's
+      attributed contribution* must clear threshold.
+- [ ] Backtest the same ground truth: re-run `volume_anomaly_v1` and
+      `herding_v1` through the new Gate 1 and confirm both PASS
+      (because they pass per-year attribution under the ensemble
+      math). If they don't pass, the ensemble gate is mis-designed.
+- [ ] Document in `docs/Audit/gate1_reform_2026_04.md`.
+
+**Sequencing:** queued post-2.10d because Discovery isn't running new
+candidates this cycle anyway; the gate-reform isn't blocking 2.10d.
+Important to land before any future Discovery run — otherwise we
+manufacture more false negatives.
+
+## Phase 0.5: Cost-model completeness (queued — borrow + tax + Alpaca tiers)
+
+> 04-30 reviewer addition. The current `RealisticSlippageModel`
+> handles half-spread + Almgren-Chriss impact correctly but misses
+> three after-tax / after-fee elements that materially affect any
+> "we beat the market" claim:
+> - **Borrow rates** for shorts (5–25 bps/day on borrows; can be
+>   huge for short-bias periods)
+> - **Short-term cap gains tax** (30%+ federal haircut for active
+>   strategies — kills naive after-tax CAGR)
+> - **Alpaca fee tiers** (currently flat assumption)
+
+- [ ] Borrow-rate model for short positions in
+      `RealisticSlippageModel` (or wrapper).
+- [ ] Tax-aware backtest mode — short-term gains taxed at 30%+
+      federal, long-term at 15-20%. Track holding-period per
+      position; apply tax drag at year-end.
+- [ ] Alpaca fee-tier model.
+
+**Why this matters for goal A (compound):** for a 20-something
+planning to compound over 40 years, short-term tax drag compounds
+*against* you. A naive 12% pre-tax CAGR with 90% short-term turnover
+delivers ~8.4% after-tax — that's a 30%+ erosion of the compounding
+base over decades. Goal A's honest evidence requires after-tax
+measurement.
+
+**Sequencing:** queued. Should ship before the system is presented
+with a credible "beat the market" claim, but doesn't block 2.10d/e.
+
+## Cross-cutting workstream addition (continuous)
+
+- [ ] **Capital allocation diagnostic dashboard** in `cockpit/dashboard_v2/`.
+      Live view of per-edge fill share vs PnL contribution, updated
+      per backtest. The 2025 capital-rivalry pathology would have
+      been visible in real time if this view had existed during the
+      in-sample run. Cheap UX-engineer task; high signal value
+      forever after. (Future ux-engineer dispatch.)
 
 ## Phase 2.11: Per-ticker meta-learner (Session N+1 proper, ~2 weeks) — 🚫 BLOCKED 2026-04-29
 

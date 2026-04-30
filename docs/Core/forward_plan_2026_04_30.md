@@ -86,43 +86,86 @@ runs:
 **Bottom line: of 22 registered-active edges, ~6-7 carry the alpha.
 The other 15-16 contribute nothing or actively drag.**
 
-## Phase 2.10d — Pruning + capital allocation fix
+## Phase 2.10d — Autonomous lifecycle extension + capital allocation fix (REFRAMED 2026-04-30)
 
-This is the active next phase. Three tasks; first two parallel.
+> The original 2.10d framing ("Agent B proposes pruning, user
+> approves config change") was caught and corrected mid-dispatch.
+> Hand-pruning violates `feedback_no_manual_tuning.md`'s autonomous
+> principle. Agent B's pruning analysis (branch `pruning-proposal`,
+> `docs/Audit/pruning_proposal_2026_04.md`) is preserved as the
+> falsifiable spec; the system now learns to do it autonomously via
+> extended lifecycle triggers.
 
-### A. Attribution-based pruning proposal (Agent B)
+This is the active phase. Three tasks; first two parallel.
 
-Document per-edge keep/cut decision with justification from the
-per-year attribution. Target: ~6-7 active edges. Pure config proposal
-on a branch — does NOT modify `data/governor/edges.yml` yet.
+### A. Autonomous lifecycle trigger extension (Agent B continuity)
 
-Output: `docs/Audit/pruning_proposal_2026_04.md`
+Extend `engines/engine_f_governance/lifecycle_manager.py` with the
+missing autonomous detection primitives so the failure modes Agent B
+identified manually are detected by the system, continuously, forever:
 
-### B. Capital allocation defect investigation (Agent A)
+1. **Zero-fill timeout trigger** — edges active with 0 fills in 90
+   days auto-pause; edges paused 90 more days auto-retire.
+2. **Sustained-noise trigger** — edges with `|mean annual contribution|
+   < threshold` and no positive year over rolling 3-year window
+   auto-pause. Threshold calibrated from Agent B's per-year audit
+   (the 9-11 cut-eligible edges trip it; the 6-7 keep-eligible don't).
+3. **TierClassifier scheduling** — wire as post-backtest hook so tiers
+   re-classify monthly and stale classifications self-correct.
+4. **Validation** — extended lifecycle running on existing 5-year
+   data must reproduce Agent B's manual KEEP/CUT decision. The
+   hand-classified result becomes the falsifiable spec for the
+   autonomous output.
 
-Validate the three defect surfaces with hard data; propose specific
-code-change designs:
-1. Per-edge participation floor in `signal_processor`
-2. Audit/fix of soft-pause weight leak (1,613 fills for a "paused"
-   edge needs explanation + mitigation)
-3. Regime-aware slot reduction primitive — **likely Engine B (Risk)
-   or Engine C (Portfolio); requires user approval before code
-   change**
+Output: code in `lifecycle_manager.py` + tests + audit doc
+`docs/Audit/lifecycle_triggers_validation_2026_04.md`.
 
-Output: `docs/Audit/capital_allocation_diagnosis_2026_04.md` with
-proposals only, NOT code changes.
+**Why this design:** every future edge that decays gets handled the
+same way without user input. The user-contact-surface really shrinks
+to "pick portfolio type and watch."
 
-### C. Apply + re-test (sequential, after A+B + user approval)
+### B. Capital allocation structural fixes (Agent A continuity)
 
-Cut the 9-11 noise edges, implement structural fixes from B, re-run
-2025 OOS under realistic costs. Compare to Q1 anchor's -0.049.
+Three missing primitives — genuine code work, not autonomous decisions:
 
-**Phase 2.10d gate:** post-fix 2025 OOS Sharpe must clear at least
-SPY 2025 minus 0.3 (so > ~0.65) to confirm the structural diagnosis.
-- Pass → Phase 2.11 (per-ticker meta-learner) and Phase 2.12
-  (growth profile) unblock.
-- Fail → the rivalry/dilution diagnosis was incomplete; deeper
-  architectural rework needed.
+1. **Per-edge participation floor** in
+   `engines/engine_a_alpha/signal_processor.py` — no edge can consume
+   >X% of fills regardless of weight. The 83% fill-share concentration
+   should be impossible by construction.
+2. **Soft-pause weight leak fix** — `regime_gate` currently amplifies
+   paused-edge weight back to full in stressed regimes (exactly
+   wrong). Soft-pause must dominate regime_gate.
+3. **Regime-aware slot reduction primitive** — likely Engine B/C.
+   When regime is `market_turmoil`/`crisis`, cap concurrent positions.
+   **TOUCHES ENGINE B/C — agent must propose design before
+   implementing.**
+
+Output: code on a branch + tests + audit doc
+`docs/Audit/capital_allocation_fixes_2026_04.md`.
+
+### C. Re-run 2025 OOS (sequential, after A+B merge)
+
+Re-run 2025 OOS with extended lifecycle + capital allocation fixes
+active. Same window/universe/cost-model as Q1 anchor. Director runs.
+
+### Phase 2.10d gate — recalibrated with pre-committed kill-thesis floor
+
+Per the 04-30 outside reviewer's no-goalpost-moving discipline,
+thresholds are committed in writing **BEFORE** Agent A and Agent B
+report back so the result can't be rationalized later:
+
+| Post-fix 2025 OOS Sharpe | Verdict |
+|---|---|
+| **< 0.2** | **Kill thesis.** Alpha foundation is wrong. Pivot harder than 2.10d — possibly the universe, possibly the underlying signals. Do NOT continue patching. |
+| 0.2 - 0.4 | **Ambiguous.** Fix worked partially. More diagnosis needed; Phase 2.11 still blocked. |
+| 0.4 - 0.65 | **Partial pass.** Real lift but trails benchmark significantly. Phase 2.11 (per-ticker meta-learner) becomes the strategic next step. |
+| **> 0.65** | **Full pass.** Phase 2.11 + 2.12 unblock. Goal-B path becomes credible. |
+
+The 04-30 reviewer's expected outcome: "+0.2 to +0.4 honestly, +0.5
+stretch." The recalibrated gate above accommodates that range
+explicitly — partial pass at 0.4 isn't "fail," it's "graduate to the
+meta-learner as the structural fix the linear allocator can't fully
+solve."
 
 ## What's no longer true from the 04-29 plan
 
