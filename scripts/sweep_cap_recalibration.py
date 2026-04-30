@@ -37,6 +37,19 @@ REGIME = ROOT / "config" / "regime_settings.json"
 RESEARCH_DIR = ROOT / "data" / "research"
 TRADES_DIR = ROOT / "data" / "trade_logs"
 
+# Lifecycle state files. The autonomous lifecycle (Engine F) mutates
+# edges.yml at the END of every backtest, so a naive sweep would test
+# each subsequent cap value under a progressively more-pruned edge
+# stack. To isolate the cap-value-only effect, snapshot these once and
+# restore them before each run.
+GOVERNOR_DIR = ROOT / "data" / "governor"
+LIFECYCLE_FILES = [
+    GOVERNOR_DIR / "edges.yml",
+    GOVERNOR_DIR / "edge_weights.json",
+    GOVERNOR_DIR / "regime_edge_performance.json",
+]
+SWEEP_ANCHOR_DIR = GOVERNOR_DIR / "_cap_recal_anchor"
+
 
 PRESETS = {
     "a0": {"fill_share_cap": 0.25, "crisis_max_positions": 5,
@@ -52,6 +65,28 @@ PRESETS = {
            "stressed_max_positions": 7,
            "label": "tighter sanity check"},
 }
+
+
+def snapshot_lifecycle_state() -> None:
+    """Copy lifecycle/governor files into _cap_recal_anchor/. Idempotent."""
+    SWEEP_ANCHOR_DIR.mkdir(parents=True, exist_ok=True)
+    for src in LIFECYCLE_FILES:
+        if src.exists():
+            shutil.copy(src, SWEEP_ANCHOR_DIR / src.name)
+    print(f"[SWEEP] Snapshotted lifecycle state to {SWEEP_ANCHOR_DIR}")
+
+
+def restore_lifecycle_state() -> None:
+    """Restore lifecycle/governor files from _cap_recal_anchor/."""
+    if not SWEEP_ANCHOR_DIR.exists():
+        raise RuntimeError(
+            f"No anchor at {SWEEP_ANCHOR_DIR}; run with --snapshot first"
+        )
+    for dst in LIFECYCLE_FILES:
+        src = SWEEP_ANCHOR_DIR / dst.name
+        if src.exists():
+            shutil.copy(src, dst)
+    print(f"[SWEEP] Restored lifecycle state from {SWEEP_ANCHOR_DIR}")
 
 
 @contextmanager
@@ -104,8 +139,14 @@ def find_run_id(before: set[str]) -> str | None:
     return candidates[0][0].name
 
 
-def run_one(label: str, preset: dict) -> dict:
-    """Run a single 2025 Q1 OOS under the given preset."""
+def run_one(label: str, preset: dict, restore_anchor: bool = True) -> dict:
+    """Run a single 2025 Q1 OOS under the given preset.
+
+    If restore_anchor=True, restore the lifecycle state from
+    _cap_recal_anchor/ before the run so each run starts from the same
+    edges.yml + governor state. Set False on the very first run if you
+    just took the snapshot from current state.
+    """
     from orchestration.mode_controller import ModeController
     from core.benchmark import compute_multi_benchmark_metrics
 
@@ -113,6 +154,9 @@ def run_one(label: str, preset: dict) -> dict:
     print(f"[SWEEP-{label.upper()}] fill_share_cap={preset['fill_share_cap']}, "
           f"crisis={preset['crisis_max_positions']}, "
           f"stressed={preset['stressed_max_positions']}")
+
+    if restore_anchor:
+        restore_lifecycle_state()
 
     before = {p.name for p in TRADES_DIR.iterdir() if p.is_dir() and p.name != "backup"}
 
@@ -168,9 +212,23 @@ def run_one(label: str, preset: dict) -> dict:
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--run", choices=list(PRESETS.keys()), required=True)
+    parser.add_argument("--run", choices=list(PRESETS.keys()), default=None,
+                        help="Run a single preset (a0/a1/a2/a3).")
+    parser.add_argument("--snapshot", action="store_true",
+                        help="Snapshot current lifecycle state to "
+                             "_cap_recal_anchor/. Run once before sweeping.")
+    parser.add_argument("--no-restore", action="store_true",
+                        help="Skip restoring the anchor before --run "
+                             "(useful for the very first run after --snapshot).")
     args = parser.parse_args()
-    run_one(args.run, PRESETS[args.run])
+
+    if args.snapshot:
+        snapshot_lifecycle_state()
+        if not args.run:
+            return 0
+    if args.run:
+        run_one(args.run, PRESETS[args.run],
+                restore_anchor=not args.no_restore)
     return 0
 
 
