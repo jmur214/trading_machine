@@ -5,6 +5,52 @@
 > lifecycle pruning + user vision clarifications. This is the honest
 > state-of-the-machine as of 2026-05-01 evening, with all measurements
 > taken under the determinism harness unless noted.
+>
+> **POST-ROUND-4 UPDATE (2026-05-01 late evening) — top-level summary:**
+>
+> Four parallel agents (Discovery diagnostic + gates 2-6 audit + IS
+> multi-year + per-ticker re-val + capital allocation dashboard) all
+> reported clean. Two convergent findings reshape the next dispatch:
+>
+> 1. **All 6 gauntlet gates share the same standalone-vs-ensemble
+>    geometry-mismatch bug class.** Agent A confirmed empirically:
+>    Gate 1 kills 30/30 candidates today, but 7 of 30 have positive
+>    Sharpe (one at 0.999) — they're real candidates dying at the
+>    wrong gate, not noise. Agent B's audit found gates 2/3/5/6 also
+>    FAIL the same geometry mismatch + gate 4 SUSPECT. **The clean
+>    fix is one architectural rework at the top of `validate_candidate`
+>    that fixes all 5 gates simultaneously, not 5 separate piecemeal
+>    fixes** (the prior Reform Gate 1 attempts failed because they
+>    tried to reimplement the ensemble; the right answer is to invoke
+>    `mode_controller.run_backtest` directly). Memory:
+>    `project_gauntlet_consolidated_fix_2026_05_01.md`. Estimated
+>    3-5 days agent time. THIS is the next-session top-priority dispatch.
+>
+> 2. **System is genuinely robust under harness across every measurement
+>    cut taken.** Agent C's IS multi-year (2021-2024) reading: Sharpe
+>    0.905 (3 runs identical, beats SPY 0.875). OOS (0.984) > IS (0.905)
+>    means **no IS overfit.** Drifted readings (1.063 / 1.113) were
+>    overstated by ~0.2 Sharpe each. **Per-ticker meta-learner formally
+>    falsified at deployment level** — 0.442 Sharpe vs ML-off 0.984.
+>    Both ML directions (portfolio + per-ticker) now stay disabled.
+>
+> Plus two independent gauntlet bugs surfaced by Agent B (WFO equity-
+> stitching at `wfo.py:112`; PBO single-ticker bootstrap) — small fixes
+> to bundle alongside the architectural rework.
+>
+> Capital allocation dashboard (Agent D) shipped to
+> `cockpit/dashboard_v2/` — surfaces 2025 rivalry pattern visually.
+> Useful infrastructure forever after.
+>
+> **Next dispatch when work resumes:** consolidated gauntlet fix
+> per `project_gauntlet_consolidated_fix_2026_05_01.md`. After it
+> ships, Engine D begins promoting candidates autonomously for the
+> first time in months — the factory works.
+>
+> Body of plan below is preserved as the strategic context that
+> motivated the round-4 dispatch. The "Tier 1" and "Tier 2" lists
+> remain valid; the consolidated gauntlet fix subsumes most of
+> Tier 1 #1 (Reform Gate 1 baseline fix).
 
 ---
 
