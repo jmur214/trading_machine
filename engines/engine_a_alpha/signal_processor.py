@@ -19,7 +19,7 @@ Output schema per ticker:
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Set
+from typing import Any, Dict, List, Optional, Set
 
 import numpy as np
 import pandas as pd
@@ -75,10 +75,19 @@ class MetaLearnerSettings:
     The contribution_weight scales how much the meta-learner's prediction
     is added to the linear sum. Start small (0.1) so a noisy model can't
     dominate the signal; raise after validation evidence accumulates.
+
+    Phase 2.11 — per-ticker mode. When ``per_ticker=True``, the
+    contribution function looks up a ticker-specific model from
+    ``data/governor/per_ticker_metalearners/{ticker}.pkl`` first, falls
+    back to the portfolio model when the ticker-specific file is missing
+    (cold start for new tickers). Default False so existing backtests
+    are unaffected.
     """
     enabled: bool = False
     profile_name: str = "balanced"
     contribution_weight: float = 0.1
+    per_ticker: bool = False
+    per_ticker_model_dir: str = "data/governor/per_ticker_metalearners"
 
 
 # ----------------------------- Processor ----------------------------- #
@@ -148,10 +157,20 @@ class SignalProcessor:
         self._metalearner = None
         if self.ml_settings.enabled:
             self._metalearner = self._try_load_metalearner()
+
+        # Phase 2.11 per-ticker mode — lazy-loaded ticker-keyed model cache.
+        # Populated on first request per ticker; misses fall back to the
+        # portfolio model. None when per_ticker is disabled.
+        self._per_ticker_models: Optional[Dict[str, Any]] = None
+        self._per_ticker_misses: Set[str] = set()
+        if self.ml_settings.enabled and self.ml_settings.per_ticker:
+            self._per_ticker_models = {}
+
         if self.debug:
             print(f"[SIGNAL_PROCESSOR] Init with Regime: {self.regime}")
             print(f"[SIGNAL_PROCESSOR] MetaLearner: enabled={self.ml_settings.enabled}, "
                   f"profile={self.ml_settings.profile_name}, "
+                  f"per_ticker={self.ml_settings.per_ticker}, "
                   f"trained={self._metalearner.is_trained() if self._metalearner else False}")
 
     def _try_load_metalearner(self):
@@ -169,9 +188,61 @@ class SignalProcessor:
                 print(f"[SIGNAL_PROCESSOR] MetaLearner load failed: {type(e).__name__}: {e}")
             return None
 
+    def _try_load_per_ticker_metalearner(self, ticker: str):
+        """Phase 2.11 — load the ticker-specific MetaLearner from
+        ``data/governor/per_ticker_metalearners/{ticker}.pkl``.
+
+        Returns a trained MetaLearner instance, or None if the file is
+        missing / corrupt. Cached on the instance so we hit disk at most
+        once per ticker per backtest run.
+        """
+        if self._per_ticker_models is None:
+            return None
+        cached = self._per_ticker_models.get(ticker)
+        if cached is not None:
+            return cached
+        if ticker in self._per_ticker_misses:
+            # Don't re-attempt loads we've already established fail
+            return None
+        try:
+            from pathlib import Path
+            import joblib
+            from engines.engine_a_alpha.metalearner import MetaLearner
+
+            path = Path(self.ml_settings.per_ticker_model_dir) / f"{ticker}.pkl"
+            if not path.exists():
+                self._per_ticker_misses.add(ticker)
+                if self.debug:
+                    print(f"[SIGNAL_PROCESSOR] per-ticker model miss for {ticker} "
+                          f"({path}) — falling back to portfolio model")
+                return None
+            payload = joblib.load(path)
+            instance = MetaLearner(
+                profile_name=payload.get("profile_name", self.ml_settings.profile_name),
+            )
+            instance.hyperparams = payload.get("hyperparams", instance.hyperparams)
+            instance._model = payload["model"]
+            instance.feature_names = list(payload["feature_names"])
+            instance.target_clip = float(payload.get("target_clip", 1.0))
+            instance.n_train_samples = int(payload.get("n_train_samples", 0))
+            instance.train_metadata = dict(payload.get("train_metadata", {}))
+            self._per_ticker_models[ticker] = instance
+            if self.debug:
+                print(f"[SIGNAL_PROCESSOR] loaded per-ticker model {ticker} "
+                      f"({len(instance.feature_names)} features, "
+                      f"{instance.n_train_samples} train samples)")
+            return instance
+        except Exception as e:
+            self._per_ticker_misses.add(ticker)
+            if self.debug:
+                print(f"[SIGNAL_PROCESSOR] per-ticker load failed for {ticker}: "
+                      f"{type(e).__name__}: {e}")
+            return None
+
     def _metalearner_contribution(
         self,
         edge_map: Dict[str, float],
+        ticker: Optional[str] = None,
     ) -> float:
         """Run the meta-learner over the current bar's tier=feature edge
         scores and return its scalar contribution.
@@ -182,6 +253,13 @@ class SignalProcessor:
           - feature mismatch that the alignment guard can't recover from
           - any unexpected error
 
+        Phase 2.11 per-ticker mode: when ``ml_settings.per_ticker`` is
+        True AND a `ticker` is supplied AND a per-ticker model exists,
+        the per-ticker model is used. Otherwise falls back to the
+        portfolio model. This means disabling per-ticker (or training
+        only a subset of tickers) is safe — every miss falls back to
+        the portfolio model.
+
         Sparse-input handling: at training time, every bar is a row with
         all N trained-feature columns (zeros for non-firing edges). At
         inference, only edges that fired this bar appear in `edge_map`.
@@ -189,12 +267,20 @@ class SignalProcessor:
         — this matches the trainer's NaN→0 behavior in
         ``build_features_from_raw_scores``.
         """
-        if not self.ml_settings.enabled or self._metalearner is None:
-            return 0.0
-        if not self._metalearner.is_trained():
+        if not self.ml_settings.enabled:
             return 0.0
 
-        trained_features = self._metalearner.feature_names or []
+        # Pick model: per-ticker first if enabled and the ticker has one,
+        # else fall back to the portfolio model.
+        active_model = None
+        if self.ml_settings.per_ticker and ticker:
+            active_model = self._try_load_per_ticker_metalearner(ticker)
+        if active_model is None:
+            active_model = self._metalearner
+        if active_model is None or not active_model.is_trained():
+            return 0.0
+
+        trained_features = active_model.feature_names or []
         if not trained_features:
             return 0.0
 
@@ -223,7 +309,7 @@ class SignalProcessor:
             # to differentiate this bar from the all-zero baseline. Skip.
             return 0.0
         try:
-            ml_score = self._metalearner.predict(feature_inputs)
+            ml_score = active_model.predict(feature_inputs)
             # Normalize the prediction to [-1, 1] before applying
             # contribution_weight. Without this, the meta-learner's raw
             # output can be much wider than the [-1, 1] aggregate score
@@ -231,7 +317,7 @@ class SignalProcessor:
             # be in [-30, +30] for some profiles), letting the model
             # dominate the linear sum even at small contribution_weight.
             # target_clip is set at fit time to max(|y_train|).
-            target_clip = max(self._metalearner.target_clip, 1e-6)
+            target_clip = max(active_model.target_clip, 1e-6)
             ml_norm = float(ml_score) / target_clip
             ml_norm = max(-1.0, min(1.0, ml_norm))
             return ml_norm * float(self.ml_settings.contribution_weight)
@@ -415,7 +501,9 @@ class SignalProcessor:
             # Adds a profile-aware non-linear term over tier=feature edges.
             # When disabled or untrained, returns 0 → behavior matches legacy
             # linear weighted_sum exactly. See MetaLearnerSettings docstring.
-            ml_contribution = self._metalearner_contribution(edge_map)
+            # `ticker` is plumbed so per-ticker mode can pick the
+            # ticker-specific model with portfolio fallback.
+            ml_contribution = self._metalearner_contribution(edge_map, ticker=ticker)
             if ml_contribution != 0.0:
                 if self.debug:
                     print(f"[METALEARNER] {ticker} {now} agg={agg:.4f} + "

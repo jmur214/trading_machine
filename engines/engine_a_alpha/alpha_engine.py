@@ -392,11 +392,19 @@ class AlphaEngine:
         # Layer 3 meta-learner integration. Default OFF — set
         # `metalearner.enabled: true` in alpha_settings to opt in. When
         # disabled, behavior is identical to legacy linear weighted_sum.
+        # Phase 2.11 — `metalearner.per_ticker: true` switches to per-ticker
+        # models (data/governor/per_ticker_metalearners/{ticker}.pkl) with
+        # cold-start fallback to the portfolio model.
         ml_cfg_raw = cfg_raw.get("metalearner", {}) or {}
         metalearner_settings = MetaLearnerSettings(
             enabled=bool(ml_cfg_raw.get("enabled", False)),
             profile_name=str(ml_cfg_raw.get("profile_name", "balanced")),
             contribution_weight=_coerce_float(ml_cfg_raw.get("contribution_weight", 0.1)),
+            per_ticker=bool(ml_cfg_raw.get("per_ticker", False)),
+            per_ticker_model_dir=str(
+                ml_cfg_raw.get("per_ticker_model_dir",
+                               "data/governor/per_ticker_metalearners")
+            ),
         )
 
         self.cfg = AlphaConfig(
