@@ -22,10 +22,10 @@ then LOW. Within each severity, list newest at the top.
 
 ### HIGH
 
-### [HIGH] Backtest non-determinism regression — same config produces ±1.4 Sharpe variance across runs
+### [HIGH → RESOLVED 2026-05-01] Backtest non-determinism regression — same config produced ±1.4 Sharpe variance across runs
 - Engine: F (lifecycle / governor state mutation) + orchestration (run_oos_validation harness)
 - First flagged: 2026-05-01 (Phase 2.10d/Path 1 ship-validation block)
-- Status: **active — blocking ALL forward shipping decisions and A/B comparisons**
+- **Status: RESOLVED 2026-05-01.** Agent A's investigation (branch `determinism-floor-restore`, audit `docs/Audit/determinism_floor_restore_2026_05.md`) bisected the drift source to a single file: **`data/governor/edges.yml`**. End-of-run lifecycle (`evaluate_lifecycle`) and tier reclassification (`evaluate_tiers`) writes mutate active-edge status; subsequent `--reset-governor` runs read the mutated file and produce different Sharpes. The other three mutable governor files (edge_weights.json, regime_edge_performance.json, lifecycle_history.csv) mutate too but their content is write-only audit; restoring just edges.yml from clean closes the entire 0.227 Sharpe gap exactly. New harness `scripts/run_isolated.py` snapshots+restores edges.yml + 3 audit files around each run. **3-run verify under harness: Sharpe 0.984 / 0.984 / 0.984, 1 unique canon md5 across 3 runs (bitwise-identical, matching the 04-23 floor).** Use `python -m scripts.run_isolated --runs N --task q1` for any measurement campaign. See memory `project_determinism_floor_2026_05_01.md`.
 - Description: Backtest reproducibility has regressed materially since the 2026-04-23 determinism floor (memory `project_determinism_floor_2026_04_23.md` documented bitwise-identical canon md5s under `scripts/run_deterministic.py`). Recent same-config runs produce wildly different Sharpe:
   - cap=0.25 + ML-off: Phase 2.10d task C = 0.315; round-1 Agent A A0 hours later = 0.562 (Δ +0.247)
   - cap=0.20 + ML-off: round-1 A3 = 0.920; round-2 B3 v2 = 1.102 (Δ +0.182)
