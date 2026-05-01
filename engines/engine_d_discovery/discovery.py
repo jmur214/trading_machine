@@ -569,17 +569,272 @@ class DiscoveryEngine:
 
         return dm_b
 
+    # ------------------------------------------------------------------ #
+    # Gate 1 reform — ensemble-simulation helpers (Phase 2.10e)          #
+    # ------------------------------------------------------------------ #
+    # Standalone Gate 1 (single-edge backtest at full risk_per_trade_pct)
+    # produces false negatives for ensemble systems: per-fill trade size
+    # crosses the Almgren-Chriss impact knee, costs eat the signal, real
+    # alphas get rejected. Per-year integration attribution shows
+    # `volume_anomaly_v1` and `herding_v1` contributing positively every
+    # year 2021-2025 in production — yet both fail standalone Gate 1
+    # (Sharpe 0.32 / -0.26). The test geometry doesn't match the
+    # deployment geometry. See:
+    #   - docs/Audit/gate1_reform_2026_05.md
+    #   - memory: project_ensemble_alpha_paradox_2026_04_30.md
+    #
+    # The reform: test the candidate INSIDE a simulated ensemble of the
+    # current active set. Pass criterion = the candidate's attributed
+    # contribution to ensemble Sharpe must clear threshold. Standalone
+    # Sharpe is preserved as a diagnostic so the geometry mismatch
+    # remains visible in audit output.
+    GATE1_DEFAULT_CONTRIBUTION_THRESHOLD: float = 0.10
+
+    def _load_active_ensemble_specs(
+        self, exclude_id: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
+        """Read `data/governor/edges.yml` and return active edge specs.
+
+        The ensemble baseline is "what's currently deployed" — only edges
+        whose registry status is exactly `active`. Soft-paused / failed /
+        candidate edges are NOT part of the baseline. If `exclude_id` is
+        provided and matches an active edge, that spec is dropped so the
+        "without-candidate" baseline measures the rest of the deployed
+        ensemble; the candidate is re-added in the with-candidate run by
+        `_run_gate1_ensemble`.
+
+        Returns a list of dicts in the same shape as candidate_spec —
+        keys: `edge_id`, `module`, `class` (resolved by inspection),
+        `params`. Empty list if registry missing / unreadable.
+        """
+        if not self.registry_path.exists():
+            return []
+        try:
+            data = yaml.safe_load(self.registry_path.read_text()) or {}
+        except Exception as e:
+            print(f"[DISCOVERY] _load_active_ensemble_specs: registry read failed: {e}")
+            return []
+
+        active = [
+            e for e in (data.get("edges") or [])
+            if e.get("status") == "active" and e.get("edge_id") != exclude_id
+        ]
+
+        from importlib import import_module
+        out: List[Dict[str, Any]] = []
+        for row in active:
+            module_path = row.get("module")
+            if not module_path:
+                continue
+            try:
+                mod = import_module(module_path)
+            except Exception as e:
+                print(f"[DISCOVERY] ensemble: skipping {row.get('edge_id')} "
+                      f"(module {module_path} import failed: {e})")
+                continue
+            # Same heuristic as scripts/revalidate_alphas.py — pick the
+            # first class defined in the module whose name ends in 'Edge'.
+            cls_name: Optional[str] = None
+            for name in dir(mod):
+                obj = getattr(mod, name)
+                if (
+                    isinstance(obj, type)
+                    and getattr(obj, "__module__", None) == module_path
+                    and name.endswith("Edge")
+                ):
+                    cls_name = name
+                    break
+            if cls_name is None:
+                print(f"[DISCOVERY] ensemble: skipping {row.get('edge_id')} "
+                      f"(no *Edge class in {module_path})")
+                continue
+            out.append({
+                "edge_id": row["edge_id"],
+                "module": module_path,
+                "class": cls_name,
+                "params": row.get("params") or {},
+            })
+        return out
+
+    def _instantiate_edge_from_spec(self, spec: Dict[str, Any]):
+        """Import + instantiate an edge from a candidate-shaped spec dict.
+
+        Mirrors the logic at the top of `validate_candidate`: load the
+        module, fetch the class, default-construct, then `set_params` if
+        params present. Used so ensemble baselines load each active edge
+        exactly the way `validate_candidate` loads the candidate.
+        """
+        from importlib import import_module
+        mod = import_module(spec["module"])
+        cls_ = getattr(mod, spec["class"])
+        edge = cls_()
+        params = spec.get("params") or {}
+        if params and hasattr(edge, "set_params"):
+            edge.set_params(params)
+        return edge
+
+    def _run_ensemble_backtest(
+        self,
+        edges: Dict[str, Any],
+        data_map: Dict[str, pd.DataFrame],
+        start_date: str,
+        end_date: str,
+        exec_params: Dict[str, Any],
+        out_dir: str = "/tmp/discovery_validation_ensemble",
+        initial_capital: float = 100_000,
+    ) -> tuple[float, "pd.Series"]:
+        """Run a backtest with an arbitrary ensemble of edges.
+
+        Same wiring as the standalone Gate 1 (AlphaEngine + RiskEngine +
+        BacktestController + CockpitLogger), only difference is `edges`
+        carries multiple members instead of one. Returns (sharpe,
+        equity_curve). Empty ensemble → (0.0, empty Series).
+
+        The capital splitting / impact-knee dilution that defines
+        deployment-geometry happens inside the AlphaEngine's signal
+        aggregation and the ExecutionSimulator's per-fill cost model —
+        nothing special to do here beyond using the same call shape the
+        production stack uses.
+        """
+        from backtester.backtest_controller import BacktestController
+        from engines.engine_a_alpha.alpha_engine import AlphaEngine
+        from engines.engine_b_risk.risk_engine import RiskEngine
+        from cockpit.logger import CockpitLogger
+        from core.metrics_engine import MetricsEngine
+
+        if not edges:
+            return 0.0, pd.Series(dtype=float)
+
+        alpha = AlphaEngine(edges=dict(edges), debug=False)
+        risk = RiskEngine({"risk_per_trade_pct": 0.01})
+        bt_logger = CockpitLogger(out_dir=out_dir, flush_each_fill=False)
+
+        controller = BacktestController(
+            data_map=data_map,
+            alpha_engine=alpha,
+            risk_engine=risk,
+            cockpit_logger=bt_logger,
+            exec_params=exec_params,
+            initial_capital=initial_capital,
+            batch_flush_interval=99999,
+        )
+
+        history = controller.run(start_date, end_date)
+        if not history:
+            return 0.0, pd.Series(dtype=float)
+
+        equity_curve = pd.Series(
+            [h["equity"] for h in history],
+            index=pd.to_datetime([h["timestamp"] for h in history]),
+        )
+        metrics = MetricsEngine.calculate_all(equity_curve)
+        return float(metrics.get("Sharpe", 0.0)), equity_curve
+
+    def _run_gate1_ensemble(
+        self,
+        candidate_spec: Dict[str, Any],
+        candidate_edge: Any,
+        data_map: Dict[str, pd.DataFrame],
+        start_date: str,
+        end_date: str,
+        exec_params: Dict[str, Any],
+        contribution_threshold: float = GATE1_DEFAULT_CONTRIBUTION_THRESHOLD,
+    ) -> Dict[str, Any]:
+        """The new Gate 1: ensemble-simulation contribution gate.
+
+        Run baseline = current active ensemble *minus* this candidate (so
+        we always measure marginal contribution; if the candidate is
+        already in the active set as part of the falsifiable spec, the
+        baseline excludes it). Run with-candidate = baseline + candidate.
+        Pass if `with_candidate_sharpe - baseline_sharpe >=
+        contribution_threshold`.
+
+        Returns dict with all four numbers and the pass verdict, plus
+        the baseline edge IDs so the audit trail records what the
+        candidate was tested against.
+        """
+        cand_id = candidate_spec.get("edge_id", "?")
+        baseline_specs = self._load_active_ensemble_specs(exclude_id=cand_id)
+        baseline_ids = sorted(s["edge_id"] for s in baseline_specs)
+
+        # Build baseline edge instance dict
+        baseline_edges: Dict[str, Any] = {}
+        for spec in baseline_specs:
+            try:
+                baseline_edges[spec["edge_id"]] = self._instantiate_edge_from_spec(spec)
+            except Exception as e:
+                print(f"[DISCOVERY] ensemble: baseline edge {spec['edge_id']} "
+                      f"failed to instantiate: {e}")
+
+        # Cache key — baseline composition is identical for every candidate
+        # in a single Discovery cycle that doesn't share an edge_id with
+        # the active set, so cache by (frozenset of IDs, window). exec_params
+        # may contain nested dicts (e.g. slippage_extra), so JSON-serialize
+        # with sort_keys for a stable string fingerprint instead of trying
+        # to hash the dict structure.
+        import json as _json
+        try:
+            exec_fingerprint = _json.dumps(exec_params or {}, sort_keys=True, default=str)
+        except Exception:
+            exec_fingerprint = repr(exec_params)
+        cache_key = (
+            frozenset(baseline_edges.keys()), start_date, end_date, exec_fingerprint,
+        )
+        if not hasattr(self, "_gate1_baseline_cache"):
+            self._gate1_baseline_cache: Dict[Any, float] = {}
+
+        if cache_key in self._gate1_baseline_cache:
+            baseline_sharpe = self._gate1_baseline_cache[cache_key]
+        else:
+            baseline_sharpe, _ = self._run_ensemble_backtest(
+                edges=baseline_edges,
+                data_map=data_map,
+                start_date=start_date, end_date=end_date,
+                exec_params=exec_params,
+                out_dir="/tmp/discovery_validation_ensemble_baseline",
+            )
+            self._gate1_baseline_cache[cache_key] = baseline_sharpe
+
+        # With-candidate run — baseline + candidate
+        with_edges = dict(baseline_edges)
+        with_edges[cand_id] = candidate_edge
+        with_candidate_sharpe, _ = self._run_ensemble_backtest(
+            edges=with_edges,
+            data_map=data_map,
+            start_date=start_date, end_date=end_date,
+            exec_params=exec_params,
+            out_dir="/tmp/discovery_validation_ensemble_withcand",
+        )
+
+        contribution = with_candidate_sharpe - baseline_sharpe
+        passed = contribution >= contribution_threshold
+
+        return {
+            "baseline_ids": baseline_ids,
+            "baseline_sharpe": float(baseline_sharpe),
+            "with_candidate_sharpe": float(with_candidate_sharpe),
+            "contribution_sharpe": float(contribution),
+            "contribution_threshold": float(contribution_threshold),
+            "passed": bool(passed),
+        }
+
     def validate_candidate(
         self,
         candidate_spec: Dict[str, Any],
         data_map: Dict[str, pd.DataFrame],
         significance_threshold: Optional[float] = 0.05,
         exec_params: Optional[Dict[str, Any]] = None,
+        gate1_contribution_threshold: Optional[float] = None,
     ) -> Dict[str, float]:
         """
         Multi-gate validation pipeline for edge candidates.
 
-        Gate 1: Quick backtest — must produce Sharpe > 0 (cheap filter).
+        Gate 1 (Phase 2.10e reform): ensemble-simulation contribution.
+                Candidate added to baseline ensemble of current active
+                edges; passes if marginal Sharpe contribution clears
+                `gate1_contribution_threshold` (default 0.10). Standalone
+                Sharpe is preserved as a diagnostic — geometry mismatch
+                stays visible in audit output. See _run_gate1_ensemble.
         Gate 2: PBO robustness — 50 synthetic paths, survival > 0.7.
         Gate 3: WFO degradation — OOS Sharpe >= 60% of IS Sharpe.
         Gate 4: Statistical significance — permutation test p-value
@@ -667,28 +922,90 @@ class DiscoveryEngine:
             sortino = float(metrics.get("Sortino", 0.0))
             result["sharpe"] = sharpe
             result["sortino"] = sortino
+            # Standalone Sharpe is preserved as a *diagnostic* under the
+            # 2.10e reform (no longer the gate). The geometry-mismatch
+            # signal stays visible in audit output: an edge with low
+            # standalone Sharpe but high ensemble contribution is exactly
+            # the "rejected real alpha" pattern the reform exists to
+            # surface.
+            result["standalone_sharpe"] = sharpe
 
-            # Gate 1: benchmark-relative Sharpe. An edge passing at Sharpe 0.5
-            # during a bull market where SPY sits at Sharpe 1.5 is destroying
-            # value vs buy-and-hold. Require the edge to be within 0.2 Sharpe
-            # of the benchmark over the same window — or beat it.
+            # Compute the legacy benchmark-relative threshold for record-
+            # keeping (the audit table shows it next to the contribution
+            # number); does NOT gate.
             try:
                 from core.benchmark import gate_sharpe_vs_benchmark
-                passed, threshold = gate_sharpe_vs_benchmark(
+                _, legacy_threshold = gate_sharpe_vs_benchmark(
                     sharpe, start_date, end_date, margin=0.2,
                 )
-                result["benchmark_threshold"] = threshold
-                if not passed:
-                    print(f"[DISCOVERY] {candidate_spec['edge_id']} failed Gate 1 "
-                          f"(Sharpe={sharpe:.2f} < benchmark_threshold={threshold:.2f})")
-                    return result
+                result["benchmark_threshold"] = legacy_threshold
+                result["standalone_passes_legacy_gate"] = sharpe >= legacy_threshold
             except Exception as e:
-                # Fallback to the legacy absolute-threshold gate if benchmark
-                # data is unavailable — conservative: require Sharpe > 0
-                print(f"[DISCOVERY] Benchmark gate unavailable ({e}), falling back to Sharpe > 0")
-                if sharpe <= 0:
-                    print(f"[DISCOVERY] {candidate_spec['edge_id']} failed Gate 1 (Sharpe={sharpe:.2f})")
-                    return result
+                # Diagnostic only — a missing benchmark cache shouldn't
+                # block the new gate.
+                print(f"[DISCOVERY] Legacy benchmark threshold unavailable ({e})")
+                result["benchmark_threshold"] = float("nan")
+                result["standalone_passes_legacy_gate"] = False
+
+            # ---- Gate 1 (Phase 2.10e reform): ensemble-simulation ----
+            # Test the candidate INSIDE a simulated ensemble of the
+            # current active set. Pass = marginal Sharpe contribution
+            # clears `gate1_contribution_threshold` (default 0.10).
+            #
+            # See docstring on `_run_gate1_ensemble` and the audit doc
+            # `docs/Audit/gate1_reform_2026_05.md` for the rationale.
+            _g1_threshold = (
+                gate1_contribution_threshold
+                if gate1_contribution_threshold is not None
+                else self.GATE1_DEFAULT_CONTRIBUTION_THRESHOLD
+            )
+            try:
+                ens_result = self._run_gate1_ensemble(
+                    candidate_spec=candidate_spec,
+                    candidate_edge=edge,
+                    data_map=data_map,
+                    start_date=start_date,
+                    end_date=end_date,
+                    exec_params=_exec_params,
+                    contribution_threshold=_g1_threshold,
+                )
+            except Exception as e:
+                # Programmer errors must surface (matches the WFO + Gate 5
+                # patterns above) — only swallow legitimate runtime issues
+                # so future schema-drift bugs aren't masked as "Gate 1
+                # skipped".
+                if isinstance(e, (TypeError, AttributeError)):
+                    raise
+                print(f"[DISCOVERY] Gate 1 (ensemble) failed: {type(e).__name__}: {e}")
+                # Conservative fallback: if the ensemble run blew up for a
+                # runtime reason (e.g. registry unreadable), don't pass the
+                # gate by accident.
+                ens_result = {
+                    "baseline_ids": [],
+                    "baseline_sharpe": 0.0,
+                    "with_candidate_sharpe": 0.0,
+                    "contribution_sharpe": 0.0,
+                    "contribution_threshold": _g1_threshold,
+                    "passed": False,
+                }
+
+            result["gate1_baseline_ids"] = list(ens_result["baseline_ids"])
+            result["gate1_baseline_sharpe"] = float(ens_result["baseline_sharpe"])
+            result["gate1_with_candidate_sharpe"] = float(ens_result["with_candidate_sharpe"])
+            result["gate1_contribution_sharpe"] = float(ens_result["contribution_sharpe"])
+            result["gate1_contribution_threshold"] = float(ens_result["contribution_threshold"])
+            result["gate1_passed_ensemble"] = bool(ens_result["passed"])
+
+            if not ens_result["passed"]:
+                print(
+                    f"[DISCOVERY] {candidate_spec['edge_id']} failed Gate 1 (ensemble) "
+                    f"contribution={ens_result['contribution_sharpe']:+.3f} "
+                    f"< threshold={_g1_threshold:.2f} "
+                    f"(baseline={ens_result['baseline_sharpe']:.3f}, "
+                    f"with_cand={ens_result['with_candidate_sharpe']:.3f}; "
+                    f"standalone diagnostic={sharpe:.3f})"
+                )
+                return result
 
             # Compute daily returns for significance testing
             daily_returns = equity_curve.pct_change().dropna().values
@@ -902,8 +1219,14 @@ class DiscoveryEngine:
             import math
             universe_b_passed = math.isnan(universe_b_sharpe) or universe_b_sharpe > 0
 
+            # Gate 1 verdict comes from the ensemble-simulation result (set
+            # earlier). If we got here Gate 1 already passed; still record
+            # the boolean explicitly so the aggregation reads the same as
+            # all other gates.
+            gate1_passed = bool(result.get("gate1_passed_ensemble", False))
+
             passed = (
-                sharpe > 0
+                gate1_passed
                 and survival_rate >= 0.7
                 and sig_passed
                 and universe_b_passed
@@ -916,10 +1239,14 @@ class DiscoveryEngine:
                 "skipped" if math.isnan(universe_b_sharpe)
                 else f"{universe_b_sharpe:.2f}"
             )
+            contrib = result.get("gate1_contribution_sharpe", float("nan"))
+            base_sh = result.get("gate1_baseline_sharpe", float("nan"))
+            with_sh = result.get("gate1_with_candidate_sharpe", float("nan"))
             gate_summary = (
-                f"Sharpe={sharpe:.2f}, survival={survival_rate:.0%}, "
-                f"wfo_deg={wfo_degradation:.2f}, p={sig_p:.3f}, "
-                f"univ_b={b_sharpe_str}({universe_b_n_tickers}t), "
+                f"contrib={contrib:+.3f} (baseline={base_sh:.2f} "
+                f"→ with_cand={with_sh:.2f}), standalone_diag={sharpe:.2f}, "
+                f"survival={survival_rate:.0%}, wfo_deg={wfo_degradation:.2f}, "
+                f"p={sig_p:.3f}, univ_b={b_sharpe_str}({universe_b_n_tickers}t), "
                 f"alpha={factor_alpha_reason}"
             )
             if passed:

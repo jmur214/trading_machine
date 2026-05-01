@@ -186,6 +186,14 @@ python -m scripts.optimize
 # ML DATA HARVEST (Experimental)
 # Collects trade signals and outcomes for ML training
 python -m scripts.harvest_data
+
+# GATE 1 REFORM FALSIFIABLE SPEC (Phase 2.10e)
+# Re-validate volume_anomaly_v1 + herding_v1 through the new
+# ensemble-simulation Gate 1. Both must pass for the reform to ship.
+# See docs/Audit/gate1_reform_2026_05.md for rationale + threshold.
+python scripts/gate1_reform_falsifiable_spec.py            # full window
+python scripts/gate1_reform_falsifiable_spec.py --smoke    # 20-ticker × 6mo wiring check
+python scripts/gate1_reform_falsifiable_spec.py --threshold 0.15   # stricter bar
 ```
 
 ### PHASE 2: RESEARCH & SHADOW TRADING
