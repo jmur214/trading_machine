@@ -6,10 +6,12 @@ class ATRBreakoutEdge(EdgeBase):
     EDGE_ID = "atr_breakout_v1"
     EDGE_GROUP = "volatility"
     EDGE_CATEGORY = "momentum"
+    DEFAULT_MIN_ADV_USD = 200_000_000  # $200M/day; ADV-fragile per Path-2 audit
 
     def compute_signals(self, data_map, as_of):
         scores = {}
         min_score = float(self.params.get("min_score", 0.3))
+        min_adv_usd = self.params.get("min_adv_usd", self.DEFAULT_MIN_ADV_USD)
         for t, df in data_map.items():
             # Get dynamic params with defaults
             atr_window = int(self.params.get("lookback", 14))
@@ -17,6 +19,8 @@ class ATRBreakoutEdge(EdgeBase):
             score_scale = float(self.params.get("threshold", 3.0))
 
             if len(df) < max(atr_window, breakout_window) + 2: continue
+            if self._below_adv_floor(df, min_adv_usd, ticker=t):
+                continue
 
             high = df['High']
             low = df['Low']

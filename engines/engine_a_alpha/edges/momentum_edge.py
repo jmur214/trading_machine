@@ -7,14 +7,18 @@ class MomentumEdge(EdgeBase):
     EDGE_ID = "momentum_edge_v1"
     CATEGORY = "technical"
     DESCRIPTION = "Momentum edge detecting moving-average crossovers with normalized strength."
+    DEFAULT_MIN_ADV_USD = 200_000_000  # $200M/day; ADV-fragile per Path-2 audit
 
     def compute_signals(self, data_map, now):
         scores = {}
         short_window = 10
         long_window = 40
+        min_adv_usd = self.params.get("min_adv_usd", self.DEFAULT_MIN_ADV_USD)
 
         for ticker, df in data_map.items():
             if len(df) < long_window + 2 or "Close" not in df.columns:
+                continue
+            if self._below_adv_floor(df, min_adv_usd, ticker=ticker):
                 continue
 
             close = df["Close"].astype(float)
