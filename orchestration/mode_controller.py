@@ -999,23 +999,85 @@ class ModeController:
             # across the batch, then re-evaluate passed_all_gates.
             from engines.engine_d_discovery.significance import apply_bh_fdr
 
+            # Diagnostic harness override — env var DISCOVERY_DIAG_BATCH lets
+            # `scripts/run_discovery_diagnostic.py` cap candidate count at 15
+            # (vs the production cap of 10) and capture a per-candidate jsonl.
+            import os as _os_diag
+            _diag_batch_cap = int(_os_diag.environ.get("DISCOVERY_DIAG_BATCH", "10"))
+            _diag_log_path = _os_diag.environ.get("DISCOVERY_DIAG_LOG") or None
+            _diag_per_cand_timeout = int(_os_diag.environ.get("DISCOVERY_DIAG_TIMEOUT_SEC", "0"))
+
             queued = discovery.get_queued_candidates(status="candidate")
-            batch = queued[:10]  # Cap at 10 per cycle to limit compute
+            batch = queued[:_diag_batch_cap]
             print(f"[DISCOVERY] {len(queued)} candidates queued for validation ({len(batch)} this cycle).")
+            if _diag_log_path:
+                print(f"[DISCOVERY-DIAG] writing per-candidate jsonl → {_diag_log_path}")
+                print(f"[DISCOVERY-DIAG] per-candidate timeout = {_diag_per_cand_timeout}s (0 = none)")
 
             # Pass 1: collect raw metrics, defer Gate 4
             all_results: list = []
             for cand in batch:
                 cand_id = cand.get("edge_id", "unknown")
                 print(f"[DISCOVERY] Validating {cand_id}...")
+                _t_cand_start = time.time()
+                _timed_out = False
+
+                # Optional wall-time alarm — diagnostic-mode only. SIGALRM
+                # delivers to the main thread; the gate code is single-threaded
+                # so the next Python tick will raise. Restored to no-op after.
+                _prev_handler = None
+                if _diag_per_cand_timeout > 0:
+                    import signal as _signal
+                    def _to_handler(_signum, _frame):
+                        raise TimeoutError(f"validate_candidate exceeded {_diag_per_cand_timeout}s")
+                    _prev_handler = _signal.signal(_signal.SIGALRM, _to_handler)
+                    _signal.alarm(_diag_per_cand_timeout)
                 try:
                     result = discovery.validate_candidate(
                         cand, data_map, significance_threshold=None,
+                        diagnostic_log_path=_diag_log_path,
                     )
+                except TimeoutError as toe:
+                    _timed_out = True
+                    print(f"[DISCOVERY] TIMEOUT for {cand_id} after {_diag_per_cand_timeout}s: {toe}")
+                    result = {
+                        "sharpe": 0.0, "significance_p": 1.0, "passed_all_gates": False,
+                        "robustness_survival": 0.0, "fitness_score": 0.0,
+                    }
+                    if _diag_log_path:
+                        # Best-effort timeout record so the audit doc shows it.
+                        try:
+                            import json as _json_to
+                            from pathlib import Path as _P_to
+                            _P_to(_diag_log_path).parent.mkdir(parents=True, exist_ok=True)
+                            with open(_diag_log_path, "a") as _f_to:
+                                _f_to.write(_json_to.dumps({
+                                    "candidate_id": cand_id,
+                                    "module": cand.get("module", "?"),
+                                    "class": cand.get("class", "?"),
+                                    "category": cand.get("category", "?"),
+                                    "origin": cand.get("origin", "?"),
+                                    "wall_seconds_total": round(time.time() - _t_cand_start, 3),
+                                    "first_failed_gate": "timeout",
+                                    "error": "timeout",
+                                    "metrics": {},
+                                    "gate_passed": {},
+                                    "passed_all_gates": False,
+                                }) + "\n")
+                        except Exception as _to_emit_err:
+                            print(f"[DISCOVERY-DIAG] timeout-emit failed: {_to_emit_err}")
                 except Exception as ve:
                     print(f"[DISCOVERY] Validation error for {cand_id}: {ve}")
                     result = {"sharpe": 0.0, "significance_p": 1.0, "passed_all_gates": False,
                               "robustness_survival": 0.0, "fitness_score": 0.0}
+                finally:
+                    if _diag_per_cand_timeout > 0:
+                        import signal as _signal
+                        _signal.alarm(0)
+                        if _prev_handler is not None:
+                            _signal.signal(_signal.SIGALRM, _prev_handler)
+                if not _timed_out:
+                    print(f"[DISCOVERY] {cand_id} done in {time.time() - _t_cand_start:.1f}s")
                 all_results.append(result)
 
             # Pass 2: BH-FDR batch correction on Gate 4 p-values
