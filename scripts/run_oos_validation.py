@@ -1,9 +1,10 @@
 """
 scripts/run_oos_validation.py
 =============================
-Phase 2.10b OOS validation driver. Runs Q1 (2025 OOS, prod universe) or
-Q2 (universe-B held-out tickers, 2021-2024) under the realistic-cost
-slippage model already wired as default in config/backtest_settings.json.
+Phase 2.10b OOS validation driver. Runs Q1 (2025 OOS, prod universe),
+Q2 (universe-B held-out tickers, 2021-2024), or Q3 (2021-2024 IS,
+prod universe) under the realistic-cost slippage model already wired
+as default in config/backtest_settings.json.
 
 Both modes use --reset-governor for clean state, and (since 2026-05-01)
 each backtest is wrapped in `scripts.run_isolated.isolated()` by
@@ -15,6 +16,7 @@ runs; opt-in is the default and what every audit run should use.
 Usage:
     python -m scripts.run_oos_validation --task q1
     python -m scripts.run_oos_validation --task q2
+    python -m scripts.run_oos_validation --task q3
     python -m scripts.run_oos_validation --task q1 --no-isolation   # legacy
 """
 
@@ -159,6 +161,37 @@ def run_q2(use_isolation: bool = True) -> dict:
     return summary
 
 
+def run_q3(use_isolation: bool = True) -> dict:
+    """2021-2024 IS on prod universe with production-equivalent ensemble.
+
+    Mirrors run_q1 but on the original in-sample window. Production
+    ensemble = active + soft-paused at PAUSED_WEIGHT_MULTIPLIER (0.25x);
+    no edges.yml status filtering happens in this driver — ModeController
+    + signal_processor handle the soft-pause weighting end-to-end.
+    """
+    iso_label = "ISOLATED" if use_isolation else "NO-ISOLATION"
+    print(f"[OOS-Q3][{iso_label}] 2021-2024 IS, prod universe, realistic costs, --reset-governor")
+    before = {p.name for p in (ROOT / "data" / "trade_logs").iterdir() if p.is_dir() and p.name != "backup"}
+
+    with _isolation_ctx(use_isolation):
+        mc = ModeController(ROOT, env="prod")
+        summary = mc.run_backtest(
+            mode="prod",
+            fresh=False,
+            no_governor=False,
+            reset_governor=True,
+            alpha_debug=False,
+            override_start="2021-01-01",
+            override_end="2024-12-31",
+        )
+    run_id = find_run_id(before)
+    summary["run_id"] = run_id
+    summary["window"] = "2021-01-01 to 2024-12-31"
+    summary["universe"] = "prod (109 tickers)"
+    summary["isolated"] = bool(use_isolation)
+    return summary
+
+
 def attach_benchmarks(summary: dict, start: str, end: str) -> dict:
     """Add SPY / QQQ / 60-40 metrics over the same window."""
     multi = compute_multi_benchmark_metrics(start=start, end=end)
@@ -177,7 +210,7 @@ def attach_benchmarks(summary: dict, start: str, end: str) -> dict:
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--task", choices=["q1", "q2"], required=True)
+    parser.add_argument("--task", choices=["q1", "q2", "q3"], required=True)
     parser.add_argument("--no-isolation", action="store_true",
                         help="Disable the run_isolated harness wrapper (legacy "
                              "behavior). Default-on means each invocation snapshots "
@@ -190,10 +223,14 @@ def main():
         summary = run_q1(use_isolation=use_isolation)
         summary = attach_benchmarks(summary, "2025-01-01", "2025-12-31")
         out_path = RESEARCH_DIR / "oos_validation_q1.json"
-    else:
+    elif args.task == "q2":
         summary = run_q2(use_isolation=use_isolation)
         summary = attach_benchmarks(summary, "2021-01-01", "2024-12-31")
         out_path = RESEARCH_DIR / "oos_validation_q2.json"
+    else:  # q3
+        summary = run_q3(use_isolation=use_isolation)
+        summary = attach_benchmarks(summary, "2021-01-01", "2024-12-31")
+        out_path = RESEARCH_DIR / "oos_validation_q3.json"
 
     summary["task"] = args.task
     summary["timestamp"] = datetime.utcnow().isoformat() + "Z"
