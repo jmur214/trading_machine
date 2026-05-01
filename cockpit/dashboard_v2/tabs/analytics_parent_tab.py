@@ -62,6 +62,12 @@ def analytics_parent_layout():
                                         style=SUB_TAB_STYLE,
                                         selected_style=SUB_TAB_SELECTED_STYLE,
                                     ),
+                                    dcc.Tab(
+                                        label="Capital Allocation",
+                                        value="capital_allocation",
+                                        style=SUB_TAB_STYLE,
+                                        selected_style=SUB_TAB_SELECTED_STYLE,
+                                    ),
                                 ],
                                 className="analytics-sub-tabs",
                             ),
