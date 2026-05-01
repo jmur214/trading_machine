@@ -575,6 +575,7 @@ class DiscoveryEngine:
         data_map: Dict[str, pd.DataFrame],
         significance_threshold: Optional[float] = 0.05,
         exec_params: Optional[Dict[str, Any]] = None,
+        diagnostic_log_path: Optional[str] = None,
     ) -> Dict[str, float]:
         """
         Multi-gate validation pipeline for edge candidates.
@@ -585,19 +586,21 @@ class DiscoveryEngine:
         Gate 4: Statistical significance — permutation test p-value
                 below `significance_threshold`.
 
-        The `significance_threshold` parameter exists so an orchestrator
-        running a batch of candidates can defer the Gate 4 decision until
-        after `apply_bh_fdr` (Benjamini-Hochberg multiple-testing correction)
-        is applied to the whole batch. Pass `None` to skip the per-candidate
-        significance gate (the orchestrator will then re-evaluate
-        `passed_all_gates` post-hoc using BH-corrected rejections). Standalone
-        callers can leave it at 0.05 to get the uncorrected check, which is
-        valid for a single-test scenario where BH-FDR is a no-op anyway.
-
-        Returns metrics dict with all gate results, plus the raw
-        `significance_p` so the orchestrator can batch-correct.
+        `diagnostic_log_path` (optional): when set, each candidate emits
+        one JSON line with per-gate pass/fail + timing + first-failed-gate.
+        Used by the discovery diagnostic harness; safe to leave None.
         """
         import numpy as np
+        import time as _time
+
+        _diag_t_start = _time.time()
+        _diag_gate_seconds: Dict[str, float] = {}
+        _diag_gates_run: List[str] = []
+        _diag_error: Optional[str] = None
+
+        def _stamp(gate_name: str, t0: float) -> None:
+            _diag_gate_seconds[gate_name] = round(_time.time() - t0, 3)
+            _diag_gates_run.append(gate_name)
 
         result = {
             "sharpe": 0.0,
@@ -606,7 +609,87 @@ class DiscoveryEngine:
             "wfo_degradation": 0.0,
             "significance_p": 1.0,
             "passed_all_gates": False,
+            "gate_1_passed": False,
+            "gate_2_passed": False,
+            "gate_3_evaluated": False,
+            "gate_4_passed": False,
+            "gate_5_passed": False,
+            "gate_6_passed": False,
         }
+
+        def _emit_diag() -> None:
+            if not diagnostic_log_path:
+                return
+            try:
+                # Compute first-failed-gate. Gate 3 is metric-only (not in
+                # final pass-check), so it is excluded from kill-attribution.
+                gate_pass_order = [
+                    ("gate_1", bool(result.get("gate_1_passed", False))),
+                    ("gate_2", bool(result.get("gate_2_passed", False))),
+                    ("gate_4", bool(result.get("gate_4_passed", False))),
+                    ("gate_5", bool(result.get("gate_5_passed", False))),
+                    ("gate_6", bool(result.get("gate_6_passed", False))),
+                ]
+                first_failed = None
+                for name, passed in gate_pass_order:
+                    if not passed:
+                        first_failed = name
+                        break
+                params = candidate_spec.get("params", {}) or {}
+                gene_count = 0
+                gene_types: List[str] = []
+                if "genes" in params and isinstance(params["genes"], list):
+                    gene_count = len(params["genes"])
+                    for g in params["genes"]:
+                        if isinstance(g, dict):
+                            gene_types.append(str(g.get("type", "?")))
+                rec = {
+                    "candidate_id": candidate_spec.get("edge_id", "?"),
+                    "module": candidate_spec.get("module", "?"),
+                    "class": candidate_spec.get("class", "?"),
+                    "category": candidate_spec.get("category", "?"),
+                    "origin": candidate_spec.get("origin", "?"),
+                    "gene_count": gene_count,
+                    "gene_types": gene_types,
+                    "direction": params.get("direction"),
+                    "wall_seconds_total": round(_time.time() - _diag_t_start, 3),
+                    "gate_seconds": _diag_gate_seconds,
+                    "gates_run": _diag_gates_run,
+                    "first_failed_gate": first_failed,
+                    "error": _diag_error,
+                    "metrics": {
+                        "sharpe": float(result.get("sharpe", 0.0) or 0.0),
+                        "sortino": float(result.get("sortino", 0.0) or 0.0),
+                        "robustness_survival": float(result.get("robustness_survival", 0.0) or 0.0),
+                        "wfo_degradation": float(result.get("wfo_degradation", 0.0) or 0.0),
+                        "wfo_oos_sharpe": float(result.get("wfo_oos_sharpe", 0.0) or 0.0),
+                        "wfo_is_sharpe": float(result.get("wfo_is_sharpe", 0.0) or 0.0),
+                        "significance_p": float(result.get("significance_p", 1.0) or 1.0),
+                        "benchmark_threshold": float(result.get("benchmark_threshold", float("nan")) or float("nan")),
+                        "universe_b_sharpe": float(result.get("universe_b_sharpe", float("nan")) or float("nan")),
+                        "universe_b_n_tickers": int(result.get("universe_b_n_tickers", 0) or 0),
+                        "factor_alpha_annualized": float(result.get("factor_alpha_annualized", 0.0) or 0.0),
+                        "factor_alpha_tstat": float(result.get("factor_alpha_tstat", 0.0) or 0.0),
+                        "factor_alpha_reason": str(result.get("factor_alpha_reason", "")),
+                    },
+                    "gate_passed": {
+                        "gate_1": bool(result.get("gate_1_passed", False)),
+                        "gate_2": bool(result.get("gate_2_passed", False)),
+                        "gate_3_evaluated": bool(result.get("gate_3_evaluated", False)),
+                        "gate_4": bool(result.get("gate_4_passed", False)),
+                        "gate_5": bool(result.get("gate_5_passed", False)),
+                        "gate_6": bool(result.get("gate_6_passed", False)),
+                    },
+                    "passed_all_gates": bool(result.get("passed_all_gates", False)),
+                }
+                import json as _json
+                from pathlib import Path as _Path
+                _p = _Path(diagnostic_log_path)
+                _p.parent.mkdir(parents=True, exist_ok=True)
+                with open(_p, "a") as _f:
+                    _f.write(_json.dumps(rec) + "\n")
+            except Exception as _emit_err:
+                print(f"[DISCOVERY-DIAG] emit failed: {_emit_err}")
 
         try:
             from importlib import import_module
@@ -626,11 +709,14 @@ class DiscoveryEngine:
             bt_logger = CockpitLogger(out_dir="/tmp/discovery_validation", flush_each_fill=False)
 
             if not data_map:
+                _diag_error = "empty_data_map"
+                _emit_diag()
                 return result
 
             first_ticker = list(data_map.keys())[0]
             start_date = data_map[first_ticker].index[0].isoformat()
             end_date = data_map[first_ticker].index[-1].isoformat()
+            _g1_t0 = _time.time()
 
             # Default to fixed 5bps for cheap discovery scans; callers running
             # a realistic-cost re-validation pass through `exec_params` with the
@@ -650,6 +736,9 @@ class DiscoveryEngine:
 
             # ---- Gate 1: Quick backtest ----
             if not history:
+                _stamp("gate_1", _g1_t0)
+                _diag_error = "empty_history"
+                _emit_diag()
                 return result
 
             # Index by timestamp so MetricsEngine.cagr() can compute date deltas.
@@ -678,22 +767,30 @@ class DiscoveryEngine:
                     sharpe, start_date, end_date, margin=0.2,
                 )
                 result["benchmark_threshold"] = threshold
+                result["gate_1_passed"] = bool(passed)
                 if not passed:
                     print(f"[DISCOVERY] {candidate_spec['edge_id']} failed Gate 1 "
                           f"(Sharpe={sharpe:.2f} < benchmark_threshold={threshold:.2f})")
+                    _stamp("gate_1", _g1_t0)
+                    _emit_diag()
                     return result
             except Exception as e:
                 # Fallback to the legacy absolute-threshold gate if benchmark
                 # data is unavailable — conservative: require Sharpe > 0
                 print(f"[DISCOVERY] Benchmark gate unavailable ({e}), falling back to Sharpe > 0")
+                result["gate_1_passed"] = sharpe > 0
                 if sharpe <= 0:
                     print(f"[DISCOVERY] {candidate_spec['edge_id']} failed Gate 1 (Sharpe={sharpe:.2f})")
+                    _stamp("gate_1", _g1_t0)
+                    _emit_diag()
                     return result
+            _stamp("gate_1", _g1_t0)
 
             # Compute daily returns for significance testing
             daily_returns = equity_curve.pct_change().dropna().values
 
             # ---- Gate 2: PBO Robustness (50 paths) ----
+            _g2_t0 = _time.time()
             survival_rate = 0.0
             try:
                 from engines.engine_d_discovery.robustness import RobustnessTester
@@ -733,8 +830,11 @@ class DiscoveryEngine:
                 print(f"[DISCOVERY] PBO check failed: {e}")
 
             result["robustness_survival"] = float(survival_rate)
+            result["gate_2_passed"] = bool(survival_rate >= 0.7)
+            _stamp("gate_2", _g2_t0)
 
             # ---- Gate 3: WFO Degradation ----
+            _g3_t0 = _time.time()
             # WalkForwardOptimizer signature: ctor takes data_map, then
             # `run_optimization(strategy_spec, start_date, train_months,
             # test_months)`.  candidate_spec already has the required
@@ -763,8 +863,11 @@ class DiscoveryEngine:
                 print(f"[DISCOVERY] WFO check skipped: {type(e).__name__}: {e}")
 
             result["wfo_degradation"] = wfo_degradation
+            result["gate_3_evaluated"] = bool(wfo_degradation != 0.0 or "wfo_oos_sharpe" in result)
+            _stamp("gate_3", _g3_t0)
 
             # ---- Gate 4: Statistical Significance ----
+            _g4_t0 = _time.time()
             sig_p = 1.0
             try:
                 from engines.engine_d_discovery.significance import monte_carlo_permutation_test
@@ -774,8 +877,15 @@ class DiscoveryEngine:
                 print(f"[DISCOVERY] Significance test failed: {e}")
 
             result["significance_p"] = float(sig_p)
+            # gate_4_passed is computed at the final pass-check (depends on
+            # significance_threshold or BH-FDR batch correction); fill in here
+            # for the per-candidate path (orchestrator will overwrite for batch).
+            if significance_threshold is not None:
+                result["gate_4_passed"] = bool(sig_p < significance_threshold)
+            _stamp("gate_4", _g4_t0)
 
             # ---- Gate 5: Universe B generalization ----
+            _g5_t0 = _time.time()
             # Run the same edge on a sample of S&P 500 tickers NOT in the
             # production universe. Sharpe must be > 0. If an edge only works
             # on the 109 tickers we trained on, it is universe-overfit — the
@@ -826,8 +936,14 @@ class DiscoveryEngine:
 
             result["universe_b_sharpe"] = universe_b_sharpe
             result["universe_b_n_tickers"] = universe_b_n_tickers
+            import math as _math_g5
+            result["gate_5_passed"] = bool(
+                _math_g5.isnan(universe_b_sharpe) or universe_b_sharpe > 0
+            )
+            _stamp("gate_5", _g5_t0)
 
             # ---- Gate 6: Factor-Decomposition Alpha (Phase 1) ----
+            _g6_t0 = _time.time()
             # Reject candidates whose returns are explained by FF5 + Mom
             # factor exposure rather than genuine alpha. Threshold:
             # intercept t-stat > 2 AND alpha annualized > 2%.
@@ -884,6 +1000,8 @@ class DiscoveryEngine:
 
             result["factor_alpha_passed"] = factor_alpha_passed
             result["factor_alpha_reason"] = factor_alpha_reason
+            result["gate_6_passed"] = bool(factor_alpha_passed)
+            _stamp("gate_6", _g6_t0)
             if not factor_alpha_passed:
                 print(f"[DISCOVERY] {candidate_spec['edge_id']} failed Gate 6 ({factor_alpha_reason})")
 
@@ -911,6 +1029,12 @@ class DiscoveryEngine:
             )
             result["passed_all_gates"] = passed
             result["significance_threshold"] = sig_threshold_for_log
+            # Diagnostic side: store the per-candidate Gate 4 verdict the
+            # standalone path would have used (orchestrator BH-FDR path
+            # overwrites passed_all_gates post-hoc — diagnostic captures
+            # the per-candidate signal regardless).
+            if significance_threshold is None:
+                result["gate_4_passed"] = bool(sig_p < 0.05)
 
             b_sharpe_str = (
                 "skipped" if math.isnan(universe_b_sharpe)
@@ -940,10 +1064,13 @@ class DiscoveryEngine:
                 + 0.2 * degradation_ratio
             )
 
+            _emit_diag()
             return result
 
         except Exception as e:
             print(f"[DISCOVERY] Validation failed for {candidate_spec['edge_id']}: {e}")
+            _diag_error = f"{type(e).__name__}: {e}"
+            _emit_diag()
             return result
 
 if __name__ == "__main__":
