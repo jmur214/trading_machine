@@ -42,8 +42,12 @@ BRANCH="$2"
 MAIN="$(git rev-parse --show-toplevel)"
 WT="${MAIN}/../trading_machine-${NAME}"
 
-# Make sure we're in the main worktree, not an existing agent worktree
-if [[ "$(basename "$MAIN")" =~ ^trading_machine-[a-zA-Z0-9_-]+$ ]]; then
+# Make sure we're in the main worktree, not an existing agent worktree.
+# Main repo is `trading_machine-2`; agent worktrees use alphabetic suffixes
+# like `trading_machine-agentA`. The check excludes purely-numeric suffixes
+# so the canonical main repo isn't blocked.
+basename_main="$(basename "$MAIN")"
+if [[ "$basename_main" =~ ^trading_machine-[a-zA-Z][a-zA-Z0-9_-]*$ ]]; then
   echo "Error: refusing to set up an agent worktree from inside another agent worktree." >&2
   echo "  Current dir: $MAIN" >&2
   echo "  Run this script from the main repo (e.g. trading_machine-2)." >&2
