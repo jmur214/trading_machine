@@ -79,6 +79,27 @@ def _load_data_map(
     end: str,
     processed_dir: Path,
 ) -> Dict[str, pd.DataFrame]:
+    """Load OHLCV with a 365-day warmup window before `start`.
+
+    Mirrors `ModeController.run_backtest`'s warmup logic (line ~776):
+    `fetch_start_dt = sim_start_dt - timedelta(days=365)`. Without
+    warmup, edges with rolling-window indicators (RSI 14, ATR 14,
+    vol_z 20, BB 20, momentum_roc up to 252, residual_momentum 60,
+    etc.) have no history to compute on at simulation start, produce
+    no signals for the first ~20-252 bars, and the resulting Sharpe
+    diverges from production by an arbitrary amount.
+
+    The 365-day buffer is generous — covers the longest rolling
+    lookback (252-day momentum) plus margin. BacktestController's
+    timestamp loop only iterates dates ≥ `start`; the warmup data
+    just sits in the DataFrame so `df.rolling(N)` is fully warm at
+    the first simulated bar.
+    """
+    from datetime import timedelta
+    sim_start_dt = pd.to_datetime(start)
+    fetch_start_dt = sim_start_dt - timedelta(days=365)
+    fetch_start = fetch_start_dt.strftime("%Y-%m-%d")
+
     dm: Dict[str, pd.DataFrame] = {}
     missing: List[str] = []
     for t in tickers:
@@ -87,12 +108,14 @@ def _load_data_map(
             missing.append(t)
             continue
         df = pd.read_csv(p, index_col=0, parse_dates=True)
-        df = df.loc[(df.index >= start) & (df.index <= end)]
+        df = df.loc[(df.index >= fetch_start) & (df.index <= end)]
         if len(df) >= 100:
             dm[t] = df
     if missing:
         print(f"[GATE1-REFORM] Missing CSVs for {len(missing)} tickers (skipped): "
               f"{missing[:5]}{'...' if len(missing) > 5 else ''}")
+    print(f"[GATE1-REFORM] Loaded data with 365-day warmup: "
+          f"fetch_start={fetch_start} sim_start={start} end={end}")
     return dm
 
 
@@ -112,12 +135,24 @@ def _run_gate1_only(
     data_map: Dict[str, pd.DataFrame],
     exec_params: Dict[str, Any],
     threshold: float,
+    sim_start: str,
+    sim_end: str,
 ) -> Dict[str, Any]:
     """Run ONLY Gate 1 (ensemble-sim) + the standalone diagnostic backtest.
 
     Bypasses gates 2-6 to keep total run time under ~30 min for the
     falsifiable spec. Returns a result dict matching the keys
     validate_candidate emits for Gate 1.
+
+    `sim_start`/`sim_end` are the simulation window — what
+    `BacktestController.run(start, end)` will iterate. The data_map
+    carries 365 days of warmup BEFORE sim_start so rolling-window
+    indicators are warm at the first simulated bar (mirrors
+    `ModeController.run_backtest`'s warmup logic). Earlier versions
+    of this driver pulled start_date from `data_map.index[0]` —
+    that's wrong now because index[0] is the warmup start, not the
+    sim start, and BacktestController would simulate the warmup
+    range too.
     """
     from importlib import import_module
     from backtester.backtest_controller import BacktestController
@@ -144,9 +179,8 @@ def _run_gate1_only(
     if not data_map:
         return result
 
-    first_ticker = list(data_map.keys())[0]
-    start_date = data_map[first_ticker].index[0].isoformat()
-    end_date = data_map[first_ticker].index[-1].isoformat()
+    start_date = sim_start
+    end_date = sim_end
 
     # 1. Standalone diagnostic — same wiring as the legacy Gate 1.
     print(f"[GATE1-REFORM] {candidate_spec['edge_id']}: running standalone diagnostic backtest...")
@@ -291,6 +325,7 @@ def main() -> int:
             r = _run_gate1_only(
                 discovery, candidate_spec, data_map,
                 exec_params=exec_params, threshold=args.threshold,
+                sim_start=args.start, sim_end=args.end,
             )
         except Exception as e:
             print(f"[GATE1-REFORM] {edge_id} crashed: {type(e).__name__}: {e}")

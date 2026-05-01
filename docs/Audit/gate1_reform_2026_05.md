@@ -4,6 +4,16 @@
 > ensemble-simulation contribution gate. Standalone Sharpe is preserved
 > as a *diagnostic*, not a gate.
 
+> **2026-05-01 baseline-fix update** — the original implementation
+> filtered the baseline to `status='active'` only. Production deploys
+> soft-paused edges at `PAUSED_WEIGHT_MULTIPLIER` (= 0.25), so the
+> "active" baseline was strictly smaller than what
+> `ModeController.run_backtest` actually deploys. This re-introduced
+> the same geometry-mismatch the reform was meant to close — just
+> inside the gate this time. Branch `gate1-reform-baseline-fix`
+> includes paused edges at the production weight, restoring the
+> match. Verification table below uses the corrected baseline.
+
 ## TL;DR
 
 The previous Gate 1 ran each candidate edge in a standalone backtest
@@ -152,117 +162,227 @@ constant pinned by a unit test so doc + code stay in sync.
 - Active baseline (read from `data/governor/edges.yml` at run time):
   `gap_fill_v1`, `volume_anomaly_v1`, `herding_v1`
 
-### Verification table (run 2026-05-01T01:45:58)
+### Original verification (2026-05-01T01:45:58, pre-baseline-fix)
+
+The original implementation produced this result on the 2021-01-01 →
+2024-12-31 window:
 
 | edge | baseline (2-edge) | with-candidate (3-edge) | **contribution** | threshold | verdict | standalone diag |
 | --- | ---: | ---: | ---: | ---: | --- | ---: |
 | `volume_anomaly_v1` | -0.114 | -0.232 | **-0.118** | 0.10 | **FAIL** | 0.176 |
 | `herding_v1` | -0.028 | -0.085 | **-0.057** | 0.10 | **FAIL** | -0.242 |
 
-Per-edge baselines (read from `data/governor/edges.yml` at run time):
+Both edges failed at threshold 0.10. Raw artifact:
+`docs/Audit/gate1_reform_2026_05_run.md`.
 
-- `volume_anomaly_v1` baseline = `[gap_fill_v1, herding_v1]`
-- `herding_v1` baseline = `[gap_fill_v1, volume_anomaly_v1]`
+### Diagnosis — why those baselines were wrong (2026-05-01)
 
-Raw JSON + per-edge timing:
-`docs/Audit/gate1_reform_2026_05_run.md`. Total wall time 33.5 min
-(15.4 min + 18.1 min) on the 109-ticker × 4-year window.
+The original `_load_active_ensemble_specs` filtered the registry to
+`status='active'` only. That set has **3 edges** (`gap_fill_v1`,
+`volume_anomaly_v1`, `herding_v1`). But that's not the production
+ensemble. Per memory
+`project_production_ensemble_includes_softpaused_2026_05_01.md`:
 
-### What the result actually says
+> `data/governor/edges.yml` partition (2026-05-01):
+> - `status=active` (3): gap_fill_v1, volume_anomaly_v1, herding_v1
+> - `status=paused` (14): momentum_edge_v1, low_vol_factor_v1, panic_v1,
+>   earnings_vol_v1, pead_v1, pead_short_v1, pead_predrift_v1,
+>   insider_cluster_v1, macro_real_rate_v1, rsi_bounce_v1, value_trap_v1,
+>   value_deep_v1, growth_sales_v1, bollinger_reversion_v1
+>
+> **Effective deployed ensemble:** 3 active at full weight + 14 paused
+> at 0.25× weight = ~6.5 edge-equivalents in capital terms. That's
+> the actual production ensemble, not "3 edges."
 
-**Both edges fail.** Per the director's verification spec, that means
-*"the gate is mis-designed — re-tune."* But the result is more
-nuanced than a simple gate-bug verdict, and the audit needs to be
-honest about what's going on:
+Phase α v2 soft-pause (2026-04-24, see memory
+`project_soft_pause_win_2026_04_24.md`) introduced
+`PAUSED_WEIGHT_MULTIPLIER = 0.25` so paused edges keep trading at
+reduced weight — that's what makes the lifecycle bidirectional.
+`orchestration/mode_controller.run_backtest` applies this multiplier
+inside the production code path. The original gate filtered it out.
 
-1. **The full active ensemble is negative under this measurement.**
-   `with_candidate_sharpe` for the volume_anomaly run is the full
-   `[gap_fill, volume_anomaly, herding]` deployed ensemble — and it
-   produces Sharpe **-0.232** here. The herding run's
-   `with_candidate` is the same composition (3 active edges) and
-   produces **-0.085**. Both numbers are negative on the same window
-   where the prior in-sample integration produced 1.063.
-   Window/universe/cost-model are identical to the original Q3
-   measurement; the divergence is the standard
-   harness-vs-no-harness drift the determinism floor work flagged
-   (memory: `project_determinism_floor_2026_05_01.md`). The
-   measurement is honest under harness; the prior 1.063 was
-   governor-state-drifted.
+**The cascade of mismatches:**
 
-2. **Removing either contributor IMPROVES the ensemble.** Baseline
-   without `volume_anomaly_v1` is **-0.114** (better than -0.232).
-   Baseline without `herding_v1` is **-0.028** (also better than
-   -0.232). Both leave-one-out tests say *"the ensemble is better
-   off WITHOUT this edge."* This is the capital-rivalry pathology
-   the 04-30 paradox memo flagged in 2025: removing an edge
-   redirects capital to other edges' fills, which here turn out to
-   be more profitable than the removed edge's fills.
+- The original baseline ensemble was strictly *smaller* than what
+  production deploys.
+- A smaller ensemble means each firing edge takes a *larger* share of
+  the per-bar capital allocation.
+- Larger per-fill `qty/ADV` puts the trade right back at the
+  Almgren-Chriss impact knee — **the same geometry mismatch the reform
+  was meant to close, just inside the gate this time**.
+- Result: the corrected gate's "baseline" ran a 3-edge ensemble
+  through realistic costs and the impact tax dragged the Sharpe to
+  -0.114 / -0.028 even though production runs that exact same window
+  + universe at Sharpe ~0.96 under the harness.
 
-3. **Per-year attribution and leave-one-out give opposite verdicts.**
-   Per-year (which says both edges are positive every year 2021–2025)
-   measures *"given this edge fired in the integration, did its
-   trades make money?"* Leave-one-out (which says removing both
-   edges helps) measures *"if I remove this edge from the ensemble,
-   does Sharpe go up?"* Both can be simultaneously true — and they
-   are here. The reform implements leave-one-out because that is the
-   operationally-relevant question for Discovery (does adding this
-   edge improve the deployed ensemble?). Per-year attribution
-   remains useful for diagnosing where PnL came from in a given run,
-   but it is not the same question.
+### The fix (branch `gate1-reform-baseline-fix`)
 
-4. **The director's "re-tune" criterion was tied to the premise
-   that both edges are real alphas.** That premise rests on per-year
-   attribution. The leave-one-out result falsifies the premise *for
-   this measurement context* — the attribution's positive sign was
-   driven by capital that, when freed by removing the edge, produces
-   higher Sharpe in other edges' hands. The gate is not detecting a
-   false negative; it is detecting a real capital-rivalry
-   pathology.
+Two changes, contained to `engines/engine_d_discovery/discovery.py`:
+
+1. **`_load_active_ensemble_specs` now reads `active` AND `paused`
+   edges**, mirroring `EdgeRegistry.list_tradeable()`. Each spec carries
+   a `weight` field computed exactly as `mode_controller.run_backtest`
+   does it:
+   ```
+   weight = config_edge_weights.get(edge_id, 1.0)
+            × (PAUSED_WEIGHT_MULTIPLIER if paused else 1.0)
+            capped at PAUSED_MAX_WEIGHT for paused edges
+   ```
+   Constants `PAUSED_WEIGHT_MULTIPLIER = 0.25` and
+   `PAUSED_MAX_WEIGHT = 0.5` mirror mode_controller exactly. The gate
+   also resolves short module names (e.g. `rsi_bounce` →
+   `engines.engine_a_alpha.edges.rsi_bounce`) the same way
+   mode_controller does.
+
+2. **`_run_ensemble_backtest` now wires the production config bundle**
+   that mode_controller wires into `BacktestController`:
+   - `AlphaEngine(config=alpha_settings.prod.json)` — regime gates,
+     ensemble shrinkage, fill_share_cap, hygiene, flip_cooldown.
+   - `RiskEngine(risk_settings.prod.json)` — vol-target, advisory regime
+     floor, exposure cap, per-trade sizing.
+   - `BacktestController(portfolio_cfg=PortfolioPolicyConfig(...),
+     regime_detector=RegimeDetector())` — fill-share cap, regime
+     classification used by AlphaEngine's regime gates.
+   - `edge_weights` dict (with paused×0.25) → AlphaEngine.
+
+   Without this bundle, AlphaEngine ran with permissive defaults, no
+   regime gating, no fill-share cap, no advisory regime floor — and
+   the ensemble's dynamics diverged from production.
+
+The fix is `~150 lines net` in one file, plus updated unit tests
+(`tests/test_discovery_gate1_reform.py`, 23 tests covering the new
+weight propagation + production-config wiring + composition rules).
+No changes to other engines, signal_processor, lifecycle, alpha_engine,
+or any non-Discovery code.
+
+### Corrected verification
+
+Run config:
+
+- Driver: `scripts/gate1_reform_falsifiable_spec.py`
+- Window: **2025-01-01 → 2025-12-31** (matches `run_isolated.py
+  --task q1`, the canonical harness reference for production-equivalent
+  Sharpe)
+- Universe: 109 of 109 production tickers
+- Slippage: realistic Almgren-Chriss + ADV-bucketed half-spread
+- Threshold: 0.10 (default)
+- Baseline composition (read from `data/governor/edges.yml` at run time):
+  16 tradeable edges (2 active + 14 paused at production weights), one
+  excluded per candidate.
+
+> **Verification table from run `gate1_reform_2026_05_run_v3.md`** —
+> filled in below after the production-config-wired + warmup re-run
+> completes.
+
+```
+[See docs/Audit/gate1_reform_2026_05_run_v3.md]
+```
+
+### Sanity-check journey (four runs to find the configuration mismatches)
+
+The director's brief required the corrected baseline to land near
+`run_isolated.py --task q1`'s reference Sharpe (~0.96 on 2025 OOS
+prod-109) before the verification could be considered honest. Each
+run revealed an additional missing piece:
+
+| Run | Fix applied | Vol-anomaly contrib | Herding contrib | Baseline (16 edge) | with_cand (17 edge) |
+| --- | --- | ---: | ---: | ---: | ---: |
+| v1 | paused edges loaded at 0.25× weight (the load-bearing fix from director's brief) | +0.614 PASS | +0.572 PASS | -0.453 / -0.407 | 0.161 / 0.165 |
+| v2 | + alpha/risk/portfolio config + regime detector wired through | -0.429 FAIL | (killed) | 0.454 | 0.025 |
+| v3 | + 365-day warmup window on data_map (mirrors `fetch_start = sim_start − 365 days` from mode_controller) | -0.040 FAIL | -0.059 FAIL | 0.627 / 0.646 | 0.586 / 0.587 |
+| v4 | + governor wiring with reset_weights() | -0.040 FAIL | -0.059 FAIL | 0.627 / 0.646 | 0.586 / 0.587 |
+
+**v4 is bitwise-identical to v3** — `governor.reset_weights()` clears
+both `_weights` and `_regime_weights`, so AlphaEngine's governor
+adjustment loop multiplies signal strength by 1.0 (no-op). Governor
+wiring confirmed *not* load-bearing for the residual gap.
+
+### Final verification — v4 (full production wiring, threshold 0.10)
+
+| edge | baseline (16-edge tradeable, candidate excluded) | with-candidate (17-edge full) | **contribution** | threshold | verdict | standalone diag |
+| --- | ---: | ---: | ---: | ---: | --- | ---: |
+| `volume_anomaly_v1` | 0.627 | 0.586 | **-0.040** | 0.10 | **FAIL** | 1.920 |
+| `herding_v1` | 0.646 | 0.587 | **-0.059** | 0.10 | **FAIL** | 1.449 |
+
+Per-edge baselines (read from `data/governor/edges.yml` at run time,
+2 active + 14 paused at 0.25× weight, candidate excluded):
+
+- `volume_anomaly_v1` baseline = 16 edges (gap_fill, herding active;
+  bollinger_reversion, earnings_vol, growth_sales, insider_cluster,
+  low_vol_factor, macro_real_rate, momentum_edge, panic, pead,
+  pead_predrift, pead_short, rsi_bounce, value_deep, value_trap paused)
+- `herding_v1` baseline = 16 edges (same composition with herding↔volume_anomaly)
+
+Raw JSON + per-edge timing: `docs/Audit/gate1_reform_2026_05_run_v4.md`.
+Wall time 12.4 min on 109-ticker × 1-year (2025) window.
+
+### What the v4 result actually says
+
+**Both contributions are essentially zero** (-0.040 and -0.059, around
+the threshold but on the wrong side). Mechanically: FAIL.
+Interpretation requires acknowledging two facts simultaneously:
+
+1. **Residual ~0.3 Sharpe gap to harness.** The full 17-edge ensemble
+   (with_cand for either run) produces 0.586 / 0.587 here, vs
+   `run_isolated.py --task q1`'s ~0.96 on the same window/universe/
+   exec_params/governor-state-reset. The four progressive fixes (paused
+   edges, production config, warmup, governor wiring) closed the gap
+   from 0.96 → -0.45 (original) → 0.46 (v2) → 0.59 (v3/v4). A
+   ~0.3 Sharpe residual remains. Plausible sources: AlphaEngine's
+   metalearner block, signal_gate state, edge-construction order, or
+   small init-time differences not yet identified. **The remaining gap
+   is small enough that the gate's qualitative signal (~zero
+   contribution from these two edges) is plausible, but large enough
+   that the absolute contribution numbers should be treated with
+   suspicion.**
+
+2. **Both edges contribute essentially nothing to the 16-edge
+   baseline.** Adding either to the 16-edge ensemble *reduces* Sharpe
+   by ~0.04-0.06 — well within the noise band of a 1-year window.
+   This is consistent with the 04-30 paradox memory's capital-rivalry
+   finding: in a saturated ensemble, adding a redundant signal
+   doesn't help (and may slightly hurt via fill-share competition).
+   The signal is "these two edges are *replaceable*" — not
+   "these two edges are alpha-destroying," which would require
+   contributions like the v2 result (-0.4).
 
 ### Decision rule (mechanical)
 
-| Outcome | Interpretation | Action |
-| --- | --- | --- |
-| Both edges pass with contribution > 0.15 | Reform working as designed; matches the director's "reasonable margin" criterion. | Promote to default Gate 1 for next Discovery cycle. |
-| Both edges pass at 0.10 ≤ contribution < 0.15 | Reform admits the right edges, but margin is thin. | Promote; flag the threshold for re-calibration after one more Discovery cycle of empirical data. |
-| **Either edge fails (← actual outcome)** | Per director spec: gate is mis-designed. **In practice:** the leave-one-out attribution is operationally correct; the failing-edges result reveals a real capital-rivalry pathology in the current active set, not a gate-design flaw. | Two-track action — see "Recommendation" below. |
+| Outcome | Action |
+| --- | --- |
+| Both edges PASS with contribution > 0.15 | Promote to default Gate 1 (director's "reasonable margin"). |
+| Both edges PASS at 0.10 ≤ contribution < 0.15 | Promote with threshold re-calibration flagged. |
+| **Either edge FAILS (← actual outcome)** | **Per director spec: gate is mis-designed — re-tune. Do NOT promote yet.** |
 
-### Recommendation
+### Verdict and recommendation
 
-The director's pre-committed criterion was clear: *if either fails,
-re-tune.* The data presents two interpretations and the user should
-pick:
+**Verdict: do NOT promote** — the falsifiable spec failed per the
+pre-committed criterion. Two work items before re-attempting:
 
-**Option A — Honor the falsifiable-spec verdict literally.** Treat
-the result as evidence the gate is mis-designed. Do not promote to
-default. Investigate alternative attribution math (per-edge factor
-decomposition on the with-candidate run, or per-fill PnL attribution
-inside the integration). Cost: 1–2 weeks of attribution-math work
-before any new Discovery run can be trusted.
+1. **Close the residual ~0.3 Sharpe gap.** The fixes shipped
+   (`paused-weight + production-config + warmup`) move the baseline
+   from -0.45 to 0.59 — most of the way to the harness reference 0.96
+   but not all the way. A separate diagnostic effort needs to compare
+   the gate's `_run_ensemble_backtest` to `mode_controller.run_backtest`
+   line-by-line to find what's still different. Likely candidates:
+   AlphaEngine's metalearner block, signal_gate persistent state,
+   per_ticker_score_logger interactions, or initialization order.
+   None of these were touched by the original gate-1-reform brief
+   (the brief was scoped to paused-edge inclusion).
 
-**Option B — Honor the operational logic.** The leave-one-out test
-correctly answers Discovery's question and the failing edges are
-detecting a real pathology that other measurements have already
-flagged (the 04-30 paradox memo + the 2025 capital-rivalry
-findings). Promote the gate as-is and use the failing-edge result as
-input to a separate decision: should `volume_anomaly_v1` /
-`herding_v1` be soft-paused given their negative leave-one-out
-contribution? Cost: lifecycle-driven pause is reversible, and the
-ensemble's actual negative Sharpe under harness independently argues
-for pruning regardless.
+2. **Once baseline matches harness, re-run the falsifiable spec.**
+   Only then is the gate's contribution number a trustworthy signal
+   about edge-level value. With baseline at ~0.59, contribution
+   numbers near zero are ambiguous: they could mean the edges add
+   ~zero value (interpretation B from session 1's audit), or they
+   could be a measurement artifact of the residual config gap
+   (interpretation A). The two cannot be cleanly separated from this
+   data alone.
 
-This audit recommends **Option B** with the threshold left at 0.10
-pending one more Discovery cycle's worth of empirical data on what
-contribution numbers the gate sees in the wild. The reasoning:
-leave-one-out is the right question for "does adding this edge
-improve my deployed ensemble?" — which IS what Discovery decides —
-and re-running the gate with a different attribution math would
-likely produce the same negative-contribution result for the same
-underlying capital-rivalry reason. The gate is reporting a real
-phenomenon, not a measurement artifact.
-
-The decision belongs to the user. This branch ships the
-implementation; the promote/no-promote choice happens on main.
+This branch ships the structural fix (paused-edge inclusion +
+production-config wiring + warmup + governor wiring + 23 unit tests).
+The promote/no-promote decision and the residual-gap investigation
+both remain on main per user discretion.
 
 ## What does NOT change in this reform
 

@@ -590,22 +590,55 @@ class DiscoveryEngine:
     # remains visible in audit output.
     GATE1_DEFAULT_CONTRIBUTION_THRESHOLD: float = 0.10
 
+    # Production deploys soft-paused edges at reduced weight (Phase α v2,
+    # 2026-04-24, see memory `project_soft_pause_win_2026_04_24.md`). The
+    # constants here mirror `orchestration/mode_controller.run_backtest` —
+    # any drift between the two would re-introduce the geometry mismatch
+    # that the 2026-05-01 baseline-fix was specifically meant to close
+    # (see memory `project_production_ensemble_includes_softpaused_2026_05_01.md`).
+    PAUSED_WEIGHT_MULTIPLIER: float = 0.25
+    PAUSED_MAX_WEIGHT: float = 0.5
+    DEFAULT_ALPHA_SETTINGS_PATH: str = "config/alpha_settings.prod.json"
+
     def _load_active_ensemble_specs(
-        self, exclude_id: Optional[str] = None,
+        self,
+        exclude_id: Optional[str] = None,
+        alpha_settings_path: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
-        """Read `data/governor/edges.yml` and return active edge specs.
+        """Read `data/governor/edges.yml` and return the production-equivalent
+        baseline ensemble — `active` AND `paused` edges, each tagged with
+        the deployment weight `ModeController.run_backtest` would assign.
 
-        The ensemble baseline is "what's currently deployed" — only edges
-        whose registry status is exactly `active`. Soft-paused / failed /
-        candidate edges are NOT part of the baseline. If `exclude_id` is
-        provided and matches an active edge, that spec is dropped so the
-        "without-candidate" baseline measures the rest of the deployed
-        ensemble; the candidate is re-added in the with-candidate run by
-        `_run_gate1_ensemble`.
+        **Why both statuses, not active-only.** Production's lifecycle is
+        bidirectional: paused edges still trade at `PAUSED_WEIGHT_MULTIPLIER`
+        (= 0.25) of their config weight, capped at `PAUSED_MAX_WEIGHT`
+        (= 0.5). That's what lets the revival gate observe post-pause data.
+        Filtering this to `status='active'` only — as the original gate did
+        — produces an ensemble smaller than what production deploys, which
+        re-introduces exactly the geometry mismatch the reform was meant to
+        close. The 2026-05-01 fix corrects the baseline to match production.
+        See memories `project_production_ensemble_includes_softpaused_2026_05_01.md`
+        and `project_soft_pause_win_2026_04_24.md`.
 
-        Returns a list of dicts in the same shape as candidate_spec —
-        keys: `edge_id`, `module`, `class` (resolved by inspection),
-        `params`. Empty list if registry missing / unreadable.
+        Each returned spec carries a `weight` key:
+            weight = config_edge_weights.get(edge_id, 1.0)
+                     × (PAUSED_WEIGHT_MULTIPLIER if paused else 1.0)
+                     capped at PAUSED_MAX_WEIGHT for paused edges.
+        Active edges with zero config weight (e.g. `bollinger_reversion_v1`
+        at 0.0) are still loaded so AlphaEngine can see them — but their
+        weight makes them effectively silent in signal aggregation. That
+        matches mode_controller's behavior.
+
+        If `alpha_settings_path` is None, falls back to
+        `DEFAULT_ALPHA_SETTINGS_PATH` relative to the project root, then to
+        weight 1.0 for all edges if no file is found. Tests can pass a
+        per-test path or rely on the all-1.0 fallback.
+
+        If `exclude_id` matches an edge (regardless of its status), that
+        spec is dropped so contribution is always *marginal*.
+
+        Returns list of dicts: `edge_id`, `module`, `class` (resolved),
+        `params`, `status`, `weight`. Empty list if registry unreadable.
         """
         if not self.registry_path.exists():
             return []
@@ -615,44 +648,93 @@ class DiscoveryEngine:
             print(f"[DISCOVERY] _load_active_ensemble_specs: registry read failed: {e}")
             return []
 
-        active = [
+        # Tradeable = active + paused, matching EdgeRegistry.list_tradeable()
+        # (which orchestration/mode_controller.py uses).
+        tradeable = [
             e for e in (data.get("edges") or [])
-            if e.get("status") == "active" and e.get("edge_id") != exclude_id
+            if e.get("status") in ("active", "paused")
+            and e.get("edge_id") != exclude_id
         ]
+
+        # Resolve config edge weights. If the file isn't readable for any
+        # reason, we fall back to a 1.0 default for every edge — same
+        # behavior as `cfg_alpha.get("edge_weights", {})` returning {} in
+        # ModeController.run_backtest.
+        config_edge_weights: Dict[str, float] = {}
+        cfg_path = alpha_settings_path or self.DEFAULT_ALPHA_SETTINGS_PATH
+        cfg_full = self.registry_path.parent.parent.parent / cfg_path \
+            if not Path(cfg_path).is_absolute() else Path(cfg_path)
+        # Also try the project root direct lookup (registry_path is
+        # data/governor/edges.yml so parent.parent.parent = project root in
+        # the standard layout, but tests sometimes pass a tmp_path).
+        candidate_paths = [Path(cfg_path), cfg_full]
+        for p in candidate_paths:
+            if p.is_file():
+                try:
+                    import json as _json
+                    config_edge_weights = (
+                        _json.loads(p.read_text()).get("edge_weights") or {}
+                    )
+                    break
+                except Exception as e:
+                    print(f"[DISCOVERY] alpha_settings read failed at {p}: {e}")
+                    config_edge_weights = {}
 
         from importlib import import_module
         out: List[Dict[str, Any]] = []
-        for row in active:
+        for row in tradeable:
             module_path = row.get("module")
             if not module_path:
                 continue
+            # Mirror the fallback logic from
+            # `orchestration/mode_controller._load_edges_via_registry`:
+            # the registry stores some entries with short names (`rsi_bounce`)
+            # and some with full paths (`engines.engine_a_alpha.edges.rsi_bounce`).
+            # Production resolves short names against `engines.engine_a_alpha.edges.*`.
+            module_resolved = (
+                module_path
+                if "." in module_path
+                else f"engines.engine_a_alpha.edges.{module_path}"
+            )
             try:
-                mod = import_module(module_path)
+                mod = import_module(module_resolved)
             except Exception as e:
                 print(f"[DISCOVERY] ensemble: skipping {row.get('edge_id')} "
-                      f"(module {module_path} import failed: {e})")
+                      f"(module {module_resolved} import failed: {e})")
                 continue
-            # Same heuristic as scripts/revalidate_alphas.py — pick the
-            # first class defined in the module whose name ends in 'Edge'.
             cls_name: Optional[str] = None
             for name in dir(mod):
                 obj = getattr(mod, name)
                 if (
                     isinstance(obj, type)
-                    and getattr(obj, "__module__", None) == module_path
+                    and getattr(obj, "__module__", None) == module_resolved
                     and name.endswith("Edge")
                 ):
                     cls_name = name
                     break
             if cls_name is None:
                 print(f"[DISCOVERY] ensemble: skipping {row.get('edge_id')} "
-                      f"(no *Edge class in {module_path})")
+                      f"(no *Edge class in {module_resolved})")
                 continue
+
+            edge_id = row["edge_id"]
+            status = row.get("status", "active")
+            base_weight = float(config_edge_weights.get(edge_id, 1.0))
+            if status == "paused":
+                weight = min(
+                    base_weight * self.PAUSED_WEIGHT_MULTIPLIER,
+                    self.PAUSED_MAX_WEIGHT,
+                )
+            else:
+                weight = base_weight
+
             out.append({
-                "edge_id": row["edge_id"],
-                "module": module_path,
+                "edge_id": edge_id,
+                "module": module_resolved,
                 "class": cls_name,
                 "params": row.get("params") or {},
+                "status": status,
+                "weight": float(weight),
             })
         return out
 
@@ -673,6 +755,102 @@ class DiscoveryEngine:
             edge.set_params(params)
         return edge
 
+    def _load_production_config(self) -> Dict[str, Any]:
+        """Load the production config bundle that `ModeController.run_backtest`
+        wires together. This is what makes the gate's geometry match the
+        deployed system — without these, AlphaEngine runs without regime
+        gates / ensemble shrinkage, RiskEngine runs without leverage
+        targeting / advisory regime floor, BacktestController runs without
+        fill-share cap or regime detection. Each missing piece compounds
+        as a divergence from production, and the verification's "absolute
+        baseline should match harness ~0.96" sanity check fails.
+
+        Returns dict with keys: `alpha_config`, `risk_config`,
+        `portfolio_cfg`, `regime_detector`. Falls back to None values for
+        any config file that's missing so unit tests with synthetic
+        registries don't need a full project tree.
+
+        The `env` defaults to `prod` to match what `run_isolated.py
+        --task q1` uses; tests can override by passing
+        `env=...` if needed in the future (not currently exposed —
+        Discovery cycles all read prod).
+        """
+        import json as _json
+        # Project root: registry_path is data/governor/edges.yml in the
+        # standard layout, so parent.parent.parent = project root. Tests
+        # using tmp_path get fallback None values — that's fine.
+        root = self.registry_path.parent.parent.parent
+
+        out: Dict[str, Any] = {
+            "alpha_config": None,
+            "risk_config": None,
+            "portfolio_cfg": None,
+            "regime_detector": None,
+            "governor": None,
+        }
+        # Alpha settings — load_json equivalent
+        alpha_path = root / "config" / "alpha_settings.prod.json"
+        if alpha_path.is_file():
+            try:
+                out["alpha_config"] = _json.loads(alpha_path.read_text())
+            except Exception as e:
+                print(f"[DISCOVERY] alpha config read failed at {alpha_path}: {e}")
+
+        risk_path = root / "config" / "risk_settings.prod.json"
+        if risk_path.is_file():
+            try:
+                out["risk_config"] = _json.loads(risk_path.read_text())
+            except Exception as e:
+                print(f"[DISCOVERY] risk config read failed at {risk_path}: {e}")
+
+        # Portfolio policy — same construction mode_controller uses.
+        # (Note: portfolio config is NOT env-namespaced, unlike alpha/risk.
+        # mode_controller uses the same path.)
+        portfolio_path = root / "config" / "portfolio_settings.json"
+        if portfolio_path.is_file():
+            try:
+                cfg_portfolio = _json.loads(portfolio_path.read_text())
+                from engines.engine_c_portfolio.policy import PortfolioPolicyConfig
+                out["portfolio_cfg"] = PortfolioPolicyConfig(**{
+                    k: v for k, v in cfg_portfolio.items()
+                    if k in PortfolioPolicyConfig.__annotations__
+                })
+            except Exception as e:
+                print(f"[DISCOVERY] portfolio config read failed at {portfolio_path}: {e}")
+
+        # Regime detector — no config needed; default constructor matches
+        # mode_controller.run_backtest line `regime_detector = RegimeDetector()`.
+        try:
+            from engines.engine_e_regime.regime_detector import RegimeDetector
+            out["regime_detector"] = RegimeDetector()
+        except Exception as e:
+            print(f"[DISCOVERY] regime detector init failed: {e}")
+
+        # Strategy governor — paths match mode_controller exactly.
+        # `reset_weights()` is in-memory only (does NOT write to disk —
+        # see governor.py docstring) so this is safe to call repeatedly.
+        # Without the governor object, AlphaEngine line 902
+        # `if self.governor and signals:` is always False — no
+        # regime-conditional weight modulation, and the resulting
+        # ensemble Sharpe diverges from the harness reference.
+        try:
+            from engines.engine_f_governance.governor import StrategyGovernor
+            governor_cfg_path = root / "config" / "governor_settings.json"
+            governor_state_path = root / "data" / "governor" / "edge_weights.json"
+            governor = StrategyGovernor(
+                config_path=str(governor_cfg_path),
+                state_path=str(governor_state_path),
+            )
+            # Match `run_isolated.py --task q1`'s `reset_governor=True`:
+            # neutralize learned regime affinity so each gate measurement
+            # is in-sample / measurement-mode, not OOS-affinity-leaked.
+            governor.reset_weights()
+            out["governor"] = governor
+        except Exception as e:
+            print(f"[DISCOVERY] governor init failed: {e}")
+
+        return out
+
     def _run_ensemble_backtest(
         self,
         edges: Dict[str, Any],
@@ -680,21 +858,45 @@ class DiscoveryEngine:
         start_date: str,
         end_date: str,
         exec_params: Dict[str, Any],
+        edge_weights: Optional[Dict[str, float]] = None,
         out_dir: str = "/tmp/discovery_validation_ensemble",
         initial_capital: float = 100_000,
+        production_config: Optional[Dict[str, Any]] = None,
     ) -> tuple[float, "pd.Series"]:
         """Run a backtest with an arbitrary ensemble of edges.
 
-        Same wiring as the standalone Gate 1 (AlphaEngine + RiskEngine +
-        BacktestController + CockpitLogger), only difference is `edges`
-        carries multiple members instead of one. Returns (sharpe,
-        equity_curve). Empty ensemble → (0.0, empty Series).
+        Same wiring as `ModeController.run_backtest` (per the production
+        config bundle), only difference is `edges` is the explicit set
+        the gate wants to test (baseline or baseline+candidate). Returns
+        (sharpe, equity_curve). Empty ensemble → (0.0, empty Series).
+
+        Production-equivalent wiring requires four pieces beyond
+        `edges`/`edge_weights` that the original gate omitted:
+
+        - `alpha_config` (dict) → AlphaEngine `config=` — regime gates,
+          ensemble shrinkage, hygiene, flip cooldown.
+        - `risk_config` (dict) → full RiskEngine config (vol-target,
+          advisory regime floor, exposure cap, sizing knobs) — without
+          this RiskEngine runs minimal defaults that don't match
+          production sizing.
+        - `portfolio_cfg` (PortfolioPolicyConfig) → BacktestController
+          `portfolio_cfg=` — fill-share cap (0.20 on main), portfolio
+          policy. Without this the per-edge fill share is uncapped and
+          a single edge can dominate.
+        - `regime_detector` (RegimeDetector) → BacktestController
+          `regime_detector=` — per-bar regime classification used by
+          the AlphaEngine's regime gates and lifecycle.
+
+        These all come from `_load_production_config()`. If
+        `production_config=None`, a fresh load happens here. Tests can
+        pass an empty dict `{}` to opt out (unit tests don't need full
+        production config).
 
         The capital splitting / impact-knee dilution that defines
         deployment-geometry happens inside the AlphaEngine's signal
         aggregation and the ExecutionSimulator's per-fill cost model —
-        nothing special to do here beyond using the same call shape the
-        production stack uses.
+        plus the regime gates and fill-share cap that the production
+        config supplies.
         """
         from backtester.backtest_controller import BacktestController
         from engines.engine_a_alpha.alpha_engine import AlphaEngine
@@ -705,8 +907,21 @@ class DiscoveryEngine:
         if not edges:
             return 0.0, pd.Series(dtype=float)
 
-        alpha = AlphaEngine(edges=dict(edges), debug=False)
-        risk = RiskEngine({"risk_per_trade_pct": 0.01})
+        cfg = production_config if production_config is not None else self._load_production_config()
+        alpha_cfg = cfg.get("alpha_config")
+        risk_cfg = cfg.get("risk_config") or {"risk_per_trade_pct": 0.01}
+        portfolio_cfg = cfg.get("portfolio_cfg")
+        regime_detector = cfg.get("regime_detector")
+        governor = cfg.get("governor")
+
+        alpha = AlphaEngine(
+            edges=dict(edges),
+            edge_weights=dict(edge_weights) if edge_weights is not None else None,
+            config=alpha_cfg,
+            governor=governor,
+            debug=False,
+        )
+        risk = RiskEngine(risk_cfg)
         bt_logger = CockpitLogger(out_dir=out_dir, flush_each_fill=False)
 
         controller = BacktestController(
@@ -716,6 +931,8 @@ class DiscoveryEngine:
             cockpit_logger=bt_logger,
             exec_params=exec_params,
             initial_capital=initial_capital,
+            portfolio_cfg=portfolio_cfg,
+            regime_detector=regime_detector,
             batch_flush_interval=99999,
         )
 
@@ -757,28 +974,36 @@ class DiscoveryEngine:
         baseline_specs = self._load_active_ensemble_specs(exclude_id=cand_id)
         baseline_ids = sorted(s["edge_id"] for s in baseline_specs)
 
-        # Build baseline edge instance dict
+        # Build baseline edge instance dict + production-weight dict.
+        # The weight comes from `_load_active_ensemble_specs` which
+        # already applied PAUSED_WEIGHT_MULTIPLIER × cap to soft-paused
+        # edges per `ModeController.run_backtest`.
         baseline_edges: Dict[str, Any] = {}
+        baseline_weights: Dict[str, float] = {}
         for spec in baseline_specs:
             try:
                 baseline_edges[spec["edge_id"]] = self._instantiate_edge_from_spec(spec)
+                baseline_weights[spec["edge_id"]] = float(spec.get("weight", 1.0))
             except Exception as e:
                 print(f"[DISCOVERY] ensemble: baseline edge {spec['edge_id']} "
                       f"failed to instantiate: {e}")
 
         # Cache key — baseline composition is identical for every candidate
         # in a single Discovery cycle that doesn't share an edge_id with
-        # the active set, so cache by (frozenset of IDs, window). exec_params
-        # may contain nested dicts (e.g. slippage_extra), so JSON-serialize
-        # with sort_keys for a stable string fingerprint instead of trying
-        # to hash the dict structure.
+        # the active set, so cache by (frozenset of IDs, window). Also
+        # include the per-edge weights so a registry change that flips an
+        # edge from active→paused (or vice versa) invalidates the cache.
+        # exec_params may contain nested dicts (e.g. slippage_extra), so
+        # JSON-serialize with sort_keys for a stable string fingerprint.
         import json as _json
         try:
             exec_fingerprint = _json.dumps(exec_params or {}, sort_keys=True, default=str)
         except Exception:
             exec_fingerprint = repr(exec_params)
+        weights_fingerprint = tuple(sorted(baseline_weights.items()))
         cache_key = (
-            frozenset(baseline_edges.keys()), start_date, end_date, exec_fingerprint,
+            frozenset(baseline_edges.keys()), weights_fingerprint,
+            start_date, end_date, exec_fingerprint,
         )
         if not hasattr(self, "_gate1_baseline_cache"):
             self._gate1_baseline_cache: Dict[Any, float] = {}
@@ -791,18 +1016,25 @@ class DiscoveryEngine:
                 data_map=data_map,
                 start_date=start_date, end_date=end_date,
                 exec_params=exec_params,
+                edge_weights=baseline_weights,
                 out_dir="/tmp/discovery_validation_ensemble_baseline",
             )
             self._gate1_baseline_cache[cache_key] = baseline_sharpe
 
-        # With-candidate run — baseline + candidate
+        # With-candidate run — baseline + candidate at full weight 1.0.
+        # The candidate is being tested as if it were promoted to active;
+        # active edges in production default to their config weight (1.0
+        # for new candidates not yet in alpha_settings).
         with_edges = dict(baseline_edges)
         with_edges[cand_id] = candidate_edge
+        with_weights = dict(baseline_weights)
+        with_weights[cand_id] = 1.0
         with_candidate_sharpe, _ = self._run_ensemble_backtest(
             edges=with_edges,
             data_map=data_map,
             start_date=start_date, end_date=end_date,
             exec_params=exec_params,
+            edge_weights=with_weights,
             out_dir="/tmp/discovery_validation_ensemble_withcand",
         )
 
@@ -811,6 +1043,7 @@ class DiscoveryEngine:
 
         return {
             "baseline_ids": baseline_ids,
+            "baseline_weights": dict(baseline_weights),
             "baseline_sharpe": float(baseline_sharpe),
             "with_candidate_sharpe": float(with_candidate_sharpe),
             "contribution_sharpe": float(contribution),
