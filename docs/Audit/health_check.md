@@ -22,10 +22,30 @@ then LOW. Within each severity, list newest at the top.
 
 ### HIGH
 
-### [HIGH] System alpha is real but architecturally wasted — capital rivalry + noise edges drag the ensemble (updated 2026-04-30)
+### [HIGH → RESOLVED 2026-05-01] System alpha is real but architecturally wasted — capital rivalry + noise edges drag the ensemble (updated 2026-04-30, resolved 2026-05-01)
 - Engine: A (signal_processor capital allocation) + C (portfolio engine slot management) + F (lifecycle — partial; pause decisions vindicated, soft-pause weight policy in question)
 - First flagged: 2026-04-29 (as "no validated alpha"); **revised 2026-04-30** after Phase 2.10c per-edge attribution diagnostics resolved the apparent paradox.
-- Status: **active.** Phase 2.10d (pruning + capital allocation diagnostic) is the immediate work.
+- **Status: RESOLVED 2026-05-01** — Phase 2.10d task B shipped the three structural primitives; round-2 cap recalibration found cap=0.20 as the optimum (Sharpe 1.102 OOS / 1.113 IS, full-pass gate cleared). `fill_share_cap: 0.20` is the production cap value. Path 1 deployment-ship state captures cap=0.20 as the validated baseline.
+- **Residual:** the ML-stacking variant of Path 1 (cap=0.20 + ML-on) did NOT reproduce in agentA's path1-deployment-ship validation (Sharpe -0.378 vs the expected 1.1+ from stacking on Agent C's 1.064 ML-on baseline). Same nominal config; different governor state at run start. Tracked as a separate ship blocker — see `docs/Audit/path1_ship_validation_2026_05.md`. Resolution path is non-deterministic-state diagnosis, NOT re-investigating the rivalry pathology (which is structurally fixed).
+- See `docs/Audit/capital_allocation_fixes_2026_04.md`, `docs/Audit/cap_recalibration_sweep_2026_04.md`, `docs/Audit/cap_bracket_sweep_2026_04.md`, `docs/Core/deployment_boundary_2026_05.md`.
+
+### [HIGH NEW] Same-config Sharpe non-determinism across worktrees — lifecycle_history.csv likely culprit (2026-05-01)
+- Engine: F (lifecycle history not snapshotted by sweep harness) + orchestration (anchor restore semantics)
+- First flagged: 2026-04-30 in `cap_bracket_sweep_2026_04.md`; **escalated to ship-blocker 2026-05-01** by `path1_ship_validation_2026_05.md`.
+- Status: active — blocking ML-on production deployment.
+- Description: Three same-config (cap=0.20 + ML-on/off, prod-109, 2025 OOS, --reset-governor) backtests produced wildly divergent Sharpes:
+  - Agent A bracket B3 v2 (ML-off): 1.102
+  - Agent A cap-recalibration A3 (ML-off): 0.920 (anchor md5 matches B3 v2's)
+  - Agent A path1-ship A3 (ML-on): -0.378
+  - Agent C portfolio-ML round 1 (ML-on, cap=0.25): 1.064
+  - The ~1.5 Sharpe spread between path1-ship and Agent C at nominally compatible configurations is the headline.
+- Hypothesis: `data/governor/lifecycle_history.csv` is NOT snapshotted by `scripts/sweep_cap_recalibration.py::snapshot_lifecycle_state` and accumulates across runs. The lifecycle_manager reads history during a backtest's end-of-run pass and feeds it into pause/revive decisions; if those decisions differ across worktrees with different histories, the *next* run sees a different active edge stack. Compounds run-to-run.
+- Fix surface: extend `snapshot_lifecycle_state` to include `lifecycle_history.csv`. Then run a 3-replicate experiment at cap=0.20 + ML-on under identical anchor + history; if results converge, we have the cause. If they still diverge, the non-determinism is deeper (model-load order, numerical seeds, regime detector inputs).
+- Why HIGH: any "validated" Sharpe number from the audit corpus could be artifact. Production decisions ride on these numbers.
+- Recommended next step: instrument and replicate before any further ship attempt or 2025 OOS measurement campaign.
+
+### [HISTORICAL — superseded by entries above 2026-05-01]
+- Status: closed.
 - Description: per Phase 2.10c attribution work (audit docs `oos_2025_decomposition_2026_04.md` and `per_edge_per_year_attribution_2026_04.md`), the system *does* have real alpha — but it lives in the ensemble's risk-sizing dampening + edge-timing diversification, not in standalone signals. Specifically:
   - **Stable contributors (positive every year 2021-2025):** `volume_anomaly_v1` (+1.93% to +4.94%/yr), `herding_v1` (+0.55% to +2.43%/yr).
   - **Weak-positive diversifiers:** `gap_fill_v1`, `macro_credit_spread_v1`, and 4 others (~+0.5%/yr each).

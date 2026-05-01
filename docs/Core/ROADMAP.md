@@ -217,7 +217,18 @@ falsified the claim. The bones-before-paper philosophy is paying off.
 ~+6% weak-positive diversifier vs ~-9% to -10% noise/dead-weight drag). Forward
 path is structural fix, not new alpha hunting. See Phase 2.10d.
 
-## Phase 2.10d: Autonomous lifecycle extension + capital allocation fix (BLOCKING — 2026-04-30, reframed)
+## Phase 2.10d: Autonomous lifecycle extension + capital allocation fix — ✅ SHIPPED (cap-only path) 2026-05-01
+
+> **Status update 2026-05-01:** task C (cap=0.25 baseline) measured
+> Sharpe 0.315 (AMBIGUOUS); round-2 cap recalibration found cap=0.20
+> as the optimum (Sharpe 1.102 OOS / 1.113 IS, full-pass gate cleared).
+> `fill_share_cap: 0.20` is now the production cap value.
+> Phase 2.11 (portfolio meta-learner stacking on top of cap=0.20)
+> attempted to ship this round but the validation run produced Sharpe
+> -0.378 — see `docs/Audit/path1_ship_validation_2026_05.md` for the
+> ship-blocker analysis and three resolution paths. Cap-only shipped;
+> ML-on stacking pending reproduction.
+
 
 > Phase 2.10c showed alpha exists but is wasted. The original 2.10d
 > framing ("hand-pruning proposal" — Agent B classifies which edges
@@ -370,7 +381,26 @@ with a credible "beat the market" claim, but doesn't block 2.10d/e.
       in-sample run. Cheap UX-engineer task; high signal value
       forever after. (Future ux-engineer dispatch.)
 
-## Phase 2.11: Per-ticker meta-learner (Session N+1 proper, ~2 weeks) — 🚫 BLOCKED 2026-04-29
+## Phase 2.11: Portfolio meta-learner — ⚠ CONDITIONAL SHIP within prod-109 (2026-05-01)
+
+> **2026-05-01 update:** Agent C's `metalearner-robustness` audit
+> validated the portfolio meta-learner at Sharpe 1.064 (cap=0.25,
+> ML-on, prod-109 2025 OOS) and walk-forward mean Sharpe +0.873
+> across 2022/2023/2024 holdouts. Universe-B test FAILED (Sharpe 0.273)
+> — the lift is concentrated on prod-109. **The deployment boundary
+> at `docs/Core/deployment_boundary_2026_05.md` documents this.**
+>
+> Path 1 ship-state validation in agentA worktree under cap=0.20 +
+> ML-on produced Sharpe **-0.378** — the stacking with cap=0.20 did
+> not reproduce. The ML half of Path 1 is **not yet validated for
+> production**. Director's call on resolution path
+> (`docs/Audit/path1_ship_validation_2026_05.md`).
+>
+> Original framing (preserved for Phase 2.11 *per-ticker* training,
+> still BLOCKED until portfolio ML reproduces):
+
+## Phase 2.11 per-ticker (still blocked) — Session N+1 proper, ~2 weeks
+
 
 > **BLOCKED** by Phase 2.10b failure. The in-sample base this would
 > have lifted is itself artifact. Re-evaluate after Phase 2.10c

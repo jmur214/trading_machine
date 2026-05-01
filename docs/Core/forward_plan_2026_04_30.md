@@ -167,6 +167,42 @@ explicitly — partial pass at 0.4 isn't "fail," it's "graduate to the
 meta-learner as the structural fix the linear allocator can't fully
 solve."
 
+### Result (2026-04-30 → 2026-05-01)
+
+**Phase 2.10d task C** (cap=0.25, ML-off): Sharpe **0.315** —
+AMBIGUOUS bucket. Real lift from -0.049 anchor, partial fix.
+
+**Phase 2.10d round-2 cap recalibration** (cap=0.20, ML-off):
+Sharpe **1.102** in agentA's bracket-below-020 worktree (B3 v2),
+**0.920** in trading_machine-2's cap-recalibration sweep (A3) —
+same anchor md5, different worktree state, ~0.18 Sharpe spread.
+Multi-year robustness on 2021-2024 in-sample: Sharpe **1.113** at
+cap=0.20 (versus original 1.063 anchor). **Cap=0.20 ML-off path
+clears the > 0.65 full-pass gate decisively across both 2025 OOS
+and multi-year IS.**
+
+**Phase 2.10d task D** (Agent C portfolio meta-learner robustness):
+- C1 Universe-B (cap=0.25, ML-on): Sharpe **0.273 — FAIL** the > 0.4
+  threshold. ML lift evaporates outside prod-109.
+- C2 walk-forward (cap=0.25, ML-on, three-fold hold-one-year-out
+  on prod-109): mean Sharpe **+0.873**, 2/3 folds positive — PASS.
+- Combined: ML stacking validated within prod-109 only.
+
+**Path 1 ship-state validation (cap=0.20 + ML-on, this run)**:
+Sharpe **-0.378** in agentA path1-deployment-ship worktree. The
+expected stacking (cap=0.20 + ML-on → 1.1+) DID NOT REPRODUCE.
+This is a ship blocker: the merged config does not validate to its
+own audit history. See `docs/Audit/path1_ship_validation_2026_05.md`.
+Three resolution paths offered (Path A reproduce, Path B ship
+cap-only, Path C ship as-is with caveat); director's call.
+
+**Phase 2.10d shipped (cap-only):** `fill_share_cap: 0.20` is the
+production cap. Phase 2.11 (portfolio meta-learner) **conditionally
+deployable** within prod-109 boundary per Agent C's prod-109 audit,
+but NOT yet validated under cap=0.20 stacking — see ship blocker
+above. **Phase 2.12 / 2.5 remain BLOCKED** until ML stacking is
+reproduced and Path 2 universe-portability ships.
+
 ## What's no longer true from the 04-29 plan
 
 The 04-29 forward plan said:
