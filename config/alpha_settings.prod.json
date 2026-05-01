@@ -22,7 +22,7 @@
     "combine": "weighted_mean"
   },
   "metalearner": {
-    "enabled": true,
+    "enabled": false,
     "profile_name": "balanced",
     "contribution_weight": 0.1
   },

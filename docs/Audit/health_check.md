@@ -22,6 +22,20 @@ then LOW. Within each severity, list newest at the top.
 
 ### HIGH
 
+### [HIGH] Backtest non-determinism regression — same config produces ±1.4 Sharpe variance across runs
+- Engine: F (lifecycle / governor state mutation) + orchestration (run_oos_validation harness)
+- First flagged: 2026-05-01 (Phase 2.10d/Path 1 ship-validation block)
+- Status: **active — blocking ALL forward shipping decisions and A/B comparisons**
+- Description: Backtest reproducibility has regressed materially since the 2026-04-23 determinism floor (memory `project_determinism_floor_2026_04_23.md` documented bitwise-identical canon md5s under `scripts/run_deterministic.py`). Recent same-config runs produce wildly different Sharpe:
+  - cap=0.25 + ML-off: Phase 2.10d task C = 0.315; round-1 Agent A A0 hours later = 0.562 (Δ +0.247)
+  - cap=0.20 + ML-off: round-1 A3 = 0.920; round-2 B3 v2 = 1.102 (Δ +0.182)
+  - **cap=0.20 + ML-on: Agent C round-1 (cap=0.25 default + ML) = 1.064; Agent A round-3 A3 = -0.378 (Δ -1.442 — opposite-sign Sharpe under nominally compatible config)**
+- The ±1.4 variance band makes every Sharpe number from the project from 2026-04-29 onward unreliable as a deployment input. Including Agent D's Path 2 result (Universe-B 0.916 with floors+ML) — could be real or could be favorable governor-state coincidence.
+- Leading hypothesis: the autonomous lifecycle (`engines/engine_f_governance/lifecycle_manager.py`) and governor (`engines/engine_f_governance/governor.py`) mutate `data/governor/edges.yml`, `lifecycle_history.csv`, `regime_edge_performance.json`, and `edge_weights.json` at end-of-run. `--reset-governor` resets weights at start but does not isolate end-of-run mutations or roll back lifecycle state. Cross-worktree governor-COPY isolation (per `MULTI_SESSION_ORCHESTRATION.md`) prevents inter-agent races but does NOT fix intra-agent run-to-run drift.
+- Why this is HIGH (not MEDIUM): the project cannot proceed past Path 1 ship without reproducible measurement. Every A/B claim is provisional. The 2026-04-23 fix already exists at `scripts/run_deterministic.py`; presumably either (a) the OOS validation harness `scripts/run_oos_validation.py` doesn't use it, (b) it broke since 04-23, or (c) it doesn't cover the lifecycle state mutations introduced in Phase 2.10d.
+- Recommended next step: dispatch a focused agent for non-determinism investigation. Reproduce the variance with a controlled experiment (run same config 3-5× under tight isolation), find the source of drift (likely candidates: lifecycle_history.csv accumulation, regime_edge_performance.json mutation, edge_weights.json saves), implement a determinism harness that fully isolates a run from prior governor state. Re-establish the bitwise-identical canon md5 floor from the 04-23 baseline. Until this resolves, every Sharpe number is ±1.4 noise.
+- See: `docs/Audit/path1_ship_validation_2026_05.md` (Agent A's blocked ship + ±1.4 evidence), `docs/Audit/path2_adv_floors_2026_05.md` (Agent D's caveat), memory `project_determinism_floor_2026_04_23.md` (the prior fix).
+
 ### [HIGH → RESOLVED 2026-05-01] System alpha is real but architecturally wasted — capital rivalry + noise edges drag the ensemble (updated 2026-04-30, resolved 2026-05-01)
 - Engine: A (signal_processor capital allocation) + C (portfolio engine slot management) + F (lifecycle — partial; pause decisions vindicated, soft-pause weight policy in question)
 - First flagged: 2026-04-29 (as "no validated alpha"); **revised 2026-04-30** after Phase 2.10c per-edge attribution diagnostics resolved the apparent paradox.
