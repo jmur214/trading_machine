@@ -42,11 +42,18 @@ TRADES_DIR = ROOT / "data" / "trade_logs"
 # each subsequent cap value under a progressively more-pruned edge
 # stack. To isolate the cap-value-only effect, snapshot these once and
 # restore them before each run.
+#
+# 2026-05-01 update: list synced with scripts/run_isolated.py
+# (lifecycle_history.csv added). Per
+# docs/Audit/determinism_floor_restore_2026_05.md the bisect found
+# `edges.yml` is the exclusive drift source, but lifecycle_history.csv
+# is in the harness for divergence-check observability.
 GOVERNOR_DIR = ROOT / "data" / "governor"
 LIFECYCLE_FILES = [
     GOVERNOR_DIR / "edges.yml",
     GOVERNOR_DIR / "edge_weights.json",
     GOVERNOR_DIR / "regime_edge_performance.json",
+    GOVERNOR_DIR / "lifecycle_history.csv",
 ]
 SWEEP_ANCHOR_DIR = GOVERNOR_DIR / "_cap_recal_anchor"
 
@@ -100,7 +107,13 @@ def snapshot_lifecycle_state() -> None:
 
 
 def restore_lifecycle_state() -> None:
-    """Restore lifecycle/governor files from _cap_recal_anchor/."""
+    """Restore lifecycle/governor files from _cap_recal_anchor/.
+
+    For files absent in the anchor (e.g. lifecycle_history.csv when
+    snapshotted from an empty-history state), DELETE the live copy so
+    the run starts from the same empty-history state. Mirrors the
+    semantics of `scripts.run_isolated.restore_anchor`.
+    """
     if not SWEEP_ANCHOR_DIR.exists():
         raise RuntimeError(
             f"No anchor at {SWEEP_ANCHOR_DIR}; run with --snapshot first"
@@ -109,6 +122,8 @@ def restore_lifecycle_state() -> None:
         src = SWEEP_ANCHOR_DIR / dst.name
         if src.exists():
             shutil.copy(src, dst)
+        elif dst.exists():
+            dst.unlink()
     print(f"[SWEEP] Restored lifecycle state from {SWEEP_ANCHOR_DIR}")
 
 
@@ -162,13 +177,20 @@ def find_run_id(before: set[str]) -> str | None:
     return candidates[0][0].name
 
 
-def run_one(label: str, preset: dict, restore_anchor: bool = True) -> dict:
+def run_one(label: str, preset: dict, restore_anchor: bool = True,
+             post_restore: bool = True) -> dict:
     """Run a single 2025 Q1 OOS under the given preset.
 
-    If restore_anchor=True, restore the lifecycle state from
+    If restore_anchor=True (default), restore the lifecycle state from
     _cap_recal_anchor/ before the run so each run starts from the same
     edges.yml + governor state. Set False on the very first run if you
     just took the snapshot from current state.
+
+    If post_restore=True (default, since 2026-05-01), ALSO restore from
+    the anchor AFTER the run so the next sweep call starts from the
+    same state. This makes the sweep harness equivalent to
+    `run_isolated.isolated()`. Pass `post_restore=False` for legacy
+    behavior where end-of-run lifecycle mutations are kept.
     """
     from orchestration.mode_controller import ModeController
     from core.benchmark import compute_multi_benchmark_metrics
@@ -201,6 +223,13 @@ def run_one(label: str, preset: dict, restore_anchor: bool = True) -> dict:
             override_start=start,
             override_end=end,
         )
+
+    if post_restore:
+        # 2026-05-01: restore-on-exit makes the sweep idempotent across
+        # invocations. Without this, the next sweep --run sees the prior
+        # run's mutated edges.yml/lifecycle_history and produces drifted
+        # numbers (the round-2 vs round-3 ±1.4 Sharpe variance).
+        restore_lifecycle_state()
 
     run_id = find_run_id(before)
     summary["run_id"] = run_id
@@ -246,6 +275,11 @@ def main() -> int:
     parser.add_argument("--no-restore", action="store_true",
                         help="Skip restoring the anchor before --run "
                              "(useful for the very first run after --snapshot).")
+    parser.add_argument("--no-isolation", action="store_true",
+                        help="Disable post-run restore (legacy behavior). "
+                             "Default-on means the sweep is idempotent across "
+                             "invocations; opt out only when you specifically "
+                             "want end-of-run lifecycle mutations to persist.")
     args = parser.parse_args()
 
     if args.snapshot:
@@ -254,7 +288,8 @@ def main() -> int:
             return 0
     if args.run:
         run_one(args.run, PRESETS[args.run],
-                restore_anchor=not args.no_restore)
+                restore_anchor=not args.no_restore,
+                post_restore=not args.no_isolation)
     return 0
 
 
