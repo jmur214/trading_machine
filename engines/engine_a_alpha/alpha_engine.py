@@ -39,7 +39,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 import json
 import math
@@ -245,6 +245,7 @@ class AlphaEngine:
         debug: bool = True,
         governor: Optional["StrategyGovernor"] = None,  # NEW
         config: Optional[dict] = None,
+        per_ticker_score_logger: Optional[Any] = None,
     ):
         # 1️⃣ Initialize base edges
         self.edges = dict(edges or {})
@@ -320,6 +321,11 @@ class AlphaEngine:
         self._edge_weights_external = dict(edge_weights or {})
         self.debug = bool(debug)
         self.governor = governor  # optional reference
+        # Phase 2.11 prep — optional per-bar per-ticker per-edge score
+        # capture for meta-learner training data. None on the hot path
+        # by default; mode_controller injects a real PerTickerScoreLogger
+        # when --log-per-ticker-scores is set.
+        self.per_ticker_score_logger: Optional[Any] = per_ticker_score_logger
 
         # Load config: support direct config injection, otherwise use file, then env overrides.
         if config is not None:
@@ -386,11 +392,19 @@ class AlphaEngine:
         # Layer 3 meta-learner integration. Default OFF — set
         # `metalearner.enabled: true` in alpha_settings to opt in. When
         # disabled, behavior is identical to legacy linear weighted_sum.
+        # Phase 2.11 — `metalearner.per_ticker: true` switches to per-ticker
+        # models (data/governor/per_ticker_metalearners/{ticker}.pkl) with
+        # cold-start fallback to the portfolio model.
         ml_cfg_raw = cfg_raw.get("metalearner", {}) or {}
         metalearner_settings = MetaLearnerSettings(
             enabled=bool(ml_cfg_raw.get("enabled", False)),
             profile_name=str(ml_cfg_raw.get("profile_name", "balanced")),
             contribution_weight=_coerce_float(ml_cfg_raw.get("contribution_weight", 0.1)),
+            per_ticker=bool(ml_cfg_raw.get("per_ticker", False)),
+            per_ticker_model_dir=str(
+                ml_cfg_raw.get("per_ticker_model_dir",
+                               "data/governor/per_ticker_metalearners")
+            ),
         )
 
         self.cfg = AlphaConfig(
@@ -809,6 +823,27 @@ class AlphaEngine:
 
         if is_debug_enabled("ALPHA"):
             print(f"[ALPHA][TRACE] Built {len(signals)} pre-governor signals at {now}")
+
+        # Phase 2.11 prep — capture per-bar per-ticker per-edge scores for
+        # meta-learner training. Pre fill-share-cap, pre governor reweight,
+        # post signal-processor — this is the "alpha layer raw output"
+        # view of the bar. `fired` reflects which edges cleared
+        # min_edge_contribution and were attached to a per-ticker signal's
+        # edges_triggered list. No-op when the logger isn't injected.
+        if self.per_ticker_score_logger is not None:
+            try:
+                self.per_ticker_score_logger.log_bar(
+                    timestamp=now,
+                    proc=proc,
+                    signals=signals,
+                    regime_meta=regime_meta,
+                )
+            except Exception as exc:
+                # Belt-and-braces — the logger itself is defensive, but
+                # an upstream API drift shouldn't break the backtest.
+                if is_info_enabled() or is_debug_enabled("ALPHA"):
+                    print(f"[ALPHA][WARN] per_ticker_score_logger.log_bar "
+                          f"failed at {now}: {exc}")
 
         # Phase 2.10d Primitive 1 — per-bar fill-share ceiling.
         # Applied AFTER per-ticker attribution and BEFORE governor /
