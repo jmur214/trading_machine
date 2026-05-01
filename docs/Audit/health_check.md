@@ -43,20 +43,10 @@ then LOW. Within each severity, list newest at the top.
 - **Residual:** the ML-stacking variant of Path 1 (cap=0.20 + ML-on) did NOT reproduce in agentA's path1-deployment-ship validation (Sharpe -0.378 vs the expected 1.1+ from stacking on Agent C's 1.064 ML-on baseline). Same nominal config; different governor state at run start. Tracked as a separate ship blocker — see `docs/Audit/path1_ship_validation_2026_05.md`. Resolution path is non-deterministic-state diagnosis, NOT re-investigating the rivalry pathology (which is structurally fixed).
 - See `docs/Audit/capital_allocation_fixes_2026_04.md`, `docs/Audit/cap_recalibration_sweep_2026_04.md`, `docs/Audit/cap_bracket_sweep_2026_04.md`, `docs/Core/deployment_boundary_2026_05.md`.
 
-### [HIGH NEW] Same-config Sharpe non-determinism across worktrees — lifecycle_history.csv likely culprit (2026-05-01)
+### [HIGH NEW → RESOLVED 2026-05-01 evening] Same-config Sharpe non-determinism across worktrees — lifecycle_history.csv likely culprit (2026-05-01)
 - Engine: F (lifecycle history not snapshotted by sweep harness) + orchestration (anchor restore semantics)
 - First flagged: 2026-04-30 in `cap_bracket_sweep_2026_04.md`; **escalated to ship-blocker 2026-05-01** by `path1_ship_validation_2026_05.md`.
-- Status: active — blocking ML-on production deployment.
-- Description: Three same-config (cap=0.20 + ML-on/off, prod-109, 2025 OOS, --reset-governor) backtests produced wildly divergent Sharpes:
-  - Agent A bracket B3 v2 (ML-off): 1.102
-  - Agent A cap-recalibration A3 (ML-off): 0.920 (anchor md5 matches B3 v2's)
-  - Agent A path1-ship A3 (ML-on): -0.378
-  - Agent C portfolio-ML round 1 (ML-on, cap=0.25): 1.064
-  - The ~1.5 Sharpe spread between path1-ship and Agent C at nominally compatible configurations is the headline.
-- Hypothesis: `data/governor/lifecycle_history.csv` is NOT snapshotted by `scripts/sweep_cap_recalibration.py::snapshot_lifecycle_state` and accumulates across runs. The lifecycle_manager reads history during a backtest's end-of-run pass and feeds it into pause/revive decisions; if those decisions differ across worktrees with different histories, the *next* run sees a different active edge stack. Compounds run-to-run.
-- Fix surface: extend `snapshot_lifecycle_state` to include `lifecycle_history.csv`. Then run a 3-replicate experiment at cap=0.20 + ML-on under identical anchor + history; if results converge, we have the cause. If they still diverge, the non-determinism is deeper (model-load order, numerical seeds, regime detector inputs).
-- Why HIGH: any "validated" Sharpe number from the audit corpus could be artifact. Production decisions ride on these numbers.
-- Recommended next step: instrument and replicate before any further ship attempt or 2025 OOS measurement campaign.
+- **Status: RESOLVED 2026-05-01 evening.** Agent A's `determinism-floor-restore` branch isolated the actual drift source to a different file: **`data/governor/edges.yml`** (not lifecycle_history.csv as initially hypothesized — that file does mutate but its content is write-only audit). End-of-run lifecycle + tier-reclassification writes to edges.yml; subsequent runs read mutated state. The new `scripts/run_isolated.py` harness snapshots+restores 4 governor files (edges.yml + 3 audit files) around each backtest. **3-run verify produces bitwise-identical canon md5 across runs.** Subsequent re-validation under harness confirmed: cap=0.20 + ML-off = 0.984 Sharpe deterministic on 2025 OOS prod-109; ML-on degrades by ~0.58 (the +0.749 lift was governor-drift coincidence). See memory `project_determinism_floor_2026_05_01.md` and `project_metalearner_drift_falsified_2026_05_01.md`. The `path1-revalidation-under-harness` audit table is the canonical post-harness measurement set.
 
 ### [HISTORICAL — superseded by entries above 2026-05-01]
 - Status: closed.
