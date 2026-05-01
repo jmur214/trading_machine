@@ -314,17 +314,40 @@ Agent B report so the result can't be moved-the-goalposts away:
 | 0.4 - 0.65 | **Partial pass.** Real lift but trails benchmark significantly. Phase 2.11 (per-ticker meta-learner) becomes the strategic next step (per 04-30 reviewer: meta-learner *is* the structural answer to capital rivalry that the linear allocator can't fully solve). |
 | **> 0.65** | **Full pass.** Phase 2.11 + 2.12 unblock. Goal-B path becomes credible. |
 
-## Phase 2.10e: Reform Gate 1 — ensemble-simulation gate (queued, post-2.10d)
+## Phase 2.10e: Reform Gate 1 — ensemble-simulation gate (SHIPPED IN-PROGRESS, NOT PROMOTED — 2026-05-01)
 
-> The 04-30 outside reviewer flagged Q3's standalone-gauntlet failure
-> as a false negative produced by the gauntlet's test geometry not
-> matching the deployment geometry: standalone fills get full
-> `risk_per_trade_pct` and cross the Almgren-Chriss impact knee;
-> ensemble fills stay sub-knee. **The gauntlet is currently rejecting
-> real alphas because of test geometry.** Reform Gate 1 to test
-> candidates *inside a simulated ensemble of the current active set
-> with realistic capital splitting.* Standalone Sharpe becomes one
-> diagnostic, not a gate.
+> **Status as of 2026-05-01 evening:** Phase 2.10e shipped as in-progress.
+> Two iterations of the gate (`gate1-reform-ensemble-simulation`,
+> `gate1-reform-baseline-fix`) progressively closed the baseline-vs-harness
+> gap from -1.4 Sharpe to ~0.33 Sharpe, but ~0.33 Sharpe of residual
+> divergence remains, attributable to init-order/model-state/config
+> subtleties the gate's reimplementation can't easily reproduce.
+> Falsifiable-spec `volume_anomaly_v1` + `herding_v1` produce
+> contributions ~zero under the corrected baseline — could be genuine
+> "edges add zero ensemble value" OR measurement artifact of the
+> residual gap; the two cannot be cleanly separated yet. Branches on
+> origin, NOT merged. Per-pre-committed criterion: gate is
+> mis-designed → re-tune. **Not promoted.** Memory:
+> `project_gate1_reimplementation_problem_2026_05_01.md`.
+>
+> **Architectural pivot for next session:** the gate reimplements
+> ensemble execution in its own code path, which is fragile to converge.
+> The cleaner architecture is to invoke the actual production backtest
+> pipeline (`orchestration/mode_controller.py::run_backtest`) with the
+> candidate added vs excluded, rather than reimplementing the ensemble.
+> That's a meaningful refactor (likely needs `run_backtest_pure(...)`
+> extraction from the CLI orchestration layer) but it's the convergence
+> path. See memory file for the design.
+
+> **Original framing (preserved for context):** The 04-30 outside
+> reviewer flagged Q3's standalone-gauntlet failure as a false negative
+> produced by the gauntlet's test geometry not matching the deployment
+> geometry: standalone fills get full `risk_per_trade_pct` and cross
+> the Almgren-Chriss impact knee; ensemble fills stay sub-knee. **The
+> gauntlet is currently rejecting real alphas because of test
+> geometry.** Reform Gate 1 to test candidates *inside a simulated
+> ensemble of the current active set with realistic capital splitting.*
+> Standalone Sharpe becomes one diagnostic, not a gate.
 
 - [ ] Design ensemble-simulation gate in
       `engines/engine_d_discovery/discovery.py::validate_candidate`.
