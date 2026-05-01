@@ -18,6 +18,7 @@ class HerdingEdge(EdgeBase, EdgeTemplate):
     EDGE_ID = "herding_v1"
     EDGE_GROUP = "behavioral"
     EDGE_CATEGORY = "contrarian"
+    DEFAULT_MIN_ADV_USD = 200_000_000  # $200M/day; cross-sectional but fills are per-ticker per Path-2 audit
 
     @classmethod
     def get_hyperparameter_space(cls):
@@ -32,11 +33,16 @@ class HerdingEdge(EdgeBase, EdgeTemplate):
         breadth_thr = self.params.get("breadth_threshold", 0.80)
         extreme_pct = self.params.get("extreme_pctile", 90.0)
         min_universe = self.params.get("min_universe_size", 10)
+        min_adv_usd = self.params.get("min_adv_usd", self.DEFAULT_MIN_ADV_USD)
 
-        # Compute daily returns for all tickers
+        # Compute daily returns for all tickers above the ADV floor
+        # (sub-floor names are excluded from both the breadth calc and the
+        # contrarian targeting — they get a 0 score in the output below.)
         ticker_rets = {}
         for t, df in data_map.items():
             if len(df) < 5 or "Close" not in df.columns:
+                continue
+            if self._below_adv_floor(df, min_adv_usd, ticker=t):
                 continue
             ret = float(df["Close"].pct_change().iloc[-1])
             if not np.isnan(ret):

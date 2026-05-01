@@ -16,6 +16,7 @@ class GapEdge(EdgeBase, EdgeTemplate):
     EDGE_ID = "gap_fill_v1"
     EDGE_GROUP = "stat_quant"
     EDGE_CATEGORY = "mean_reversion"
+    DEFAULT_MIN_ADV_USD = 150_000_000  # $150M/day; weak-positive diversifier, less ADV-sensitive per Path-2 audit
 
     @classmethod
     def get_hyperparameter_space(cls):
@@ -32,11 +33,14 @@ class GapEdge(EdgeBase, EdgeTemplate):
         atr_window = self.params.get("atr_window", 14)
         require_vol = self.params.get("require_volume_spike", False)
         vol_z_thr = self.params.get("vol_z_threshold", 2.0)
+        min_adv_usd = self.params.get("min_adv_usd", self.DEFAULT_MIN_ADV_USD)
 
         for t, df in data_map.items():
             if len(df) < atr_window + 5:
                 continue
             if not all(c in df.columns for c in ["Open", "High", "Low", "Close"]):
+                continue
+            if self._below_adv_floor(df, min_adv_usd, ticker=t):
                 continue
 
             close = df["Close"]

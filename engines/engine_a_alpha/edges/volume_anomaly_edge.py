@@ -16,6 +16,7 @@ class VolumeAnomalyEdge(EdgeBase, EdgeTemplate):
     EDGE_ID = "volume_anomaly_v1"
     EDGE_GROUP = "stat_quant"
     EDGE_CATEGORY = "volume"
+    DEFAULT_MIN_ADV_USD = 300_000_000  # $300M/day; per-ticker microstructure-driven, higher floor per Path-2 audit
 
     @classmethod
     def get_hyperparameter_space(cls):
@@ -34,11 +35,14 @@ class VolumeAnomalyEdge(EdgeBase, EdgeTemplate):
         vol_lb = self.params.get("vol_lookback", 20)
         bb_win = self.params.get("bb_window", 20)
         bb_squeeze = self.params.get("bb_squeeze_pct", 0.03)
+        min_adv_usd = self.params.get("min_adv_usd", self.DEFAULT_MIN_ADV_USD)
 
         for t, df in data_map.items():
             if len(df) < max(vol_lb, bb_win) + 10:
                 continue
             if "Close" not in df.columns or "Volume" not in df.columns:
+                continue
+            if self._below_adv_floor(df, min_adv_usd, ticker=t):
                 continue
 
             close = df["Close"]
