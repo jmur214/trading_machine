@@ -109,3 +109,16 @@ The ultimate goal of the system is to combine these individual edges. The holy g
 - **NOT overfit:** The system must be designed to avoid overfitting to historical data using techniques such as cross-validation and walk-forward analysis.
 - **Explainability:** Provide clear UI attribution (Cockpit Dashboard) detailing exactly *why* a trade fired, and *which* edge was responsible.
 - **Resilience:** Operate with institutional-grade safety guardrails preventing catastrophic drawdowns.
+
+## User Context — Retail Capital + Asymmetric-Upside Priority
+
+The system is being built for **retail-scale capital** ($5K-$15K range), not institutional AUM. This materially changes what optimization target the system should serve. The institutional model — small per-bet edges multiplied over many bets — produces meaningful absolute dollars at $1B+ AUM and meaningless absolute dollars at retail scale (1%/yr × 20yrs on $10K = ~$2K). For retail capital math to produce non-trivial terminal wealth, the system must catch a meaningful fraction of asymmetric (10x+) winners — not just optimize Sharpe.
+
+This adds **two simultaneously load-bearing objectives** to the original "Real Fund Manager Mentality":
+
+1. **Institutional discipline** — risk-adjusted optimization, robust validation, anti-overfitting, deployment safety. Don't compromise on these. The bones must stay institutional-grade.
+2. **Asymmetric upside capability** — the system must be able to (a) hold a portfolio of asymmetric-payoff candidates where 1-2 winners pay for the rest, and (b) eventually catch narrative-driven thematic moves (the BTC-at-$500 / RKLB / NVDA-pre-AI-inflection pattern) via LLM-as-analyst capability + diverse data ingestion. This is *additive* to Sharpe optimization, not opposite to it.
+
+**Implication for sequencing:** when forward planning weighs "capability that improves Sharpe by 0.05" against "capability that enables tail capture," the latter wins more often than institutional-frame heuristics suggest. Goal C (asymmetric upside / moonshot capture) is therefore a core deliverable that's currently deferred behind Path 1+2 ship for sequencing reasons, NOT a Phase 5+ optional sleeve.
+
+**Implication for architecture:** the Moonshot Sleeve (statistical-asymmetric, sketched in `forward_plan_2026_04_29.md`) and a future Thematic Conviction Sleeve (LLM-driven narrative capability, requires Phase 6) are both valid and intended to run in parallel post-Path-1. They serve overlapping but distinct mechanisms. See memories `project_retail_capital_constraint_2026_05_01.md` and `project_thematic_conviction_gap_2026_05_01.md` for the user's direct framing.
