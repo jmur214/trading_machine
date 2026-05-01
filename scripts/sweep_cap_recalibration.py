@@ -54,16 +54,39 @@ SWEEP_ANCHOR_DIR = GOVERNOR_DIR / "_cap_recal_anchor"
 PRESETS = {
     "a0": {"fill_share_cap": 0.25, "crisis_max_positions": 5,
            "stressed_max_positions": 7,
+           "start": "2025-01-01", "end": "2025-12-31",
            "label": "baseline (task C reproduction)"},
     "a1": {"fill_share_cap": 0.35, "crisis_max_positions": 5,
            "stressed_max_positions": 7,
+           "start": "2025-01-01", "end": "2025-12-31",
            "label": "mild loosen — fill-share only"},
     "a2": {"fill_share_cap": 0.45, "crisis_max_positions": 7,
            "stressed_max_positions": 9,
+           "start": "2025-01-01", "end": "2025-12-31",
            "label": "medium loosen — coordinated"},
     "a3": {"fill_share_cap": 0.20, "crisis_max_positions": 5,
            "stressed_max_positions": 7,
+           "start": "2025-01-01", "end": "2025-12-31",
            "label": "tighter sanity check"},
+    # Phase 2.10d round-2 bracket sweep below 0.20 on 2025 OOS:
+    "b1": {"fill_share_cap": 0.10, "crisis_max_positions": 5,
+           "stressed_max_positions": 7,
+           "start": "2025-01-01", "end": "2025-12-31",
+           "label": "bracket — very tight (0.10) on 2025 OOS"},
+    "b2": {"fill_share_cap": 0.15, "crisis_max_positions": 5,
+           "stressed_max_positions": 7,
+           "start": "2025-01-01", "end": "2025-12-31",
+           "label": "bracket — tight (0.15) on 2025 OOS"},
+    "b3": {"fill_share_cap": 0.20, "crisis_max_positions": 5,
+           "stressed_max_positions": 7,
+           "start": "2025-01-01", "end": "2025-12-31",
+           "label": "bracket — A3 reproduction (0.20) on 2025 OOS"},
+    # Multi-year robustness check on the chosen optimum (window = task C
+    # in-sample anchor that produced the original 1.063 Sharpe):
+    "is_optimum": {"fill_share_cap": 0.20, "crisis_max_positions": 5,
+                   "stressed_max_positions": 7,
+                   "start": "2021-01-01", "end": "2024-12-31",
+                   "label": "in-sample 2021-2024 robustness — chosen optimum"},
 }
 
 
@@ -160,6 +183,9 @@ def run_one(label: str, preset: dict, restore_anchor: bool = True) -> dict:
 
     before = {p.name for p in TRADES_DIR.iterdir() if p.is_dir() and p.name != "backup"}
 
+    start = preset.get("start", "2025-01-01")
+    end = preset.get("end", "2025-12-31")
+
     with patched_configs(
         fill_share_cap=preset["fill_share_cap"],
         crisis_max=preset["crisis_max_positions"],
@@ -172,19 +198,19 @@ def run_one(label: str, preset: dict, restore_anchor: bool = True) -> dict:
             no_governor=False,
             reset_governor=True,
             alpha_debug=False,
-            override_start="2025-01-01",
-            override_end="2025-12-31",
+            override_start=start,
+            override_end=end,
         )
 
     run_id = find_run_id(before)
     summary["run_id"] = run_id
-    summary["window"] = "2025-01-01 to 2025-12-31"
+    summary["window"] = f"{start} to {end}"
     summary["universe"] = "prod (109 tickers)"
     summary["sweep_label"] = label
     summary["preset"] = preset
     summary["timestamp"] = datetime.utcnow().isoformat() + "Z"
 
-    multi = compute_multi_benchmark_metrics(start="2025-01-01", end="2025-12-31")
+    multi = compute_multi_benchmark_metrics(start=start, end=end)
     summary["benchmarks"] = {
         name: {
             "sharpe": round(bm.sharpe, 3),
