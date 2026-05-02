@@ -44,7 +44,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
-from typing import Dict, Iterable, List, Optional, Tuple
+from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 import importlib
 import time
@@ -1014,7 +1014,13 @@ class ModeController:
                 print(f"[DISCOVERY-DIAG] writing per-candidate jsonl → {_diag_log_path}")
                 print(f"[DISCOVERY-DIAG] per-candidate timeout = {_diag_per_cand_timeout}s (0 = none)")
 
-            # Pass 1: collect raw metrics, defer Gate 4
+            # Pass 1: collect raw metrics, defer Gate 4.
+            # Share a PureBacktestCache across candidates so the production-
+            # equivalent baseline (active+paused minus candidate) is computed
+            # once instead of once per candidate. Without this, N candidates
+            # cost 2N backtests; with it, N+1 (one baseline + N with-candidate).
+            from orchestration.run_backtest_pure import PureBacktestCache
+            cycle_cache = PureBacktestCache()
             all_results: list = []
             for cand in batch:
                 cand_id = cand.get("edge_id", "unknown")
@@ -1036,6 +1042,7 @@ class ModeController:
                     result = discovery.validate_candidate(
                         cand, data_map, significance_threshold=None,
                         diagnostic_log_path=_diag_log_path,
+                        cache=cycle_cache,
                     )
                 except TimeoutError as toe:
                     _timed_out = True
