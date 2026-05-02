@@ -569,6 +569,107 @@ class DiscoveryEngine:
 
         return dm_b
 
+    # ====================================================================
+    # Production-equivalent edge ensemble construction
+    # ====================================================================
+
+    @staticmethod
+    def _build_production_edges(
+        *,
+        registry_path: Path,
+        alpha_config: Optional[Dict[str, Any]],
+        exclude_edge_ids: Optional[set] = None,
+    ) -> tuple[Dict[str, Any], Dict[str, float]]:
+        """Construct the production-equivalent edges_dict + edge_weights.
+
+        Mirrors `ModeController.run_backtest`'s edge-loading + soft-pause
+        logic exactly:
+          - Loads active + paused specs from `EdgeRegistry.list_tradeable()`.
+          - Instantiates each edge from its module + class via importlib.
+          - Applies config-driven `edge_weights` from alpha_settings.
+          - Applies `PAUSED_WEIGHT_MULTIPLIER = 0.25` and
+            `PAUSED_MAX_WEIGHT = 0.5` to status='paused' edges.
+
+        Excludes any edge_id in `exclude_edge_ids` (used to pull the
+        candidate out of the baseline before adding it back into the
+        with-candidate set).
+
+        Returns
+        -------
+        (edges, edge_weights) — drop-in inputs for `run_backtest_pure`.
+        """
+        import importlib
+
+        from engines.engine_a_alpha.edge_registry import EdgeRegistry
+
+        # Load registry from the same path the orchestrator uses
+        registry = EdgeRegistry(store_path=str(registry_path))
+        excluded = set(exclude_edge_ids or set())
+
+        loaded_edges: Dict[str, Any] = {}
+        spec_status_by_id: Dict[str, str] = {}
+        for spec in registry.list_tradeable():
+            if spec.edge_id in excluded:
+                continue
+            mod_name = spec.module
+            params = (spec.params or {}).copy()
+            try:
+                if "." in mod_name:
+                    mod = importlib.import_module(mod_name)
+                else:
+                    mod = importlib.import_module(
+                        f"engines.engine_a_alpha.edges.{mod_name}"
+                    )
+                edge_class = None
+                for attr in dir(mod):
+                    if attr.lower().endswith("edge") and attr not in ("BaseEdge",):
+                        val = getattr(mod, attr)
+                        if hasattr(val, "__module__") and val.__module__ == mod.__name__:
+                            edge_class = val
+                            break
+                if edge_class is None:
+                    for attr in dir(mod):
+                        if attr.lower().endswith("edge") and attr not in ("BaseEdge",):
+                            edge_class = getattr(mod, attr)
+                            break
+                if edge_class is None:
+                    continue
+                try:
+                    loaded_edges[spec.edge_id] = edge_class(params=params)
+                except TypeError:
+                    loaded_edges[spec.edge_id] = edge_class()
+                spec_status_by_id[spec.edge_id] = spec.status
+            except Exception as e:
+                print(f"[VALIDATE] Could not import {mod_name} for {spec.edge_id}: {e}")
+                continue
+
+        # Build edge_weights from alpha config (matches mode_controller)
+        config_ew = (alpha_config or {}).get("edge_weights", {}) if alpha_config else {}
+        edge_weights = {
+            eid: float(config_ew.get(eid, 1.0)) for eid in loaded_edges
+        }
+        PAUSED_WEIGHT_MULTIPLIER = 0.25
+        PAUSED_MAX_WEIGHT = 0.5
+        for eid in list(edge_weights.keys()):
+            if spec_status_by_id.get(eid) == "paused":
+                edge_weights[eid] = min(
+                    edge_weights[eid] * PAUSED_WEIGHT_MULTIPLIER,
+                    PAUSED_MAX_WEIGHT,
+                )
+
+        return loaded_edges, edge_weights
+
+    @staticmethod
+    def _instantiate_candidate(candidate_spec: Dict[str, Any]) -> Any:
+        """Import + instantiate a candidate edge from its spec dict."""
+        from importlib import import_module
+        mod = import_module(candidate_spec["module"])
+        cls_ = getattr(mod, candidate_spec["class"])
+        edge = cls_()
+        if "params" in candidate_spec and candidate_spec["params"]:
+            edge.set_params(candidate_spec["params"])
+        return edge
+
     def validate_candidate(
         self,
         candidate_spec: Dict[str, Any],
@@ -576,22 +677,65 @@ class DiscoveryEngine:
         significance_threshold: Optional[float] = 0.05,
         exec_params: Optional[Dict[str, Any]] = None,
         diagnostic_log_path: Optional[str] = None,
+        cache: Optional[Any] = None,
+        gate1_contribution_threshold: float = 0.10,
+        gate2_survival_threshold: float = 0.60,
+        gate3_consistency_threshold: float = 0.40,
+        candidate_default_weight: float = 1.0,
+        alpha_config: Optional[Dict[str, Any]] = None,
+        risk_settings: Optional[Dict[str, Any]] = None,
+        portfolio_settings: Optional[Dict[str, Any]] = None,
+        start_date: Optional[str] = None,
+        end_date: Optional[str] = None,
     ) -> Dict[str, float]:
-        """
-        Multi-gate validation pipeline for edge candidates.
+        """Production-equivalent multi-gate validation (architectural-fix v2).
 
-        Gate 1: Quick backtest — must produce Sharpe > 0 (cheap filter).
-        Gate 2: PBO robustness — 50 synthetic paths, survival > 0.7.
-        Gate 3: WFO degradation — OOS Sharpe >= 60% of IS Sharpe.
-        Gate 4: Statistical significance — permutation test p-value
-                below `significance_threshold`.
+        Per `project_gauntlet_consolidated_fix_2026_05_01.md`: invokes the
+        actual production pipeline twice (baseline = active+paused minus
+        candidate; with-candidate = baseline + candidate) instead of running
+        a standalone single-edge backtest. The candidate's *attribution
+        stream* (with_returns - baseline_returns) is then threaded through
+        gates 2-6.
 
-        `diagnostic_log_path` (optional): when set, each candidate emits
-        one JSON line with per-gate pass/fail + timing + first-failed-gate.
-        Used by the discovery diagnostic harness; safe to leave None.
+        This fixes the standalone-vs-ensemble geometry mismatch that drove
+        Gate 1 to kill 30/30 candidates in the 2026-05-01 diagnostic
+        (Audit doc `discovery_diagnostic_2026_05.md`) and was inherited
+        by gates 2-6 (Audit doc `gates_2_to_6_audit_2026_05.md`).
+
+        Gates
+        -----
+        - Gate 1: Sharpe(with_candidate) - Sharpe(baseline) > threshold.
+        - Gate 2: PBO survival on bootstrap of attribution stream.
+        - Gate 3: WFO consistency = mean rolling-window Sharpe / overall
+                  Sharpe of the attribution stream.
+        - Gate 4: Permutation-null p-value on attribution stream.
+        - Gate 5: Universe-B production-equivalent contribution > 0.
+        - Gate 6: FF5+Mom regression on attribution stream — t > 2 AND
+                  α annualized > 2%.
+
+        Threshold rationale — see `docs/Audit/gauntlet_architectural_fix_2026_05.md`
+        for calibration.
+
+        Caching
+        -------
+        If `cache` (a `PureBacktestCache` instance) is passed, the baseline
+        is fingerprinted and reused across candidates in the same Discovery
+        cycle. N candidates → N+1 backtests instead of 2N.
         """
         import numpy as np
         import time as _time
+        import math
+
+        from orchestration.run_backtest_pure import (
+            run_backtest_pure,
+            PureBacktestCache,
+        )
+        from engines.engine_d_discovery.attribution import (
+            treatment_effect_returns,
+            stream_sharpe,
+            attribution_diagnostics,
+        )
+        from engines.engine_d_discovery.robustness import RobustnessTester
 
         _diag_t_start = _time.time()
         _diag_gate_seconds: Dict[str, float] = {}
@@ -605,6 +749,10 @@ class DiscoveryEngine:
         result = {
             "sharpe": 0.0,
             "sortino": 0.0,
+            "baseline_sharpe": 0.0,
+            "with_candidate_sharpe": 0.0,
+            "contribution_sharpe": 0.0,
+            "attribution_sharpe": 0.0,
             "robustness_survival": 0.0,
             "wfo_degradation": 0.0,
             "significance_p": 1.0,
@@ -692,271 +840,254 @@ class DiscoveryEngine:
                 print(f"[DISCOVERY-DIAG] emit failed: {_emit_err}")
 
         try:
-            from importlib import import_module
-            mod = import_module(candidate_spec["module"])
-            cls_ = getattr(mod, candidate_spec["class"])
-            edge = cls_()
-            if "params" in candidate_spec:
-                edge.set_params(candidate_spec["params"])
-
-            from backtester.backtest_controller import BacktestController
-            from engines.engine_a_alpha.alpha_engine import AlphaEngine
-            from engines.engine_b_risk.risk_engine import RiskEngine
-            from cockpit.logger import CockpitLogger
-
-            alpha = AlphaEngine(edges={candidate_spec["edge_id"]: edge}, debug=False)
-            risk = RiskEngine({"risk_per_trade_pct": 0.01})
-            bt_logger = CockpitLogger(out_dir="/tmp/discovery_validation", flush_each_fill=False)
-
+            # ---------------------------------------------------------------
+            # Setup: build production-equivalent baseline + with-candidate
+            # edge ensembles. Run pure backtests for both. Compute
+            # attribution stream from the diff.
+            # ---------------------------------------------------------------
             if not data_map:
                 _diag_error = "empty_data_map"
                 _emit_diag()
                 return result
 
+            cand_id = candidate_spec["edge_id"]
             first_ticker = list(data_map.keys())[0]
-            start_date = data_map[first_ticker].index[0].isoformat()
-            end_date = data_map[first_ticker].index[-1].isoformat()
-            _g1_t0 = _time.time()
+            if start_date is None:
+                start_date = data_map[first_ticker].index[0].isoformat()
+            if end_date is None:
+                end_date = data_map[first_ticker].index[-1].isoformat()
 
-            # Default to fixed 5bps for cheap discovery scans; callers running
-            # a realistic-cost re-validation pass through `exec_params` with the
-            # ADV-bucketed Almgren-Chriss settings from backtest_settings.json.
+            # Default exec_params: cheap 5bps for discovery scans; callers
+            # passing realistic-cost ADV-bucketed Almgren-Chriss configs
+            # override this.
             _exec_params = exec_params if exec_params is not None else {"slippage_bps": 5.0}
-            controller = BacktestController(
-                data_map=data_map,
-                alpha_engine=alpha,
-                risk_engine=risk,
-                cockpit_logger=bt_logger,
-                exec_params=_exec_params,
-                initial_capital=100_000,
-                batch_flush_interval=99999,
+
+            # Lazy-load alpha config so soft-pause weights match production.
+            if alpha_config is None:
+                try:
+                    from utils.config_loader import load_json
+                    repo_root = Path(__file__).resolve().parents[2]
+                    alpha_config = load_json(
+                        str(repo_root / "config" / "alpha_settings.prod.json")
+                    )
+                except Exception:
+                    alpha_config = {}
+
+            # Build the baseline ensemble (production minus this candidate)
+            baseline_edges, baseline_weights = self._build_production_edges(
+                registry_path=self.registry_path,
+                alpha_config=alpha_config,
+                exclude_edge_ids={cand_id},
             )
 
-            history = controller.run(start_date, end_date)
+            # Build the with-candidate ensemble (baseline + candidate at default weight)
+            cand_edge = self._instantiate_candidate(candidate_spec)
+            with_edges = dict(baseline_edges)
+            with_edges[cand_id] = cand_edge
+            with_weights = dict(baseline_weights)
+            with_weights[cand_id] = float(candidate_default_weight)
 
-            # ---- Gate 1: Quick backtest ----
-            if not history:
+            # Caching: if the orchestrator passed a cache, fingerprint and
+            # reuse the baseline; the with-candidate run is candidate-
+            # specific and not cacheable.
+            local_cache = cache if cache is not None else PureBacktestCache()
+
+            run_kwargs = dict(
+                data_map=data_map,
+                start_date=start_date,
+                end_date=end_date,
+                exec_params=_exec_params,
+                initial_capital=100_000.0,
+                alpha_config=alpha_config,
+                risk_settings=risk_settings,
+                portfolio_settings=portfolio_settings,
+            )
+
+            _g1_t0 = _time.time()
+            baseline_result = local_cache.get_or_run(
+                edges=baseline_edges,
+                edge_weights=baseline_weights,
+                **run_kwargs,
+            )
+            with_candidate_result = run_backtest_pure(
+                edges=with_edges,
+                edge_weights=with_weights,
+                **run_kwargs,
+            )
+
+            # Pull Sharpes
+            baseline_sharpe = float(baseline_result.metrics.get("Sharpe Ratio", 0.0))
+            with_candidate_sharpe = float(
+                with_candidate_result.metrics.get("Sharpe Ratio", 0.0)
+            )
+            contribution = with_candidate_sharpe - baseline_sharpe
+            result["baseline_sharpe"] = baseline_sharpe
+            result["with_candidate_sharpe"] = with_candidate_sharpe
+            result["contribution_sharpe"] = contribution
+            # `sharpe` retained for backward-compat consumers (orchestrator
+            # passed_all_gates final-check, fitness score, GA selection).
+            # Now reports the with-candidate ensemble Sharpe rather than a
+            # standalone single-edge Sharpe.
+            result["sharpe"] = with_candidate_sharpe
+            result["sortino"] = float(
+                with_candidate_result.metrics.get("Sortino", 0.0)
+            )
+
+            # Attribution stream = with - baseline (treatment effect).
+            attribution = treatment_effect_returns(
+                with_candidate_result.daily_returns,
+                baseline_result.daily_returns,
+            )
+            attribution_sharpe = stream_sharpe(attribution)
+            result["attribution_sharpe"] = attribution_sharpe
+            attr_diag = attribution_diagnostics(attribution, capital=100_000.0)
+            result["attribution_diagnostics"] = attr_diag
+
+            # ---- Gate 1: Sharpe contribution ----
+            # Pass criterion: with-candidate Sharpe lifts the baseline by
+            # at least `gate1_contribution_threshold` (default 0.10).
+            # This replaces the legacy benchmark-relative standalone gate
+            # which kills 30/30 candidates that have positive ensemble
+            # contribution (Audit doc discovery_diagnostic_2026_05.md).
+            result["gate_1_passed"] = bool(contribution > gate1_contribution_threshold)
+            result["benchmark_threshold"] = float(gate1_contribution_threshold)
+            if not result["gate_1_passed"]:
+                print(
+                    f"[DISCOVERY] {cand_id} failed Gate 1 "
+                    f"(contribution={contribution:+.3f} <= {gate1_contribution_threshold})"
+                )
                 _stamp("gate_1", _g1_t0)
-                _diag_error = "empty_history"
                 _emit_diag()
                 return result
-
-            # Index by timestamp so MetricsEngine.cagr() can compute date deltas.
-            # Without this the index is a RangeIndex (ints) and `(end - start).days`
-            # raises AttributeError: 'int' object has no attribute 'days'.
-            equity_curve = pd.Series(
-                [h["equity"] for h in history],
-                index=pd.to_datetime([h["timestamp"] for h in history]),
-            )
-
-            from core.metrics_engine import MetricsEngine
-            metrics = MetricsEngine.calculate_all(equity_curve)
-
-            sharpe = float(metrics.get("Sharpe", 0.0))
-            sortino = float(metrics.get("Sortino", 0.0))
-            result["sharpe"] = sharpe
-            result["sortino"] = sortino
-
-            # Gate 1: benchmark-relative Sharpe. An edge passing at Sharpe 0.5
-            # during a bull market where SPY sits at Sharpe 1.5 is destroying
-            # value vs buy-and-hold. Require the edge to be within 0.2 Sharpe
-            # of the benchmark over the same window — or beat it.
-            try:
-                from core.benchmark import gate_sharpe_vs_benchmark
-                passed, threshold = gate_sharpe_vs_benchmark(
-                    sharpe, start_date, end_date, margin=0.2,
-                )
-                result["benchmark_threshold"] = threshold
-                result["gate_1_passed"] = bool(passed)
-                if not passed:
-                    print(f"[DISCOVERY] {candidate_spec['edge_id']} failed Gate 1 "
-                          f"(Sharpe={sharpe:.2f} < benchmark_threshold={threshold:.2f})")
-                    _stamp("gate_1", _g1_t0)
-                    _emit_diag()
-                    return result
-            except Exception as e:
-                # Fallback to the legacy absolute-threshold gate if benchmark
-                # data is unavailable — conservative: require Sharpe > 0
-                print(f"[DISCOVERY] Benchmark gate unavailable ({e}), falling back to Sharpe > 0")
-                result["gate_1_passed"] = sharpe > 0
-                if sharpe <= 0:
-                    print(f"[DISCOVERY] {candidate_spec['edge_id']} failed Gate 1 (Sharpe={sharpe:.2f})")
-                    _stamp("gate_1", _g1_t0)
-                    _emit_diag()
-                    return result
             _stamp("gate_1", _g1_t0)
 
-            # Compute daily returns for significance testing
-            daily_returns = equity_curve.pct_change().dropna().values
-
-            # ---- Gate 2: PBO Robustness (50 paths) ----
+            # ---- Gate 2: PBO survival on attribution stream ----
             _g2_t0 = _time.time()
             survival_rate = 0.0
             try:
-                from engines.engine_d_discovery.robustness import RobustnessTester
                 tester = RobustnessTester()
-
-                def strategy_wrapper(dm):
-                    t_alpha = AlphaEngine(edges={candidate_spec["edge_id"]: edge}, debug=False)
-                    t_risk = RiskEngine({"risk_per_trade_pct": 0.01})
-                    t_logger = CockpitLogger(out_dir="/tmp/pbo_check", flush_each_fill=False)
-
-                    t_first = list(dm.keys())[0]
-                    t_start = dm[t_first].index[0].isoformat()
-                    t_end = dm[t_first].index[-1].isoformat()
-
-                    tc = BacktestController(
-                        data_map=dm, alpha_engine=t_alpha, risk_engine=t_risk,
-                        cockpit_logger=t_logger, initial_capital=100000,
-                        batch_flush_interval=99999,
-                    )
-                    th = tc.run(t_start, t_end)
-                    if not th:
-                        return {"sharpe": -1.0}
-                    te = [x["equity"] for x in th]
-                    if len(te) < 2:
-                        return {"sharpe": -1.0}
-                    tr = pd.Series(te).pct_change().dropna()
-                    if tr.std() == 0:
-                        return {"sharpe": 0.0}
-                    return {"sharpe": float(tr.mean() / tr.std() * np.sqrt(252))}
-
-                first_key = list(data_map.keys())[0]
-                pbo_res = tester.calculate_pbo(
-                    strategy_wrapper, data_map[first_key], n_paths=50,
+                pbo = tester.calculate_pbo_returns_stream(
+                    attribution, n_paths=200, block_size=20, seed=42,
                 )
-                survival_rate = pbo_res.get("survival_rate", 0.0)
+                survival_rate = pbo.get("survival_rate", 0.0)
+                result["pbo_actual_sharpe"] = pbo.get("actual_sharpe", 0.0)
+                result["pbo_avg_synthetic_sharpe"] = pbo.get("avg_synthetic_sharpe", 0.0)
             except Exception as e:
-                print(f"[DISCOVERY] PBO check failed: {e}")
+                print(f"[DISCOVERY] PBO check failed: {type(e).__name__}: {e}")
 
             result["robustness_survival"] = float(survival_rate)
-            result["gate_2_passed"] = bool(survival_rate >= 0.7)
+            result["gate_2_passed"] = bool(survival_rate >= gate2_survival_threshold)
             _stamp("gate_2", _g2_t0)
 
-            # ---- Gate 3: WFO Degradation ----
+            # ---- Gate 3: WFO consistency on attribution stream ----
+            # Replaces hyperparameter-optimization WFO with a simpler
+            # rolling-window Sharpe-consistency check on the attribution
+            # stream (the architectural fix means the candidate's
+            # contribution is the right substrate, not its standalone
+            # parameters). Computes mean rolling-63d Sharpe and divides
+            # by overall Sharpe — > threshold means contribution is
+            # temporally stable.
             _g3_t0 = _time.time()
-            # WalkForwardOptimizer signature: ctor takes data_map, then
-            # `run_optimization(strategy_spec, start_date, train_months,
-            # test_months)`.  candidate_spec already has the required
-            # module/class/edge_id keys, so it doubles as strategy_spec.
-            wfo_degradation = 0.0
+            wfo_consistency = 0.0
             try:
-                from engines.engine_d_discovery.wfo import WalkForwardOptimizer
-                wfo = WalkForwardOptimizer(data_map=data_map)
-                wfo_result = wfo.run_optimization(
-                    candidate_spec,
-                    start_date=start_date,
-                    train_months=12,
-                    test_months=3,
-                )
-                if wfo_result and "degradation" in wfo_result:
-                    wfo_degradation = float(wfo_result["degradation"])
-                if wfo_result:
-                    result["wfo_oos_sharpe"] = float(wfo_result.get("oos_sharpe", 0.0))
-                    result["wfo_is_sharpe"] = float(wfo_result.get("is_sharpe_avg", 0.0))
+                if len(attribution) >= 126:  # need at least 2 windows of 63d
+                    win = 63  # ~3 months of trading days
+                    rolling_sharpes = []
+                    for start_i in range(0, len(attribution) - win + 1, win // 2):
+                        chunk = attribution.iloc[start_i : start_i + win]
+                        s = stream_sharpe(chunk)
+                        rolling_sharpes.append(s)
+                    if rolling_sharpes and attribution_sharpe > 0:
+                        mean_window_sharpe = float(np.mean(rolling_sharpes))
+                        wfo_consistency = mean_window_sharpe / attribution_sharpe
+                        result["wfo_oos_sharpe"] = mean_window_sharpe
+                        result["wfo_is_sharpe"] = float(attribution_sharpe)
+                        result["wfo_window_sharpes"] = [float(x) for x in rolling_sharpes]
             except Exception as e:
-                # Re-raise programmer errors (TypeError, AttributeError) — these
-                # were what hid the prior interface-mismatch bug.  Only swallow
-                # genuine runtime issues (data shape, insufficient bars).
                 if isinstance(e, (TypeError, AttributeError)):
                     raise
                 print(f"[DISCOVERY] WFO check skipped: {type(e).__name__}: {e}")
 
-            result["wfo_degradation"] = wfo_degradation
-            result["gate_3_evaluated"] = bool(wfo_degradation != 0.0 or "wfo_oos_sharpe" in result)
+            result["wfo_degradation"] = float(wfo_consistency)
+            result["gate_3_evaluated"] = bool(wfo_consistency != 0.0)
             _stamp("gate_3", _g3_t0)
 
-            # ---- Gate 4: Statistical Significance ----
+            # ---- Gate 4: Permutation significance on attribution stream ----
             _g4_t0 = _time.time()
             sig_p = 1.0
             try:
-                from engines.engine_d_discovery.significance import monte_carlo_permutation_test
-                sig_result = monte_carlo_permutation_test(daily_returns, n_permutations=500)
+                from engines.engine_d_discovery.significance import (
+                    monte_carlo_permutation_test,
+                )
+                sig_result = monte_carlo_permutation_test(
+                    attribution.values, n_permutations=500,
+                )
                 sig_p = sig_result.get("p_value", 1.0)
             except Exception as e:
-                print(f"[DISCOVERY] Significance test failed: {e}")
+                print(f"[DISCOVERY] Significance test failed: {type(e).__name__}: {e}")
 
             result["significance_p"] = float(sig_p)
-            # gate_4_passed is computed at the final pass-check (depends on
-            # significance_threshold or BH-FDR batch correction); fill in here
-            # for the per-candidate path (orchestrator will overwrite for batch).
             if significance_threshold is not None:
                 result["gate_4_passed"] = bool(sig_p < significance_threshold)
             _stamp("gate_4", _g4_t0)
 
-            # ---- Gate 5: Universe B generalization ----
+            # ---- Gate 5: Universe-B production-equivalent transfer ----
             _g5_t0 = _time.time()
-            # Run the same edge on a sample of S&P 500 tickers NOT in the
-            # production universe. Sharpe must be > 0. If an edge only works
-            # on the 109 tickers we trained on, it is universe-overfit — the
-            # alpha has been mined from the specific names, not the market.
-            # "nan" means the gate was skipped (degenerate: no universe-B data
-            # available) — the edge is not penalized for infrastructure gaps.
             universe_b_sharpe: float = float("nan")
             universe_b_n_tickers: int = 0
+            universe_b_contribution: float = float("nan")
             try:
                 dm_b = self._load_universe_b(prod_tickers=set(data_map.keys()))
                 universe_b_n_tickers = len(dm_b)
-
                 if not dm_b:
                     print(f"[DISCOVERY] Gate 5 skipped: no universe-B tickers available")
                 else:
-                    b_alpha = AlphaEngine(edges={candidate_spec["edge_id"]: edge}, debug=False)
-                    b_risk = RiskEngine({"risk_per_trade_pct": 0.01})
-                    b_logger = CockpitLogger(out_dir="/tmp/discovery_gate5", flush_each_fill=False)
-
-                    b_controller = BacktestController(
+                    # Production-equivalent ensemble on Universe-B too.
+                    # Run baseline + with-candidate; contribution = diff.
+                    ub_start = list(dm_b.values())[0].index[0].isoformat()
+                    ub_end = list(dm_b.values())[0].index[-1].isoformat()
+                    ub_run_kwargs = dict(
                         data_map=dm_b,
-                        alpha_engine=b_alpha,
-                        risk_engine=b_risk,
-                        cockpit_logger=b_logger,
+                        start_date=ub_start,
+                        end_date=ub_end,
                         exec_params=_exec_params,
-                        initial_capital=100_000,
-                        batch_flush_interval=99999,
+                        initial_capital=100_000.0,
+                        alpha_config=alpha_config,
+                        risk_settings=risk_settings,
+                        portfolio_settings=portfolio_settings,
                     )
-                    b_history = b_controller.run(start_date, end_date)
-
-                    if b_history:
-                        # Same datetime-index requirement as Gate 1 (line 651) —
-                        # MetricsEngine.cagr() does (end - start).days on the
-                        # equity_curve.index, which fails on RangeIndex.
-                        b_equity = pd.Series(
-                            [h["equity"] for h in b_history],
-                            index=pd.to_datetime([h["timestamp"] for h in b_history]),
-                        )
-                        b_metrics = MetricsEngine.calculate_all(b_equity)
-                        universe_b_sharpe = float(b_metrics.get("Sharpe", 0.0))
-                    else:
-                        universe_b_sharpe = 0.0
-
+                    ub_baseline = run_backtest_pure(
+                        edges=baseline_edges,
+                        edge_weights=baseline_weights,
+                        **ub_run_kwargs,
+                    )
+                    ub_with = run_backtest_pure(
+                        edges=with_edges,
+                        edge_weights=with_weights,
+                        **ub_run_kwargs,
+                    )
+                    ub_contribution = (
+                        float(ub_with.metrics.get("Sharpe Ratio", 0.0))
+                        - float(ub_baseline.metrics.get("Sharpe Ratio", 0.0))
+                    )
+                    ub_attribution = treatment_effect_returns(
+                        ub_with.daily_returns, ub_baseline.daily_returns,
+                    )
+                    universe_b_sharpe = stream_sharpe(ub_attribution)
+                    universe_b_contribution = ub_contribution
             except Exception as e:
-                # Log the exception type so future schema-drift bugs surface
-                # instead of being swallowed as "Gate 5 skipped".
                 print(f"[DISCOVERY] Gate 5 (Universe B) failed: {type(e).__name__}: {e}")
 
             result["universe_b_sharpe"] = universe_b_sharpe
+            result["universe_b_contribution"] = universe_b_contribution
             result["universe_b_n_tickers"] = universe_b_n_tickers
-            import math as _math_g5
             result["gate_5_passed"] = bool(
-                _math_g5.isnan(universe_b_sharpe) or universe_b_sharpe > 0
+                math.isnan(universe_b_sharpe) or universe_b_sharpe > 0
             )
             _stamp("gate_5", _g5_t0)
 
-            # ---- Gate 6: Factor-Decomposition Alpha (Phase 1) ----
+            # ---- Gate 6: FF5+Mom factor decomposition on attribution stream ----
             _g6_t0 = _time.time()
-            # Reject candidates whose returns are explained by FF5 + Mom
-            # factor exposure rather than genuine alpha. Threshold:
-            # intercept t-stat > 2 AND alpha annualized > 2%.
-            #
-            # An edge that loads +1.5 on momentum during a momentum regime
-            # *looks* like alpha but is reproducible via MTUM at 15 bps. The
-            # gate pushes the discovery loop to find returns that AREN'T
-            # factor beta in disguise.
-            #
-            # Skip semantics: if factor data isn't available or the edge has
-            # too few daily observations to fit reliably, the gate passes
-            # (don't block on missing diagnostics — other gates already do
-            # their job).
             factor_alpha_passed = True
             factor_alpha_reason = "skipped: not run"
             try:
@@ -965,18 +1096,11 @@ class DiscoveryEngine:
                     regress_returns_on_factors,
                     gate_factor_alpha,
                 )
-                # Build daily-return Series from the equity curve. Already
-                # has a datetime index from line 655.
-                daily_ret_series = equity_curve.pct_change().dropna()
-                # Don't auto-download from inside the validation loop —
-                # the diagnostic script handles cache priming. If the
-                # cache is missing, the gate skips (factor_alpha_passed
-                # stays True).
                 factors = load_factor_data(auto_download=False)
                 decomp = regress_returns_on_factors(
-                    returns=daily_ret_series,
+                    returns=attribution,
                     factors=factors,
-                    edge_name=candidate_spec.get("edge_id", "?"),
+                    edge_name=cand_id,
                 )
                 factor_alpha_passed, factor_alpha_reason = gate_factor_alpha(decomp)
                 if decomp is not None:
@@ -984,14 +1108,10 @@ class DiscoveryEngine:
                     result["factor_alpha_tstat"] = decomp.alpha_tstat
                     result["factor_r_squared"] = decomp.r_squared
             except FileNotFoundError as e:
-                # Factor cache not primed — log and skip (don't block discovery
-                # because the user hasn't run the baseline diagnostic yet).
                 factor_alpha_passed = True
                 factor_alpha_reason = "skipped: factor cache missing"
                 print(f"[DISCOVERY] Gate 6 skipped: {e}")
             except Exception as e:
-                # Re-raise programmer errors; swallow only legitimate runtime
-                # issues so future schema-drift bugs surface immediately.
                 if isinstance(e, (TypeError, AttributeError)):
                     raise
                 factor_alpha_passed = True
@@ -1003,12 +1123,9 @@ class DiscoveryEngine:
             result["gate_6_passed"] = bool(factor_alpha_passed)
             _stamp("gate_6", _g6_t0)
             if not factor_alpha_passed:
-                print(f"[DISCOVERY] {candidate_spec['edge_id']} failed Gate 6 ({factor_alpha_reason})")
+                print(f"[DISCOVERY] {cand_id} failed Gate 6 ({factor_alpha_reason})")
 
-            # ---- Final gate check ----
-            # If `significance_threshold` is None, the orchestrator will
-            # re-evaluate Gate 4 after BH-FDR batch correction; treat it as
-            # provisionally passed here so other gates aren't masked.
+            # ---- Final pass check ----
             if significance_threshold is None:
                 sig_passed = True
                 sig_threshold_for_log = float("nan")
@@ -1016,23 +1133,20 @@ class DiscoveryEngine:
                 sig_passed = sig_p < significance_threshold
                 sig_threshold_for_log = significance_threshold
 
-            # Gate 5: nan means skipped (no universe-B data) — don't penalize.
-            import math
-            universe_b_passed = math.isnan(universe_b_sharpe) or universe_b_sharpe > 0
+            universe_b_passed = (
+                math.isnan(universe_b_sharpe) or universe_b_sharpe > 0
+            )
 
             passed = (
-                sharpe > 0
-                and survival_rate >= 0.7
+                contribution > gate1_contribution_threshold
+                and survival_rate >= gate2_survival_threshold
                 and sig_passed
                 and universe_b_passed
                 and factor_alpha_passed
             )
             result["passed_all_gates"] = passed
             result["significance_threshold"] = sig_threshold_for_log
-            # Diagnostic side: store the per-candidate Gate 4 verdict the
-            # standalone path would have used (orchestrator BH-FDR path
-            # overwrites passed_all_gates post-hoc — diagnostic captures
-            # the per-candidate signal regardless).
+
             if significance_threshold is None:
                 result["gate_4_passed"] = bool(sig_p < 0.05)
 
@@ -1041,27 +1155,26 @@ class DiscoveryEngine:
                 else f"{universe_b_sharpe:.2f}"
             )
             gate_summary = (
-                f"Sharpe={sharpe:.2f}, survival={survival_rate:.0%}, "
-                f"wfo_deg={wfo_degradation:.2f}, p={sig_p:.3f}, "
+                f"contrib={contribution:+.3f}, "
+                f"attr_sh={attribution_sharpe:.2f}, "
+                f"survival={survival_rate:.0%}, "
+                f"wfo_cons={wfo_consistency:.2f}, "
+                f"p={sig_p:.3f}, "
                 f"univ_b={b_sharpe_str}({universe_b_n_tickers}t), "
                 f"alpha={factor_alpha_reason}"
             )
             if passed:
-                print(f"[DISCOVERY] {candidate_spec['edge_id']} PASSED all gates: {gate_summary}")
+                print(f"[DISCOVERY] {cand_id} PASSED all gates: {gate_summary}")
             else:
-                print(f"[DISCOVERY] {candidate_spec['edge_id']} FAILED gates: {gate_summary}")
+                print(f"[DISCOVERY] {cand_id} FAILED gates: {gate_summary}")
 
-            # Composite fitness score — used by GA as selection signal.
-            # Formula: 0.5*OOS_Sharpe + 0.3*survival_rate + 0.2*degradation_ratio
-            # OOS Sharpe comes from Gate 3 WFO; falls back to in-sample if WFO skipped.
-            # Higher is better. Penalizes in-sample-only fits.
-            oos_sh = result.get("wfo_oos_sharpe", sharpe)
-            is_sh = result.get("wfo_is_sharpe", 0.0) or sharpe
-            degradation_ratio = min(1.0, max(0.0, oos_sh / is_sh)) if is_sh > 0 else 0.0
-            result["fitness_score"] = (
-                0.5 * oos_sh
+            # Composite fitness score: weight the contribution Sharpe lift
+            # heavily (production-relevant). Survival + WFO consistency are
+            # secondary stability signals.
+            result["fitness_score"] = float(
+                0.5 * contribution
                 + 0.3 * float(survival_rate)
-                + 0.2 * degradation_ratio
+                + 0.2 * float(max(0.0, min(1.0, wfo_consistency)))
             )
 
             _emit_diag()

@@ -1,0 +1,38 @@
+[
+  {
+    "edge_id": "volume_anomaly_v1",
+    "baseline_sharpe": 1.1743607542646135,
+    "with_candidate_sharpe": 1.2875756191928014,
+    "contribution_sharpe": 0.11321486492818789,
+    "attribution_sharpe": 0.7148737517343222,
+    "robustness_survival": 0.765,
+    "wfo_consistency": 0.0,
+    "significance_p": 0.768,
+    "factor_alpha_tstat": -0.3160571201779128,
+    "factor_alpha_annualized": -0.026249262164579523,
+    "gate_1_passed": true,
+    "gate_2_passed": true,
+    "gate_4_passed": false,
+    "gate_5_passed": true,
+    "gate_6_passed": false,
+    "passed_all_gates": false
+  },
+  {
+    "edge_id": "herding_v1",
+    "baseline_sharpe": 1.7092758929535714,
+    "with_candidate_sharpe": 1.2875756191928014,
+    "contribution_sharpe": -0.42170027376077,
+    "attribution_sharpe": -0.2538274522560355,
+    "robustness_survival": 0.0,
+    "wfo_consistency": 0.0,
+    "significance_p": 1.0,
+    "factor_alpha_tstat": null,
+    "factor_alpha_annualized": null,
+    "gate_1_passed": false,
+    "gate_2_passed": false,
+    "gate_4_passed": false,
+    "gate_5_passed": false,
+    "gate_6_passed": false,
+    "passed_all_gates": false
+  }
+]

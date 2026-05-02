@@ -52,10 +52,18 @@ class WalkForwardOptimizer:
             start_idx = 0
              
         current_idx = start_idx
-        
-        # Results container
-        oos_equity = [] # Out of Sample equity curve
-        param_history = [] 
+
+        # Results container.
+        # `oos_returns` accumulates per-day RETURNS across windows, not raw
+        # equity values. Stitching equity values across independent test
+        # windows (each starting at $100k) produces phantom −4.76% returns
+        # at every window boundary because pct_change() applied to the
+        # concatenated equity sequence sees a step from window-N's last
+        # equity (≈$105k) to window-(N+1)'s first equity ($100k). Phase 5
+        # of the gauntlet architectural fix (2026-05-02) stitches returns
+        # instead, which is the well-known WFO-trap fix.
+        oos_returns: list = []
+        param_history = []
         
         # Instantiate Edge Class only once to check params
         from importlib import import_module
@@ -109,8 +117,17 @@ class WalkForwardOptimizer:
             # 2. VALIDATE (Out-of-Sample)
             # Run the winner on the Test window
             test_res = self._quick_backtest(strategy_spec, best_params, test_start, test_end)
-            oos_equity.extend(test_res["equity_curve"]) # Append realized returns
-            
+            test_equity = test_res.get("equity_curve") or []
+            if len(test_equity) >= 2:
+                # Stitch RETURNS across windows, not equity values. Each
+                # window's backtest starts fresh at $100k; appending equity
+                # across windows would create phantom drawdowns at every
+                # window boundary (window-N ends at e.g. $105k, window-(N+1)
+                # starts at $100k → phantom −4.76% return). Returns are
+                # window-internal so this concat is safe.
+                window_returns = pd.Series(test_equity).pct_change().dropna().tolist()
+                oos_returns.extend(window_returns)
+
             # Roll Forward
             current_idx += (test_months * 21)
             
@@ -123,10 +140,10 @@ class WalkForwardOptimizer:
             return {}
             
         avg_is_sharpe = np.mean([p["is_sharpe"] for p in param_history])
-        
-        # Calc OOS Sharpe
-        if len(oos_equity) > 1:
-            ret = pd.Series(oos_equity).pct_change().dropna()
+
+        # Calc OOS Sharpe from the stitched per-day return series.
+        if len(oos_returns) > 1:
+            ret = pd.Series(oos_returns).dropna()
             if ret.std() == 0:
                 oos_sharpe = 0
             else:
