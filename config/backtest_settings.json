@@ -127,5 +127,31 @@
     "mega_cap_half_spread_bps": 1.0,
     "mid_cap_half_spread_bps": 5.0,
     "small_cap_half_spread_bps": 15.0
+  },
+  "alpaca_fees": {
+    "enabled": true,
+    "sec_fee_per_dollar": 0.0000278,
+    "taf_per_share": 0.000166,
+    "taf_max_per_trade": 8.30,
+    "base_commission": 0.0,
+    "buy_side_fees": false
+  },
+  "borrow_rate_model": {
+    "enabled": true,
+    "mega_cap_bps_per_day": 5.0,
+    "mid_cap_bps_per_day": 15.0,
+    "small_cap_bps_per_day": 50.0,
+    "mega_cap_threshold_usd": 500000000.0,
+    "mid_cap_threshold_usd": 100000000.0,
+    "adv_lookback": 20,
+    "per_ticker_bps_per_day": {}
+  },
+  "tax_drag_model": {
+    "enabled": false,
+    "short_term_rate": 0.30,
+    "long_term_rate": 0.15,
+    "long_term_min_days": 365,
+    "wash_sale_window_days": 30,
+    "carry_forward_losses": true
   }
 }

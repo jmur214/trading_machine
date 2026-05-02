@@ -540,6 +540,13 @@ class ModeController:
         }
         if "slippage_extra" in self.cfg_bt:
             self.exec_params["slippage_extra"] = self.cfg_bt["slippage_extra"]
+        # Cost-completeness layer: pass through alpaca_fees / borrow /
+        # tax configs so BacktestController can construct the
+        # post-processor. Modules are individually toggleable; absence
+        # → disabled (legacy behavior).
+        for _key in ("alpaca_fees", "borrow_rate_model", "tax_drag_model"):
+            if _key in self.cfg_bt:
+                self.exec_params[_key] = self.cfg_bt[_key]
 
         # --- Prepare data manager ---
         import os as _os
@@ -879,6 +886,10 @@ class ModeController:
         # to ExecutionSimulator -> get_slippage_model.
         if "slippage_extra" in self.cfg_bt:
             exec_params["slippage_extra"] = self.cfg_bt["slippage_extra"]
+        # Cost-completeness layer: alpaca_fees / borrow / tax configs.
+        for _key in ("alpaca_fees", "borrow_rate_model", "tax_drag_model"):
+            if _key in self.cfg_bt:
+                exec_params[_key] = self.cfg_bt[_key]
 
         # --- Engine E: Regime ---
         regime_detector = RegimeDetector()

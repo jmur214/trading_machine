@@ -147,7 +147,19 @@ class BacktestController:
             slippage_model=str(exec_params.get("slippage_model", "fixed")),
             commission=float(exec_params.get("commission", 0.0)),
             slippage_extra=exec_params.get("slippage_extra"),
+            # Alpaca regulatory pass-through fees (SEC Section 31 + FINRA
+            # TAF). Controlled by ``alpaca_fees`` in backtest_settings.json;
+            # default-disabled for backward-compat — flipping the
+            # ``enabled`` flag adds a few tenths of a bp of cost per
+            # round-trip on a typical universe.
+            alpaca_fees_cfg=exec_params.get("alpaca_fees"),
         )
+        # Stash cost-completeness config for post-run aggregation.
+        self._cost_aggregator_cfg: Dict[str, Any] = {
+            "alpaca_fees": exec_params.get("alpaca_fees"),
+            "borrow_rate_model": exec_params.get("borrow_rate_model"),
+            "tax_drag_model": exec_params.get("tax_drag_model"),
+        }
 
         # Make logger aware of portfolio (some loggers compute equity diffs)
         self.logger.portfolio = self.portfolio
@@ -905,6 +917,38 @@ class BacktestController:
                     stats = metrics.summary_dict
                 else:
                     stats = {}
+
+                # Cost-completeness layer: produce A/B/C equity curves
+                # under (a) baseline costs, (b) +borrow + Alpaca fees,
+                # (c) +tax drag. Runs as a pure post-processor on the
+                # snapshot history + trade log; never touches engine
+                # state. Disabled-by-default modules return identical
+                # equity to the prior layer, so this is bit-for-bit
+                # safe for legacy configs.
+                try:
+                    from backtester.cost_aggregator import CostAggregator
+                    snap_df_full = _pd.read_csv(snapshots_path_for_metrics)
+                    trade_df_full = _pd.read_csv(trades_path_for_metrics)
+                    if not snap_df_full.empty and "equity" in snap_df_full.columns:
+                        agg = CostAggregator(self._cost_aggregator_cfg)
+                        cost_result = agg.compute(
+                            snap_df_full, trade_df_full, self.data_map
+                        )
+                        cost_summary = CostAggregator.result_to_summary_dict(cost_result)
+                        stats.update(cost_summary)
+                        if is_info_enabled("BACKTEST_CONTROLLER"):
+                            print(
+                                "[BACKTEST][COST] "
+                                f"A={cost_result.sharpe_A:.3f}  "
+                                f"B={cost_result.sharpe_B:.3f}  "
+                                f"C={cost_result.sharpe_C:.3f}  "
+                                f"(borrow=${cost_result.total_borrow_drag:,.0f}, "
+                                f"alpaca=${cost_result.total_alpaca_fees:,.0f}, "
+                                f"tax=${cost_result.total_tax_drag:,.0f})"
+                            )
+                except Exception as ce:
+                    if is_debug_enabled("BACKTEST_CONTROLLER"):
+                        print(f"[BACKTEST][COST][WARN] Cost aggregator failed: {ce}")
 
                 # Save the summary next to the (possibly filtered) snapshots
                 perf_dir = os.path.dirname(snapshots_path_for_metrics)
