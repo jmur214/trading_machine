@@ -1,6 +1,13 @@
 """
 engines/engine_a_alpha/edges/macro_dollar_regime_edge.py
 ========================================================
+
+DEPRECATED 2026-05-02 — RECLASSIFIED AS REGIME INPUT.
+DTWEXBGS broad dollar index now feeds Engine E's HMM regime classifier
+as the dollar_ret_63d feature (engines.engine_e_regime.macro_features)
+rather than generating per-ticker tilts. Code retained for historical
+reference; auto-register writes status='retired'.
+
 Macro regime-tilt based on the broad trade-weighted US dollar index
 (FRED ``DTWEXBGS``).
 
@@ -177,7 +184,7 @@ try:
         module=__name__,
         version="1.0.0",
         params=dict(MacroDollarRegimeEdge.DEFAULT_PARAMS),
-        status="active",
+        status="retired",  # 2026-05-02: reclassified to regime_input
     ))
 except Exception:
     pass

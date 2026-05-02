@@ -134,6 +134,7 @@ class AdvisoryEngine:
         axis_durations: Dict[str, int],
         flip_counts: Dict[str, int],
         corr_details: Optional[dict] = None,
+        hmm_proba: Optional[Dict[str, float]] = None,
     ) -> Tuple[dict, dict]:
         """Generate advisory hints and macro regime info.
 
@@ -143,6 +144,10 @@ class AdvisoryEngine:
             axis_durations: {axis_name: int} consecutive bars in current state.
             flip_counts: {axis_name: int} transitions in last N bars.
             corr_details: Enriched correlation details (for gold safe-haven check).
+            hmm_proba: Optional HMM posterior {state: prob}. When present,
+                advisory.risk_scalar is multiplied by a confidence factor
+                (1 - normalized entropy) so spread-out posteriors reduce
+                Engine B's effective sizing without any Engine B code change.
 
         Returns:
             (macro_regime_dict, advisory_dict)
@@ -189,6 +194,20 @@ class AdvisoryEngine:
         # Risk scalar: NOT modulated by duration (prevents compounding)
         risk_scalar = float(np.clip(max(0.3, 1.2 - risk_score * 0.9), 0.3, 1.2))
 
+        # HMM regime-confidence modulation (Engine E first slice — 2026-05).
+        # When the HMM posterior is uniform (max uncertainty), down-scale
+        # risk_scalar; when concentrated on one state, leave it. Engine B
+        # already multiplies advisory.risk_scalar into its sizing chain
+        # (risk_engine.py:639), so this read-only field is the entire
+        # consumer wire-up — no Engine B code change needed.
+        regime_confidence: float = 1.0
+        if hmm_proba:
+            regime_confidence = self._hmm_confidence(hmm_proba)
+            # Linear damp between min_floor at confidence=0 and 1.0 at confidence=1
+            min_floor = getattr(self.cfg, "hmm_confidence_min_floor", 0.6)
+            confidence_scalar = min_floor + (1.0 - min_floor) * regime_confidence
+            risk_scalar = float(np.clip(risk_scalar * confidence_scalar, 0.18, 1.2))
+
         # Max positions: lower in correlation spike
         corr_state = axis_states.get("correlation", "normal")
         if corr_state == "spike":
@@ -227,9 +246,25 @@ class AdvisoryEngine:
             "suggested_max_positions": suggested_max_positions,
             "edge_affinity": edge_affinity,
             "caution_note": " | ".join(caution_notes) if caution_notes else "",
+            # Read-only HMM-derived confidence ([0,1]); 1.0 when HMM disabled.
+            # Already folded into risk_scalar above; surfaced for diagnostics.
+            "regime_confidence": round(regime_confidence, 3),
         }
 
         return (macro_regime, advisory)
+
+    @staticmethod
+    def _hmm_confidence(proba: Dict[str, float]) -> float:
+        """Normalized-entropy confidence in [0, 1]."""
+        if not proba:
+            return 0.0
+        p = np.array([v for v in proba.values() if v > 0], dtype=np.float64)
+        if len(p) <= 1:
+            return 1.0
+        n = len(proba)
+        if n <= 1:
+            return 1.0
+        return float(np.clip(1.0 - (-(p * np.log(p)).sum()) / np.log(n), 0.0, 1.0))
 
     # ──────────────────────────────────────────
     # Macro Regime

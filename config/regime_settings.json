@@ -4,7 +4,7 @@
         "sma_short": 50,
         "er_structural_window": 60,
         "er_tactical_window": 14,
-        "er_chop_threshold": 0.20,
+        "er_chop_threshold": 0.2,
         "slope_window": 20,
         "hysteresis_bars": 5
     },
@@ -14,44 +14,44 @@
         "high_percentile": 75,
         "low_percentile": 25,
         "shock_percentile": 90,
-        "shock_vol_threshold": 0.30,
+        "shock_vol_threshold": 0.3,
         "vol_short_window": 5,
         "vol_long_window": 60,
         "vol_ratio_shock_threshold": 2.0,
         "hysteresis_bars": 3,
-        "crisis_bypass_confidence": 0.90
+        "crisis_bypass_confidence": 0.9
     },
     "correlation": {
         "rolling_window": 60,
         "pc1_spike_threshold": 0.55,
-        "pc1_elevated_threshold": 0.40,
+        "pc1_elevated_threshold": 0.4,
         "pc1_dispersed_threshold": 0.25,
-        "avg_corr_spike_threshold": 0.80,
-        "avg_corr_elevated_threshold": 0.60,
-        "avg_corr_dispersed_threshold": 0.30,
-        "spy_tlt_spike_threshold": 0.40,
-        "spy_tlt_elevated_threshold": 0.30,
-        "spy_tlt_dispersed_threshold": -0.20,
+        "avg_corr_spike_threshold": 0.8,
+        "avg_corr_elevated_threshold": 0.6,
+        "avg_corr_dispersed_threshold": 0.3,
+        "spy_tlt_spike_threshold": 0.4,
+        "spy_tlt_elevated_threshold": 0.3,
+        "spy_tlt_dispersed_threshold": -0.2,
         "spy_tlt_change_lookback": 30,
         "spy_tlt_change_warning_threshold": 0.15,
-        "spy_gld_safe_haven_threshold": -0.30,
+        "spy_gld_safe_haven_threshold": -0.3,
         "min_sectors": 5,
         "hysteresis_bars": 3,
-        "crisis_bypass_confidence": 0.90
+        "crisis_bypass_confidence": 0.9
     },
     "breadth": {
         "sma_long": 200,
         "sma_short": 50,
-        "strong_sma200_pct": 0.70,
-        "strong_sma50_pct": 0.60,
-        "narrow_sma200_pct": 0.50,
-        "narrow_sma50_pct": 0.40,
-        "weak_sma200_pct": 0.40,
+        "strong_sma200_pct": 0.7,
+        "strong_sma50_pct": 0.6,
+        "narrow_sma200_pct": 0.5,
+        "narrow_sma50_pct": 0.4,
+        "weak_sma200_pct": 0.4,
         "slope_window": 10,
         "slope_deteriorating_threshold": -0.01,
         "slope_recovering_threshold": 0.01,
-        "recovering_floor": 0.40,
-        "recovering_ceiling": 0.60,
+        "recovering_floor": 0.4,
+        "recovering_ceiling": 0.6,
         "deteriorating_ceiling": 0.55,
         "nh_nl_window": 252,
         "hysteresis_bars": 3
@@ -78,8 +78,28 @@
         "flip_frequency_warning_threshold": 3,
         "transition_matrix_min_bars": 100
     },
-    "benchmarks": ["SPY"],
-    "cross_asset": ["TLT", "GLD"],
-    "vix_tickers": ["^VIX", "^VIX3M"],
-    "exclude_from_breadth": ["SPY", "QQQ", "IWM", "TLT", "GLD"]
+    "benchmarks": [
+        "SPY"
+    ],
+    "cross_asset": [
+        "TLT",
+        "GLD"
+    ],
+    "vix_tickers": [
+        "^VIX",
+        "^VIX3M"
+    ],
+    "exclude_from_breadth": [
+        "SPY",
+        "QQQ",
+        "IWM",
+        "TLT",
+        "GLD"
+    ],
+    "hmm": {
+        "hmm_enabled": false,
+        "model_path": "engines/engine_e_regime/models/hmm_3state_v1.pkl",
+        "min_confidence_floor": 0.6,
+        "on_model_missing": "warn"
+    }
 }

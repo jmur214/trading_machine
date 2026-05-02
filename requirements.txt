@@ -22,3 +22,4 @@ pytest # for testing
 urllib3>=1.26.18
 dash>=2.13.0
 plotly>=5.17.0
+hmmlearn>=0.3.0   # Engine E HMM regime classifier (added 2026-05-02)

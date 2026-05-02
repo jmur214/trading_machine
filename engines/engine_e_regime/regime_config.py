@@ -104,6 +104,32 @@ class AdvisoryConfig:
     transition_matrix_min_bars: int = 100
     crisis_max_positions: int = 5
     stressed_max_positions: int = 7
+    # HMM-confidence floor for risk_scalar damping. confidence=0 (uniform
+    # posterior) → risk_scalar *= floor; confidence=1 (concentrated) → *= 1.
+    # Set to 1.0 to disable damping entirely.
+    hmm_confidence_min_floor: float = 0.6
+
+
+@dataclass
+class HMMConfig:
+    """Confidence-aware HMM regime classifier (additive to 5-axis detector).
+
+    Default disabled — enabling adds ~3-5ms per detect_regime call (single
+    HMM forward pass on a 7-feature snapshot) and modulates the existing
+    advisory.risk_scalar by HMM posterior entropy.
+    """
+    hmm_enabled: bool = False
+    model_path: str = "engines/engine_e_regime/models/hmm_3state_v1.pkl"
+    # When confidence (1 - normalized entropy) is low, scale risk down.
+    # Linear: scalar = min_confidence_floor + (1 - min_confidence_floor) * confidence.
+    # Example: min_confidence_floor=0.6 → uniform-distribution gives 0.6x;
+    # concentrated gives 1.0x. Engine B's existing advisory_risk_scalar
+    # consumer multiplies this in, no Engine B code change needed.
+    min_confidence_floor: float = 0.6
+    # If HMM model file is missing, behavior:
+    #   "warn"  → log warning, skip HMM augmentation (advisory unchanged)
+    #   "raise" → fail RegimeDetector init
+    on_model_missing: str = "warn"
 
 
 @dataclass
@@ -114,6 +140,7 @@ class RegimeConfig:
     breadth: BreadthConfig = field(default_factory=BreadthConfig)
     forward_stress: ForwardStressConfig = field(default_factory=ForwardStressConfig)
     advisory: AdvisoryConfig = field(default_factory=AdvisoryConfig)
+    hmm: HMMConfig = field(default_factory=HMMConfig)
     benchmarks: List[str] = field(default_factory=lambda: ["SPY"])
     cross_asset: List[str] = field(default_factory=lambda: ["TLT", "GLD"])
     vix_tickers: List[str] = field(default_factory=lambda: ["^VIX", "^VIX3M"])
@@ -138,6 +165,7 @@ class RegimeConfig:
             breadth=BreadthConfig(**raw.get("breadth", {})),
             forward_stress=ForwardStressConfig(**raw.get("forward_stress", {})),
             advisory=AdvisoryConfig(**raw.get("advisory", {})),
+            hmm=HMMConfig(**raw.get("hmm", {})),
             benchmarks=raw.get("benchmarks", ["SPY"]),
             cross_asset=raw.get("cross_asset", ["TLT", "GLD"]),
             vix_tickers=raw.get("vix_tickers", ["^VIX", "^VIX3M"]),

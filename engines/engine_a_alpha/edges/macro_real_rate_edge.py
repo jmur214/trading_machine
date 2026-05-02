@@ -1,6 +1,13 @@
 """
 engines/engine_a_alpha/edges/macro_real_rate_edge.py
 ====================================================
+
+DEPRECATED 2026-05-02 — RECLASSIFIED AS REGIME INPUT.
+DFII10 10y real rate now feeds Engine E's HMM regime classifier as an
+auxiliary feature (engines.engine_e_regime.macro_features.real_rate_level)
+rather than generating per-ticker tilts. Code retained for historical
+reference; auto-register writes status='retired'.
+
 Macro regime-tilt based on the level of the 10-year real (TIPS-derived)
 Treasury yield (FRED ``DFII10``).
 
@@ -178,7 +185,7 @@ try:
         module=__name__,
         version="1.0.0",
         params=dict(MacroRealRateEdge.DEFAULT_PARAMS),
-        status="active",
+        status="retired",  # 2026-05-02: reclassified to regime_input
     ))
 except Exception:
     pass

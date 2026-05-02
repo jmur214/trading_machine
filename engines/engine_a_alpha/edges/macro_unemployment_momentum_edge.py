@@ -1,6 +1,14 @@
 """
 engines/engine_a_alpha/edges/macro_unemployment_momentum_edge.py
 ================================================================
+
+DEPRECATED 2026-05-02 — RECLASSIFIED AS REGIME INPUT.
+UNRATE 3-month momentum now feeds Engine E's HMM regime classifier
+as the unemployment_momentum_3m auxiliary feature
+(engines.engine_e_regime.macro_features) rather than generating
+per-ticker tilts. Code retained for historical reference;
+auto-register writes status='retired'.
+
 Macro regime-tilt based on the 3-month change in the headline US
 unemployment rate.
 
@@ -184,7 +192,7 @@ try:
         module=__name__,
         version="1.0.0",
         params=dict(MacroUnemploymentMomentumEdge.DEFAULT_PARAMS),
-        status="active",
+        status="retired",  # 2026-05-02: reclassified to regime_input
     ))
 except Exception:
     pass
