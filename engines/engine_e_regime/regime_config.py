@@ -133,6 +133,55 @@ class HMMConfig:
 
 
 @dataclass
+class MultiResHMMConfig:
+    """Multi-resolution HMM (Workstream C slice 2 — 2026-05).
+
+    Adds weekly + monthly HMM classifiers running in parallel with the
+    daily HMM. Outputs are surfaced READ-ONLY in advisory.regime_daily,
+    advisory.regime_weekly, advisory.regime_monthly. They do NOT modify
+    risk_scalar by default — downstream consumers (Path C compounder,
+    future tactical sleeves) opt in by reading the field.
+
+    Default disabled. When enabled adds ~5-8ms per detect_regime call
+    (three HMM forward passes on resampled feature snapshots).
+
+    Requires both weekly_path and monthly_path artifacts to exist on
+    disk (produced by `scripts/train_multires_hmm.py`).
+    """
+    multires_enabled: bool = False
+    weekly_model_path: str = "engines/engine_e_regime/models/hmm_weekly_v1.pkl"
+    monthly_model_path: str = "engines/engine_e_regime/models/hmm_monthly_v1.pkl"
+    # Trailing window for windowed posterior smoothing per cadence.
+    history_window_daily: int = 60
+    history_window_weekly: int = 26
+    history_window_monthly: int = 12
+
+
+@dataclass
+class TransitionWarningConfig:
+    """Transition-warning detector (Workstream C slice 2 — 2026-05).
+
+    Fires when the daily HMM posterior entropy is high or KL-divergence
+    between current and lag posteriors is large — both indicate the
+    classifier is in transit between states. Surfaced read-only as
+    advisory.regime_transition_warning. Engine B does NOT consume by
+    default; this is observability/diagnostic-only.
+
+    Acceptance criterion (per Workstream C deliverables): fire ≥48hr
+    ahead of regime changes in ≥80% of historical cases.
+    """
+    transition_warning_enabled: bool = False
+    window: int = 5
+    entropy_threshold: float = 0.55
+    kl_threshold: float = 0.30
+    smoothing_window: int = 3
+    min_history: int = 5
+    # Trailing buffer of posteriors to maintain in RegimeDetector for
+    # streaming detection. Large enough to span multiple windows.
+    posterior_buffer_size: int = 20
+
+
+@dataclass
 class RegimeConfig:
     trend: TrendConfig = field(default_factory=TrendConfig)
     volatility: VolatilityConfig = field(default_factory=VolatilityConfig)
@@ -141,6 +190,10 @@ class RegimeConfig:
     forward_stress: ForwardStressConfig = field(default_factory=ForwardStressConfig)
     advisory: AdvisoryConfig = field(default_factory=AdvisoryConfig)
     hmm: HMMConfig = field(default_factory=HMMConfig)
+    multires: MultiResHMMConfig = field(default_factory=MultiResHMMConfig)
+    transition_warning: TransitionWarningConfig = field(
+        default_factory=TransitionWarningConfig
+    )
     benchmarks: List[str] = field(default_factory=lambda: ["SPY"])
     cross_asset: List[str] = field(default_factory=lambda: ["TLT", "GLD"])
     vix_tickers: List[str] = field(default_factory=lambda: ["^VIX", "^VIX3M"])
@@ -166,6 +219,10 @@ class RegimeConfig:
             forward_stress=ForwardStressConfig(**raw.get("forward_stress", {})),
             advisory=AdvisoryConfig(**raw.get("advisory", {})),
             hmm=HMMConfig(**raw.get("hmm", {})),
+            multires=MultiResHMMConfig(**raw.get("multires", {})),
+            transition_warning=TransitionWarningConfig(
+                **raw.get("transition_warning", {})
+            ),
             benchmarks=raw.get("benchmarks", ["SPY"]),
             cross_asset=raw.get("cross_asset", ["TLT", "GLD"]),
             vix_tickers=raw.get("vix_tickers", ["^VIX", "^VIX3M"]),

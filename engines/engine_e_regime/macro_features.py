@@ -252,3 +252,125 @@ def latest_feature_row(
     if len(valid) == 0:
         return None
     return panel.loc[valid[-1]]
+
+
+# ----------------------------------------------------------------------
+# Multi-resolution resampling (Workstream C, slice 2 — 2026-05)
+# ----------------------------------------------------------------------
+#
+# Aggregation contract per column type:
+#   - log returns (spy_log_return, tlt_log_return, spy_ret_5d, tlt_ret_20d,
+#     dollar_ret_63d): SUM over the resample window (log returns are additive)
+#   - realized vol (spy_vol_20d): take the LAST value at the bar boundary
+#     (the rolling 20d vol snapshot at week/month end), since
+#     window-summed daily-vol is not interpretable
+#   - level series (vix_level, yield_curve_spread, credit_spread_baa_aaa,
+#     real_rate_level, unemployment_momentum_3m, credit_spread_z_5y): take
+#     the LAST value at the bar boundary
+#
+# Both weekly and monthly use right-anchored (label='right'), end-of-window
+# stamps so the resampled bar's timestamp is the LAST trading day in the
+# window — preserves no-look-ahead at inference time.
+
+# Columns that are sums of log returns over the resample window.
+_RETURN_COLUMNS = {
+    "spy_log_return",
+    "tlt_log_return",
+}
+# Columns that are point-in-time levels (take last value at window close).
+_LEVEL_COLUMNS = {
+    "spy_vol_20d",  # rolling-vol level snapshot
+    "vix_level",
+    "yield_curve_spread",
+    "credit_spread_baa_aaa",
+    "real_rate_level",
+    "unemployment_momentum_3m",
+    "credit_spread_z_5y",
+    # rolling-window returns are levels too — they were already smoothed
+    # at daily cadence, taking the last value at the new bar boundary
+    # gives the right semantics.
+    "spy_ret_5d",
+    "tlt_ret_20d",
+    "dollar_ret_63d",
+}
+
+
+def resample_feature_panel(
+    daily_panel: pd.DataFrame, cadence: str
+) -> pd.DataFrame:
+    """Aggregate a daily feature panel to a slower cadence.
+
+    Args:
+        daily_panel: DataFrame indexed by daily date with FEATURE_COLUMNS
+            (and optionally AUX_COLUMNS).
+        cadence: One of {"W", "M"} — pandas resample rule. "W" yields
+            week-ending bars; "M" yields month-end bars.
+
+    Returns:
+        Resampled DataFrame at the requested cadence. Bar timestamp is the
+        last trading day in each window (no look-ahead).
+    """
+    if cadence not in ("W", "M"):
+        raise ValueError(f"cadence must be 'W' or 'M', got {cadence!r}")
+    if daily_panel is None or daily_panel.empty:
+        return pd.DataFrame(columns=daily_panel.columns if daily_panel is not None else [])
+
+    df = daily_panel.copy()
+    df.index = pd.to_datetime(df.index)
+
+    rule = "W-FRI" if cadence == "W" else "ME"
+    resampler = df.resample(rule, label="right", closed="right")
+
+    out = {}
+    for col in df.columns:
+        if col in _RETURN_COLUMNS:
+            agg = resampler[col].sum(min_count=1)
+        elif col in _LEVEL_COLUMNS:
+            agg = resampler[col].last()
+        else:
+            # Unknown column — default to last (safe, level-like)
+            agg = resampler[col].last()
+        out[col] = agg
+
+    result = pd.DataFrame(out)
+    # Drop fully-empty rows that emerge before any source data is available
+    result = result.dropna(how="all")
+    # Re-stamp index to the LAST observed daily timestamp inside each
+    # window — keeps inference no-look-ahead. resample(label='right')
+    # uses the period boundary; we want the actual trading-day boundary.
+    last_ts_per_bar = resampler.apply(
+        lambda g: g.index.max() if len(g) else pd.NaT
+    )
+    if isinstance(last_ts_per_bar, pd.DataFrame):
+        # When resampler.apply returns a DataFrame, the inner timestamps
+        # appear as values — pull the first column (any column's bar
+        # boundary is the same).
+        last_ts_per_bar = last_ts_per_bar.iloc[:, 0]
+    last_ts_per_bar = last_ts_per_bar.dropna()
+    # Align result to where we have a real last-timestamp; reindex
+    common = result.index.intersection(last_ts_per_bar.index)
+    result = result.loc[common]
+    result.index = pd.DatetimeIndex(last_ts_per_bar.loc[common].values)
+    result = result.sort_index()
+    return result
+
+
+def build_multires_panels(
+    root: Optional[Path] = None,
+    start: Optional[str] = None,
+    end: Optional[str] = None,
+    include_aux: bool = False,
+) -> Dict[str, pd.DataFrame]:
+    """Build daily, weekly, and monthly feature panels.
+
+    Convenience wrapper around build_feature_panel + resample_feature_panel.
+
+    Returns:
+        {"daily": daily_panel, "weekly": weekly_panel, "monthly": monthly_panel}
+    """
+    daily = build_feature_panel(
+        root=root, start=start, end=end, include_aux=include_aux
+    )
+    weekly = resample_feature_panel(daily, "W")
+    monthly = resample_feature_panel(daily, "M")
+    return {"daily": daily, "weekly": weekly, "monthly": monthly}
