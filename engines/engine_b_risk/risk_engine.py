@@ -65,7 +65,12 @@ class RiskEngine:
     ...
     """
 
-    def __init__(self, cfg: Dict[str, Any]):
+    def __init__(
+        self,
+        cfg: Dict[str, Any],
+        wash_sale_cfg: Optional[Dict[str, Any]] = None,
+        lt_hold_cfg: Optional[Dict[str, Any]] = None,
+    ):
         # Only pass known keys to the dataclass
         cfg_filtered = {k: v for k, v in cfg.items() if k in RiskConfig.__annotations__}
         self.cfg = RiskConfig(**cfg_filtered)
@@ -75,6 +80,28 @@ class RiskEngine:
 
         # Internal: bar-index bookkeeping for cooldown (per ticker)
         self._last_action_bar: Dict[str, int] = {}
+
+        # Tax-aware modules (Path A, 2026-05). Default-disabled — when
+        # neither cfg block has ``enabled=True``, ``record_fill`` /
+        # ``should_block_buy`` / ``should_defer_exit`` are no-ops, so
+        # behavior on main matches pre-Path-A. Cfg blocks come from
+        # ``config/portfolio_settings.json`` via ModeController.
+        from engines.engine_b_risk.wash_sale_avoidance import (
+            WashSaleAvoidance, WashSaleAvoidanceConfig,
+        )
+        from engines.engine_b_risk.lt_hold_preference import (
+            LTHoldPreference, LTHoldPreferenceConfig,
+        )
+        ws_dict = wash_sale_cfg or {}
+        lt_dict = lt_hold_cfg or {}
+        self.wash_sale = WashSaleAvoidance(WashSaleAvoidanceConfig(**{
+            k: v for k, v in ws_dict.items()
+            if k in WashSaleAvoidanceConfig.__annotations__
+        }))
+        self.lt_hold = LTHoldPreference(LTHoldPreferenceConfig(**{
+            k: v for k, v in lt_dict.items()
+            if k in LTHoldPreferenceConfig.__annotations__
+        }))
         
         # Load Sector Map
         self.sector_map = {}
@@ -96,7 +123,33 @@ class RiskEngine:
         except Exception as e:
             print(f"[RISK][ERROR] Failed to load sector map: {e}")
 
-    # ... (existing methods) ...
+    # ------------------------------------------------------------------ #
+    # Path A — fill listener for tax-aware modules. Called by
+    # BacktestController._execute_fills / _evaluate_stops after each
+    # PortfolioEngine.apply_fill so the wash_sale ledger sees losses
+    # immediately and lt_hold sees entry timestamps. No-op when both
+    # modules are disabled (the default-on-main configuration).
+    # ------------------------------------------------------------------ #
+    def record_fill(self, fill: Dict[str, Any], ts) -> None:
+        if fill is None:
+            return
+        ticker = str(fill.get("ticker", ""))
+        post_fill_qty = None
+        if ticker and self.portfolio is not None:
+            try:
+                pos = self.portfolio.positions.get(ticker)
+                if pos is not None:
+                    post_fill_qty = int(pos.qty)
+            except Exception:
+                post_fill_qty = None
+        try:
+            self.wash_sale.record_fill(fill, ts)
+        except Exception:
+            pass
+        try:
+            self.lt_hold.record_fill(fill, ts, post_fill_qty=post_fill_qty)
+        except Exception:
+            pass
 
     def _get_sector(self, ticker: str) -> str:
         s = self.sector_map.get(ticker, "Unknown")
@@ -397,6 +450,46 @@ class RiskEngine:
 
         # Exit / neutral signals
         if side == "none" and current_qty != 0:
+            # Path A — long-term hold preference. When enabled (default
+            # off), defer signal-driven exits in the 300-364 day window
+            # if the federal ST→LT tax-rate delta exceeds estimated
+            # alpha lift of exiting now. Hard cap at 380 days. Hard SL/TP
+            # exits bypass this gate entirely (they happen in
+            # ExecutionSimulator, not here).
+            try:
+                if self.lt_hold.cfg.enabled:
+                    now_ts = pd.Timestamp(df_hist.index[-1]) if len(df_hist) else None
+                    last_close = None
+                    try:
+                        _last = df_hist.iloc[-1].get("Close")
+                        last_close = float(_last)
+                    except Exception:
+                        last_close = None
+                    pos_obj = None
+                    if self.portfolio is not None:
+                        pos_obj = self.portfolio.positions.get(ticker)
+                    avg_px = float(pos_obj.avg_price) if pos_obj is not None else 0.0
+                    if (
+                        now_ts is not None
+                        and last_close is not None
+                        and avg_px > 0
+                        and self.lt_hold.should_defer_exit(
+                            ticker=ticker,
+                            current_qty=int(current_qty),
+                            avg_price=avg_px,
+                            current_price=last_close,
+                            now=now_ts,
+                        )
+                    ):
+                        self._fail(ticker, "lt_hold_deferred")
+                        if is_debug_enabled("RISK"):
+                            print(f"[RISK][DEBUG] {ticker} exit deferred — "
+                                  f"LT hold preference active "
+                                  f"(stats={self.lt_hold.stats})")
+                        return None
+            except Exception:
+                # Fail-open: never let the new module block normal exits if it errors.
+                pass
             # Record action bar if we do emit an exit
             self._last_action_bar[ticker] = self._bar_index(df_hist)
             return {
@@ -468,6 +561,29 @@ class RiskEngine:
             if is_debug_enabled("RISK"):
                 print(f"[RISK][DEBUG] Rejected signal for {ticker} — reason={self.last_skip_by_ticker.get(ticker)}")
             return None
+
+        # Path A — wash-sale avoidance gate. When enabled (default off),
+        # refuse new opens on tickers that had a loss-realizing close
+        # within `wash_sale.window_days` (default 30, IRS rule). Prevents
+        # wash-sale loss disallowance at the source for high-turnover
+        # taxable-account deployments. Fail-open on unexpected error.
+        try:
+            if (
+                self.wash_sale.cfg.enabled
+                and side in ("long", "short")
+                and current_qty == 0
+                and len(df_hist) > 0
+            ):
+                now_ts = pd.Timestamp(df_hist.index[-1])
+                if self.wash_sale.should_block_buy(ticker, now_ts):
+                    self._fail(ticker, "wash_sale_window_active")
+                    if is_debug_enabled("RISK"):
+                        print(f"[RISK][DEBUG] {ticker} buy blocked — "
+                              f"wash-sale window active "
+                              f"(stats={self.wash_sale.stats})")
+                    return None
+        except Exception:
+            pass
 
         # --- Advisory-driven dynamic constraints (from Engine E) ---
         advisory = (regime_meta or {}).get("advisory", {}) if regime_meta else {}
@@ -554,7 +670,14 @@ class RiskEngine:
             target_weight = target_weights.get(ticker)
 
         if target_weight is not None and np.isfinite(target_weight):
-            target_notional = float(equity) * float(target_weight)
+            # Path A — Engine C optimizer_weight composition (also applied
+            # in Path B below). When SignalProcessor uses method="hrp_composed",
+            # the HRP weight is multiplied into the target notional so HRP
+            # composes with PortfolioPolicy rather than overriding it.
+            # Default 1.0 = strict no-op when method="weighted_sum".
+            sig_meta_in = signal.get("meta") or {}
+            optimizer_weight = float(sig_meta_in.get("optimizer_weight", 1.0))
+            target_notional = float(equity) * float(target_weight) * optimizer_weight
             current_notional = float(current_qty) * price
             delta_notional = target_notional - current_notional
 
@@ -637,6 +760,17 @@ class RiskEngine:
 
             # 4. Advisory risk scalar (Engine E regime brake on sizing)
             risk_scaler *= advisory_risk_scalar
+
+            # 5. Path A — Engine C optimizer_weight composition.
+            # When SignalProcessor uses method="hrp_composed", AlphaEngine
+            # passes per-ticker HRP weight × N (clamped to [0,1]) through
+            # signal.meta. This multiplies into ATR-risk sizing so HRP
+            # composes with edge-conviction (signal_strength) and
+            # governor_weight rather than overwriting them. Default 1.0 =
+            # strict no-op when method="weighted_sum" or signal lacks the key.
+            sig_meta_in = signal.get("meta") or {}
+            optimizer_weight = float(sig_meta_in.get("optimizer_weight", 1.0))
+            risk_scaler *= optimizer_weight
 
             adjusted_risk_pct = base_risk_pct * risk_scaler
 

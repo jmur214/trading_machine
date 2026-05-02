@@ -688,6 +688,15 @@ class BacktestController:
                     fill.setdefault("edge_id", order.get("edge_id"))
                     fill.setdefault("edge_category", order.get("edge_category"))
                     self._log_fill_compat(fill, nxt)
+                    # Path A — push fill into RiskEngine's tax-aware ledgers
+                    # (wash-sale + lt-hold). No-op when both modules are
+                    # default-disabled. Defensive hasattr in case a custom
+                    # risk engine doesn't implement record_fill.
+                    if hasattr(self.risk, "record_fill"):
+                        try:
+                            self.risk.record_fill(fill, nxt)
+                        except Exception:
+                            pass
             except Exception:
                 continue
 
@@ -730,6 +739,15 @@ class BacktestController:
                         if hasattr(self.logger, "set_portfolio"):
                             self.logger.set_portfolio(self.portfolio)
                         self._log_fill_compat(stop_or_tp, nxt)
+                        # Path A — feed SL/TP exits into RiskEngine ledgers
+                        # so wash-sale tracks loss-realizing stop exits and
+                        # lt-hold's entry-date ledger sees the close. No-op
+                        # when modules are default-disabled.
+                        if hasattr(self.risk, "record_fill"):
+                            try:
+                                self.risk.record_fill(stop_or_tp, nxt)
+                            except Exception:
+                                pass
                 except Exception:
                     continue
 
@@ -949,6 +967,19 @@ class BacktestController:
                 except Exception as ce:
                     if is_debug_enabled("BACKTEST_CONTROLLER"):
                         print(f"[BACKTEST][COST][WARN] Cost aggregator failed: {ce}")
+
+                # Path A — surface tax-aware module fire counts for the audit
+                # harness. Always present (default-disabled modules report
+                # `enabled: False` + zero counters).
+                try:
+                    stats["path_a_modules"] = {
+                        "wash_sale": dict(getattr(self.risk, "wash_sale", None).stats)
+                            if getattr(self.risk, "wash_sale", None) is not None else {},
+                        "lt_hold": dict(getattr(self.risk, "lt_hold", None).stats)
+                            if getattr(self.risk, "lt_hold", None) is not None else {},
+                    }
+                except Exception:
+                    pass
 
                 # Save the summary next to the (possibly filtered) snapshots
                 perf_dir = os.path.dirname(snapshots_path_for_metrics)
