@@ -1,6 +1,14 @@
 """
 engines/engine_a_alpha/edges/macro_credit_spread_edge.py
 ========================================================
+
+DEPRECATED 2026-05-02 — RECLASSIFIED AS REGIME INPUT.
+The BAA-AAA spread now feeds Engine E's HMM regime classifier as a
+feature (engines.engine_e_regime.macro_features.credit_spread_baa_aaa)
+rather than generating per-ticker tilts. Code retained for historical
+reference only. Auto-register block writes status='retired' so a fresh
+clone does not promote this back to alpha.
+
 Macro regime-tilt based on the BAA-AAA corporate credit spread.
 
 Mechanism: same shape as `macro_yield_curve_edge.py`. This is NOT a
@@ -235,7 +243,7 @@ try:
         module=__name__,
         version="1.0.0",
         params=dict(MacroCreditSpreadEdge.DEFAULT_PARAMS),
-        status="active",
+        status="retired",  # 2026-05-02: reclassified to regime_input
     ))
 except Exception:
     pass

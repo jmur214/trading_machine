@@ -1,0 +1,64 @@
+# Macro signal → regime-input reclassification log (2026-05-02)
+#
+# Engine E HMM first slice (Workstream C of forward_plan_2026_05_02.md)
+# moved four macros from "alpha edges" to "HMM regime inputs" per the
+# reviewer doc 05-1-26_a-and-i_full.mf:
+#   "Macro signals are deployed as edges, not as regime inputs.
+#    Architectural mis-classification."
+#
+# This file is the source-controlled record. data/governor/edges.yml is
+# gitignored (regenerable engine state) so the tags I add there don't
+# survive a fresh clone — but each backtest startup re-applies the
+# auto-register `status="retired"` and the runtime feature panel
+# delivers the same FRED-derived signals as HMM inputs.
+
+reclassified_on: '2026-05-02'
+new_role: regime_input
+new_consumer: engines.engine_e_regime.macro_features
+hmm_artifact: engines/engine_e_regime/models/hmm_3state_v1.pkl
+audit_doc: docs/Audit/engine_e_hmm_first_slice_2026_05.md
+
+reclassifications:
+  - edge_id: macro_credit_spread_v1
+    fred_series: BAA10Y - AAA10Y
+    new_feature_name: credit_spread_baa_aaa
+    feature_role: canonical          # canonical | aux
+    prior_status: retired
+    new_status: retired
+    note: |
+      BAA-AAA credit spread now feeds Engine E's HMM regime classifier
+      directly as a canonical feature, no longer generates per-ticker
+      tilts.
+
+  - edge_id: macro_dollar_regime_v1
+    fred_series: DTWEXBGS
+    new_feature_name: dollar_ret_63d
+    feature_role: canonical
+    prior_status: retired
+    new_status: retired
+    note: |
+      DTWEXBGS broad dollar index 63-day return now feeds Engine E's
+      HMM regime classifier directly as a canonical feature.
+
+  - edge_id: macro_real_rate_v1
+    fred_series: DFII10
+    new_feature_name: real_rate_level
+    feature_role: aux
+    prior_status: paused
+    new_status: retired
+    note: |
+      DFII10 10y real rate is now an auxiliary regime input
+      (not in the canonical 7-feature HMM vector — DFII10 cache is
+      stale at the tail). Reclassification flipped status from
+      paused to retired as part of this slice.
+
+  - edge_id: macro_unemployment_momentum_v1
+    fred_series: UNRATE
+    new_feature_name: unemployment_momentum_3m
+    feature_role: aux
+    prior_status: retired
+    new_status: retired
+    note: |
+      UNRATE 3-month momentum is an auxiliary regime input (not in the
+      canonical 7-feature HMM vector — monthly cadence is too coarse
+      for daily features). Available via macro_features.build_feature_panel(include_aux=True).

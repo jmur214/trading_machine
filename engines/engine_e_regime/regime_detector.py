@@ -15,6 +15,8 @@ Flow per bar:
   8. Append to RegimeHistoryStore
 """
 
+import logging
+
 import numpy as np
 import pandas as pd
 from typing import Dict, Optional
@@ -29,12 +31,31 @@ from engines.engine_e_regime.detectors.correlation_detector import CorrelationDe
 from engines.engine_e_regime.detectors.breadth_detector import BreadthDetector
 from engines.engine_e_regime.detectors.forward_stress_detector import ForwardStressDetector
 
+_log = logging.getLogger("RegimeDetector")
+
 
 # Backward-compat volatility mapping: "shock" → "high" for old consumers
 _VOL_COMPAT = {"shock": "high", "low": "low", "normal": "normal", "high": "high"}
 # Backward-compat trend mapping: "range" → "neutral" for old consumers
 _TREND_COMPAT = {"bull": "bull", "bear": "bear", "range": "neutral"}
 _REGIME_INT = {"bull": 1, "bear": -1, "range": 0}
+
+
+def _hmm_confidence(proba: Dict[str, float]) -> float:
+    """Normalized-entropy confidence proxy for HMM output dict.
+
+    Mirrors HMMRegimeClassifier.confidence_from_proba — duplicated here
+    so detect_regime can consume the dict without importing the classifier.
+    """
+    if not proba:
+        return 0.0
+    p = np.array([v for v in proba.values() if v > 0], dtype=np.float64)
+    if len(p) <= 1:
+        return 1.0
+    n = len(proba)
+    if n <= 1:
+        return 1.0
+    return float(np.clip(1.0 - (-(p * np.log(p)).sum()) / np.log(n), 0.0, 1.0))
 
 
 class RegimeDetector:
@@ -91,6 +112,13 @@ class RegimeDetector:
             flip_lookback=self.cfg.advisory.flip_frequency_lookback,
             transition_min_bars=self.cfg.advisory.transition_matrix_min_bars,
         )
+
+        # HMM regime classifier (additive; default disabled).
+        # Loaded lazily here at construction to fail fast on bad config.
+        self._hmm_clf = None
+        self._hmm_feature_panel: Optional[pd.DataFrame] = None
+        if getattr(self.cfg, "hmm", None) and self.cfg.hmm.hmm_enabled:
+            self._init_hmm()
 
     def detect_regime(
         self,
@@ -161,12 +189,18 @@ class RegimeDetector:
         durations = self._history.axis_durations
         flip_counts = self._history.flip_counts()
 
+        # HMM augmentation (Engine E first slice — 2026-05).
+        # Returns posterior P(state | features) over {benign, stressed, crisis}
+        # or None if HMM disabled / unavailable.
+        hmm_proba = self._predict_hmm(now)
+
         macro_regime, advisory = self._advisory.generate(
             axis_states=axis_states,
             axis_confidences=axis_confidences,
             axis_durations=durations,
             flip_counts=flip_counts,
             corr_details=corr_details,
+            hmm_proba=hmm_proba,
         )
 
         # --- Step 6: Empirical transition matrix ---
@@ -188,6 +222,19 @@ class RegimeDetector:
             "regime_stability": round(regime_stability, 3),
             # Named Macro Regime
             "macro_regime": macro_regime,
+            # HMM posterior over named states (None when HMM disabled)
+            "hmm_regime": (
+                {
+                    "probabilities": hmm_proba,
+                    "confidence": (
+                        round(_hmm_confidence(hmm_proba), 3)
+                        if hmm_proba else None
+                    ),
+                    "argmax": (max(hmm_proba, key=hmm_proba.get)
+                               if hmm_proba else None),
+                }
+                if hmm_proba is not None else None
+            ),
             # Advisory (non-binding)
             "advisory": advisory,
             # Detailed Explanations
@@ -250,3 +297,80 @@ class RegimeDetector:
             f.reset()
         self._breadth.reset()
         self._history.reset()
+
+    # ------------------------------------------------------------------
+    # HMM augmentation (Engine E confidence-aware first slice — 2026-05)
+    # ------------------------------------------------------------------
+    def _init_hmm(self) -> None:
+        """Load the persisted HMM model + lazily build feature panel.
+
+        On_model_missing semantics:
+          - "warn" (default): log + leave _hmm_clf=None; advisory unchanged
+          - "raise": let exception propagate to caller
+        """
+        from pathlib import Path
+        import os
+        from engines.engine_e_regime.hmm_classifier import HMMRegimeClassifier
+        from engines.engine_e_regime import macro_features as mf
+
+        cfg = self.cfg.hmm
+        # Resolve model path relative to repo root if not absolute
+        model_path = Path(cfg.model_path)
+        if not model_path.is_absolute():
+            repo_root = Path(__file__).resolve().parents[2]
+            model_path = repo_root / model_path
+
+        if not model_path.exists():
+            msg = f"HMM model not found at {model_path}; HMM augmentation disabled"
+            if cfg.on_model_missing == "raise":
+                raise FileNotFoundError(msg)
+            _log.warning(msg)
+            return
+
+        try:
+            self._hmm_clf = HMMRegimeClassifier.load(model_path)
+        except Exception as exc:
+            if cfg.on_model_missing == "raise":
+                raise
+            _log.warning(f"HMM load failed: {exc}; HMM augmentation disabled")
+            return
+
+        # Build feature panel once (covers full historical range).
+        # detect_regime() will look up the row at-or-before the current bar.
+        try:
+            self._hmm_feature_panel = mf.build_feature_panel(include_aux=False)
+            _log.info(
+                f"HMM model loaded ({self._hmm_clf.n_states} states); "
+                f"feature panel rows={len(self._hmm_feature_panel)}"
+            )
+        except Exception as exc:
+            _log.warning(
+                f"HMM feature panel build failed: {exc}; HMM augmentation disabled"
+            )
+            self._hmm_clf = None
+
+    def _predict_hmm(self, now: Optional[str]) -> Optional[Dict[str, float]]:
+        """Return HMM posterior P(state | features at `now`).
+
+        None on any error; uniform distribution if features are NaN
+        (delegated to HMMRegimeClassifier).
+        """
+        if self._hmm_clf is None or self._hmm_feature_panel is None:
+            return None
+        if not now:
+            return None
+
+        from engines.engine_e_regime import macro_features as mf
+        try:
+            row = mf.latest_feature_row(self._hmm_feature_panel, pd.Timestamp(now))
+        except Exception:
+            return None
+        if row is None:
+            return None
+        try:
+            return self._hmm_clf.predict_proba_at(
+                row, history_panel=self._hmm_feature_panel
+            )
+        except Exception as exc:
+            _log.debug(f"HMM predict failed at {now}: {exc}")
+            return None

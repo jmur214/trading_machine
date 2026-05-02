@@ -40,6 +40,11 @@ class EdgeSpec:
     #   "gate"       → tier=context edges modify other edges' weights
     # Default "input" matches default tier="feature".
     combination_role: str = "input"  # "standalone" | "input" | "gate"
+    # Catch-all for fields the registry doesn't model first-class (e.g.,
+    # `reclassified_to`, `reclassified_on`, `reclassification_note` added
+    # 2026-05-02 for the macro→regime-input reclassification audit). Loaded
+    # from yml and round-tripped on save; not interpreted by the registry.
+    extra: Optional[Dict[str, Any]] = None
 
 
 class EdgeRegistry:
@@ -67,7 +72,17 @@ class EdgeRegistry:
         try:
             data = yaml.safe_load(self.path.read_text()) or {}
             specs: Dict[str, EdgeSpec] = {}
+            # First-class fields the registry models. Anything outside
+            # this set is preserved in `extra` and round-tripped verbatim
+            # on save, so audit/documentation tags (e.g. reclassified_to)
+            # added by users survive registry rewrites.
+            known_keys = {
+                "edge_id", "category", "module", "version", "params",
+                "status", "regime_gate", "tier", "tier_last_updated",
+                "combination_role",
+            }
             for row in data.get("edges", []):
+                extra = {k: v for k, v in row.items() if k not in known_keys}
                 spec = EdgeSpec(
                     edge_id=row["edge_id"],
                     category=row.get("category", "other"),
@@ -79,6 +94,7 @@ class EdgeRegistry:
                     tier=row.get("tier", "feature"),
                     tier_last_updated=row.get("tier_last_updated"),
                     combination_role=row.get("combination_role", "input"),
+                    extra=extra or None,
                 )
                 specs[spec.edge_id] = spec
             self._specs = specs
@@ -108,6 +124,10 @@ class EdgeRegistry:
             if s.combination_role and s.combination_role != "input":
                 # Only emit when non-default to keep the YAML clean.
                 row["combination_role"] = s.combination_role
+            # Round-trip any non-modeled fields verbatim (e.g. audit tags).
+            if s.extra:
+                for k, v in s.extra.items():
+                    row[k] = v
             rows.append(row)
         data = {"edges": rows}
         self.path.write_text(yaml.safe_dump(data, sort_keys=False))
