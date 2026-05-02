@@ -1,0 +1,18 @@
+feature_id: beta_252d
+source_url: https://www.jstor.org/stable/2351086
+license: internal
+point_in_time_safe: true
+expected_behavior: |
+  OLS beta of daily log returns vs SPY over trailing 252 trading days
+  (cov / var, ddof=1). Cross-sectional ranking primitive for the
+  betting-against-beta / low-beta anomaly (Frazzini-Pedersen 2014).
+  Convention: long bottom quintile, short top quintile (often levered).
+  Typical values 0.4-1.6 for liquid US equities; SPY itself returns
+  None. Returns None when fewer than 253 aligned closes available.
+known_failure_modes:
+  - "Returns the unconditional beta — high-beta stocks may have time-varying beta that the rolling window only partially captures."
+  - "Daily-frequency beta underestimates true exposure for stocks with delayed price formation (small caps, low-volume names) — Dimson 1979 lag-correction not applied."
+  - "BAB-style strategy historically requires explicit leverage on the long leg to neutralize beta; this feature does not size or hedge."
+  - "Crisis periods compress cross-sectional beta dispersion; the ranking signal weakens precisely when low-beta is most needed."
+last_revalidation: never
+ablation_history: []

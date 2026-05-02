@@ -1,5 +1,17 @@
 """Foundry feature plugins. Importing this package triggers
 self-registration of every shipped feature."""
 from . import cot_commercial_net_long  # noqa: F401
+from . import mom_12_1  # noqa: F401
+from . import mom_6_1  # noqa: F401
+from . import reversal_1m  # noqa: F401
+from . import realized_vol_60d  # noqa: F401
+from . import beta_252d  # noqa: F401
 
-__all__ = ["cot_commercial_net_long"]
+__all__ = [
+    "cot_commercial_net_long",
+    "mom_12_1",
+    "mom_6_1",
+    "reversal_1m",
+    "realized_vol_60d",
+    "beta_252d",
+]
