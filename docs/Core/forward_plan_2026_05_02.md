@@ -5,6 +5,48 @@
 > (`docs/Progress_Summaries/Other-dev-opinion/05-1-26_1-percent.md`
 > + `05-1-26_a-and-i_full.mf`). Both converge on the same architectural
 > picture and identify gaps the prior plans had underweighted.
+>
+> **HONEST RE-ACCOUNTING — 2026-05-02 evening:**
+>
+> The director (this assistant) overstated workstream completion in
+> the round-5 synthesis. User correctly called out: claiming "WS A
+> ~90% shipped, WS D shipped, WS B in flight as if completing in one
+> round" conflated *first slice shipped* with *workstream complete*.
+> The 1-percent doc lists 4-7 named deliverables per workstream; we
+> haven't met all of them on any workstream. Honest re-accounting
+> below; future sessions should track per-deliverable, not vibes.
+>
+> | WS | Honest % | What's shipped | What's missing |
+> |---|---|---|---|
+> | A — Foundation | ~65% | Gauntlet fix ✓, cost completeness ✓ | ADV floor sweep under new gauntlet ⏳, integrated 2025 OOS rerun ⏳, health_check finding "geometry mismatch" still listed open ⏳ |
+> | B — Engine C rebuild | ~25-30% (post-Path-A) | HRP slice 1 (failed), Path A slice 2 in flight (HRP composition + turnover penalty + tax-aware rebalancing) | mean-variance with shrinkage ❌, capital efficiency layer ❌, multi-asset proper ❌ |
+> | C — Engine E rebuild | ~25-30% | HMM 3-state classifier shipped, default off | multi-resolution regime detection ❌, transition warning detector ❌, cross-asset confirmation ❌, regime-conditional sleeve de-gross ❌ |
+> | D — Feature Foundry | ~60% | DataSource ABC ✓, @feature decorator ✓, ablation runner function ✓, twin generator ✓, dashboard tab ✓, model card schema ✓, CFTC COT proof-of-architecture ✓ | auto-ablation cron scheduler ❌, adversarial filter as runtime/CI gate ❌, 90-day archive enforcement ❌, integration with main backtest pipeline ❌ |
+> | E — Edge factory expansion | 0% | (nothing) | All ~50 features (cross-sectional, event-driven, calendar, pairs, auto-engineered) ❌ |
+> | F — External data sources | ~5% | CFTC COT seed ✓ | All other ~11 sources ❌; real fundamentals data layer decision ❌ (BLOCKS Path C compounder enable) |
+> | G — Statistical ML upgrades | 0% | (nothing) | Bayesian opt, symbolic regression, SSL embeddings, causal, GNN ❌ |
+> | H — Moonshot Sleeve | ~5% | Path C sleeve abstraction can host it ✓ | All Moonshot edges, asymmetric sizing, sleeve config ❌ |
+> | I — Deployment infrastructure | 0% | (nothing) | Real OMS, vol-targeting, tail hedge, kill switches, shadow-live, chaos engineering ❌ |
+> | J — Cross-cutting | ~30% | Capital allocation dashboard ✓, determinism harness ✓, ablation runner function ✓ | Decision diary ❌, DVC versioning ❌, edge graveyard structured tagging ❌, info-leakage detector ❌, data quality monitoring (Great Expectations) ❌, CI for backtests ❌, engine versioning ❌, synthetic data harness ❌ |
+>
+> **Honest cumulative: ~20-25% of the doc's full plan.** The doc estimated 12-18 months for 2-3 devs. We're a few intense agent-weeks in. Roughly on pace, **NOT ahead**. Prior synthesis implied ahead; that was wrong.
+>
+> **Discipline correction going forward:** when reporting workstream
+> status, list the doc's named deliverables and mark each ✓/⚠️/❌
+> explicitly. "X% complete" should mean "X% of named deliverables
+> shipped with their acceptance criteria met," not "vibes."
+>
+> **Kill thesis status:** nominally triggered by the post-tax -0.577
+> reading (cost completeness shipped). Reinterpreted as deployment-
+> context drag rather than alpha refutation. Path A engineering and
+> Path B Roth deployment are both responses; combination is the plan.
+> But this re-accounting also reveals: the kill thesis was tied to
+> "post-Foundation" measurement, and Foundation is genuinely ~65%
+> not ~90% — the integrated rerun that would actually be "post-
+> Foundation" hasn't happened. So the -0.577 is post-cost-layer-only,
+> not post-full-foundation. Doesn't change the directional finding
+> (tax drag is real and large) but does mean the kill thesis trigger
+> reading is on incomplete data.
 
 ## What the reviewer docs added that we hadn't fully internalized
 
