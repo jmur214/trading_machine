@@ -572,8 +572,12 @@ class ModeController:
             debug=True,
         )
 
-        # --- Risk Engine ---
-        self.risk = RiskEngine(self.cfg_risk)
+        # --- Risk Engine (with Path A tax-aware modules wired from portfolio cfg) ---
+        self.risk = RiskEngine(
+            self.cfg_risk,
+            wash_sale_cfg=self.cfg_portfolio.get("wash_sale_avoidance"),
+            lt_hold_cfg=self.cfg_portfolio.get("lt_hold_preference"),
+        )
 
         # --- Portfolio Config Object ---
         from engines.engine_c_portfolio.policy import PortfolioPolicyConfig
@@ -874,7 +878,11 @@ class ModeController:
             governor=governor,
             per_ticker_score_logger=per_ticker_logger,
         )
-        risk = RiskEngine(self.cfg_risk)
+        risk = RiskEngine(
+            self.cfg_risk,
+            wash_sale_cfg=self.cfg_portfolio.get("wash_sale_avoidance"),
+            lt_hold_cfg=self.cfg_portfolio.get("lt_hold_preference"),
+        )
 
         exec_params = {
             "slippage_bps": float(self.cfg_bt.get("slippage_bps", 10.0)),

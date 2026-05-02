@@ -71,19 +71,33 @@ class PortfolioOptimizerSettings:
     method = "weighted_sum"  → no-op, behavior identical to legacy
                                (this is the default; existing backtests
                                are unaffected)
-    method = "hrp"           → HRP over the universe of non-zero-score
-                               tickers using last `cov_lookback` bars
-                               of returns from data_map.
+    method = "hrp"           → HRP-as-replacement (slice 1 — FALSIFIED).
+                               Preserved for cell D verification only.
+                               Strips ensemble conviction from
+                               aggregate_score and replaces with HRP-weight
+                               × N. Sharpe regression -0.63 vs weighted_sum
+                               on prod-109 2025 OOS. Do not deploy.
+    method = "hrp_composed"  → HRP slice 2 (compose-not-replace). Preserves
+                               aggregate_score (Engine A's edge-ensemble
+                               conviction) and ALSO emits per-ticker
+                               ``optimizer_weight`` into the per-ticker
+                               info dict. AlphaEngine.generate_signals
+                               threads optimizer_weight into signal.meta;
+                               Engine B multiplies it into the ATR-risk
+                               sizing path. The two are composed
+                               multiplicatively rather than HRP overwriting
+                               conviction.
 
     The turnover gate is consulted *after* HRP produces weights — if
     expected alpha lift < expected transaction cost, the previously-
-    committed weight vector is reused instead, suppressing churn.
+    committed weight vector is reused instead, suppressing churn. Active
+    for both ``hrp`` and ``hrp_composed`` methods.
 
     Default OFF for safety: when ``method == "weighted_sum"``, all HRP
     machinery is bypassed, including turnover state. This is a strict
     no-op for callers that don't opt in.
     """
-    method: str = "weighted_sum"  # "weighted_sum" | "hrp"
+    method: str = "weighted_sum"  # "weighted_sum" | "hrp" | "hrp_composed"
     cov_lookback: int = 60
     min_history: int = 30
     use_ledoit_wolf: bool = True
@@ -211,7 +225,7 @@ class SignalProcessor:
         self.po_settings = portfolio_optimizer_settings or PortfolioOptimizerSettings()
         self._hrp = None
         self._turnover = None
-        if self.po_settings.method == "hrp":
+        if self.po_settings.method in ("hrp", "hrp_composed"):
             from engines.engine_c_portfolio.optimizers import HRPOptimizer, TurnoverPenalty
             from engines.engine_c_portfolio.optimizers.hrp import HRPConfig
             from engines.engine_c_portfolio.optimizers.turnover import TurnoverConfig
@@ -598,15 +612,22 @@ class SignalProcessor:
     ) -> Dict[str, dict]:
         """Cross-ticker reshape via HRP.
 
-        Sign of each aggregate_score is preserved (long/short direction
-        is Engine A's call). Magnitude is replaced with HRP-weight × N,
-        so equal-weight HRP ≈ no change and a true HRP solution adds
-        differentiation by covariance structure.
+        Two methods:
+        - ``method == "hrp"`` (slice 1, FALSIFIED, retained for D-cell
+          verification): replaces aggregate_score magnitude with
+          HRP-weight × N. Strips edge-ensemble conviction; produces
+          -0.63 Sharpe regression vs weighted_sum.
+        - ``method == "hrp_composed"`` (slice 2): preserves aggregate_score
+          (sign + magnitude) and emits per-ticker ``optimizer_weight``
+          (= HRP-weight × N, clamped) into the per-ticker info dict.
+          AlphaEngine threads optimizer_weight into signal.meta; Engine B
+          multiplies it into ATR-risk sizing. Composes conviction with
+          HRP rather than replacing it.
 
         Tickers with aggregate_score ≈ 0 are excluded from HRP and pass
-        through unchanged. The turnover gate then decides whether to
-        commit the new weights or stick with the previously-committed
-        vector.
+        through unchanged. The turnover gate decides whether to commit
+        new weights or reuse the previously-committed vector (active
+        for both methods).
         """
         active = [
             t for t, info in out.items()
@@ -636,17 +657,28 @@ class SignalProcessor:
         if n == 0:
             return out
         scale = float(n)
+        is_composed = (self.po_settings.method == "hrp_composed")
+
         for t, w in committed.items():
             if t not in out:
                 continue
-            sgn = 1.0 if out[t]["aggregate_score"] >= 0 else -1.0
-            new_mag = float(w) * scale
-            new_mag = max(0.0, min(1.0, new_mag))
-            out[t]["aggregate_score"] = sgn * new_mag
+            magnitude = float(w) * scale
+            magnitude = max(0.0, min(1.0, magnitude))
             out[t]["hrp_weight"] = float(w)
 
+            if is_composed:
+                # Compose: leave aggregate_score (Engine A's conviction) untouched
+                # and expose optimizer_weight as a separate sizing multiplier.
+                # Engine B reads signal.meta["optimizer_weight"] in prepare_order.
+                out[t]["optimizer_weight"] = magnitude
+            else:
+                # Slice-1 replacement (kept for D-cell verification only).
+                sgn = 1.0 if out[t]["aggregate_score"] >= 0 else -1.0
+                out[t]["aggregate_score"] = sgn * magnitude
+                out[t]["optimizer_weight"] = 1.0  # already absorbed into score
+
         if self.debug:
-            print(f"[PORTFOLIO_OPTIMIZER] hrp method applied "
+            print(f"[PORTFOLIO_OPTIMIZER] {self.po_settings.method} applied "
                   f"to n={n} tickers, turnover_stats={self._turnover.stats}")
         return out
 

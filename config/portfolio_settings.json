@@ -22,5 +22,19 @@
             "flat_cost_bps": 10.0,
             "min_turnover_to_check": 0.01
         }
+    },
+    "wash_sale_avoidance": {
+        "enabled": false,
+        "window_days": 30,
+        "min_loss_dollars": 1.0
+    },
+    "lt_hold_preference": {
+        "enabled": false,
+        "short_term_rate": 0.30,
+        "long_term_rate": 0.15,
+        "long_term_min_days": 365,
+        "defer_window_start_days": 300,
+        "hard_cap_days": 380,
+        "min_hold_savings_threshold": 50.0
     }
 }

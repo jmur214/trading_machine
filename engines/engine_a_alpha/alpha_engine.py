@@ -831,6 +831,23 @@ class AlphaEngine:
                         "weight": float(ed.get("weight", 0.0)),
                     })
 
+            sig_meta = {
+                "edges_triggered": edges_triggered,
+                "regimes": regimes,
+                "market_state": regime_meta,  # COGNITION INJECTION
+            }
+            # Engine C (HRP slice 2) optimizer_weight pass-through. When
+            # SignalProcessor was configured with method="hrp_composed",
+            # _apply_portfolio_optimizer wrote a per-ticker
+            # ``optimizer_weight`` into info; propagate it to Engine B via
+            # meta so risk_engine.prepare_order can multiply it into the
+            # ATR-risk sizing path. Default omitted = Engine B sees no key
+            # = sizing unchanged (1.0 multiplier).
+            if "optimizer_weight" in info:
+                sig_meta["optimizer_weight"] = float(info["optimizer_weight"])
+            if "hrp_weight" in info:
+                sig_meta["hrp_weight"] = float(info["hrp_weight"])
+
             signals.append({
                 "ticker": ticker,
                 "side": side,
@@ -841,11 +858,7 @@ class AlphaEngine:
                 "edge_id": top_meta["id"],
                 "edge_category": top_meta["category"],
                 # compact meta only
-                "meta": {
-                    "edges_triggered": edges_triggered,
-                    "regimes": regimes,
-                    "market_state": regime_meta, # COGNITION INJECTION
-                },
+                "meta": sig_meta,
             })
 
         if is_debug_enabled("ALPHA"):
