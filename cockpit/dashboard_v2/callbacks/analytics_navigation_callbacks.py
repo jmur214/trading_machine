@@ -5,6 +5,7 @@ from ..tabs.performance_tab import performance_layout
 from ..tabs.governor_tab import governor_layout
 from ..tabs.evolution_tab import evolution_layout
 from ..tabs.capital_allocation_tab import capital_allocation_layout
+from ..tabs.feature_foundry_tab import feature_foundry_layout
 
 def register_analytics_navigation_callbacks(app):
     @app.callback(
@@ -21,4 +22,6 @@ def register_analytics_navigation_callbacks(app):
             return evolution_layout()
         elif selected_tab == "capital_allocation":
             return capital_allocation_layout()
+        elif selected_tab == "feature_foundry":
+            return feature_foundry_layout()
         return html.Div("Select a module.")

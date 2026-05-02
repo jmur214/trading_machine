@@ -1,0 +1,18 @@
+feature_id: cot_commercial_net_long
+source_url: https://www.cftc.gov/MarketReports/CommitmentsofTraders/index.htm
+license: public
+point_in_time_safe: true
+expected_behavior: |
+  Reflects commercial-trader (hedger) net positioning in the underlying
+  futures market for the mapped ETF, scaled by total open interest.
+  Returns values in roughly [-1, +1]; sustained extremes have historically
+  preceded mean-reverting moves on a 4-12 week horizon. Returns None for
+  tickers without a futures mapping or before the first COT report of the
+  series.
+known_failure_modes:
+  - "Holiday weeks publish late on Mondays instead of Fridays — freshness_check returns False until catch-up."
+  - "Exchange code naming drifts (NYMEX/CME mergers); the ticker→market map needs annual review."
+  - "The futures-only legacy report includes index-trader contamination in the 'commercial' bucket prior to 2006; pre-2006 windows should be flagged separately if used."
+  - "Some ETFs (USO/UCO especially) hold rolled futures contracts whose tenor mix shifts; the headline 'commercial net long' may decouple from the ETF's tracking error."
+last_revalidation: never
+ablation_history: []

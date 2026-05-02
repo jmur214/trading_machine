@@ -42,6 +42,7 @@ from .callbacks.backtest_callbacks import register_backtest_callbacks
 from .callbacks.trading_callbacks import register_trading_callbacks
 from .callbacks.command_callbacks import register_command_callbacks
 from .callbacks.capital_allocation_callbacks import register_capital_allocation_callbacks
+from .callbacks.feature_foundry_callbacks import register_feature_foundry_callbacks
 
 
 def create_dash_app(live: bool = False) -> dash.Dash:
@@ -163,6 +164,7 @@ def create_dash_app(live: bool = False) -> dash.Dash:
     register_trading_callbacks(app)
     register_command_callbacks(app)
     register_capital_allocation_callbacks(app)
+    register_feature_foundry_callbacks(app)
 
     return app
 
