@@ -16,10 +16,11 @@ Flow per bar:
 """
 
 import logging
+from collections import deque
 
 import numpy as np
 import pandas as pd
-from typing import Dict, Optional
+from typing import Deque, Dict, Optional
 
 from engines.engine_e_regime.regime_config import RegimeConfig
 from engines.engine_e_regime.hysteresis import HysteresisFilter
@@ -120,6 +121,28 @@ class RegimeDetector:
         if getattr(self.cfg, "hmm", None) and self.cfg.hmm.hmm_enabled:
             self._init_hmm()
 
+        # Multi-resolution HMM ensemble (Workstream C slice 2 — 2026-05).
+        # Default disabled; surfaces regime_daily / regime_weekly /
+        # regime_monthly fields read-only into advisory output.
+        self._multires = None
+        if (
+            getattr(self.cfg, "multires", None)
+            and self.cfg.multires.multires_enabled
+        ):
+            self._init_multires()
+
+        # Transition-warning detector (Workstream C slice 2 — 2026-05).
+        # Default disabled; surfaces regime_transition_warning field
+        # read-only into advisory output. Maintains a rolling posterior
+        # buffer fed by the daily HMM.
+        self._tw_detector = None
+        self._tw_buffer: Deque[Dict[str, float]] = deque(maxlen=20)
+        if (
+            getattr(self.cfg, "transition_warning", None)
+            and self.cfg.transition_warning.transition_warning_enabled
+        ):
+            self._init_transition_warning()
+
     def detect_regime(
         self,
         benchmark_df: pd.DataFrame,
@@ -194,6 +217,17 @@ class RegimeDetector:
         # or None if HMM disabled / unavailable.
         hmm_proba = self._predict_hmm(now)
 
+        # Multi-resolution HMM ensemble (Workstream C slice 2 — 2026-05).
+        # Returns {"regime_daily": dict|None, "regime_weekly": dict|None,
+        # "regime_monthly": dict|None} or None if disabled.
+        multires_advisory = self._predict_multires(now)
+
+        # Transition-warning detector (Workstream C slice 2 — 2026-05).
+        # Streams the daily HMM posterior through the buffer and detector;
+        # returns {"warning": bool, "entropy": float, "kl_from_lag": float,
+        # ...} or None if disabled / no posterior available.
+        transition_warning_read = self._update_transition_warning(now, hmm_proba)
+
         macro_regime, advisory = self._advisory.generate(
             axis_states=axis_states,
             axis_confidences=axis_confidences,
@@ -202,6 +236,14 @@ class RegimeDetector:
             corr_details=corr_details,
             hmm_proba=hmm_proba,
         )
+
+        # Read-only multi-res + transition-warning fields surfaced into
+        # advisory dict. Engine B reads only advisory.risk_scalar today;
+        # these new fields are observability for future consumers.
+        if multires_advisory is not None:
+            advisory.update(multires_advisory)
+        if transition_warning_read is not None:
+            advisory["regime_transition_warning"] = transition_warning_read
 
         # --- Step 6: Empirical transition matrix ---
         transition_probs = self._history.get_transition_matrix()
@@ -297,6 +339,9 @@ class RegimeDetector:
             f.reset()
         self._breadth.reset()
         self._history.reset()
+        # Drain transition-warning posterior buffer so a fresh run starts
+        # from cold state (no carryover from prior run).
+        self._tw_buffer.clear()
 
     # ------------------------------------------------------------------
     # HMM augmentation (Engine E confidence-aware first slice — 2026-05)
@@ -373,4 +418,99 @@ class RegimeDetector:
             )
         except Exception as exc:
             _log.debug(f"HMM predict failed at {now}: {exc}")
+            return None
+
+    # ------------------------------------------------------------------
+    # Multi-resolution HMM (Workstream C slice 2 — 2026-05)
+    # ------------------------------------------------------------------
+    def _init_multires(self) -> None:
+        """Load multi-resolution HMM ensemble (daily/weekly/monthly).
+
+        On any artifact missing, the orchestrator logs and degrades —
+        loaded_cadences may be a strict subset of {daily, weekly, monthly}.
+        """
+        try:
+            from engines.engine_e_regime.multires_hmm import (
+                MultiResolutionHMM, MultiResHMMArtifacts,
+            )
+            from pathlib import Path
+            cfg = self.cfg.multires
+            repo_root = Path(__file__).resolve().parents[2]
+            artifacts = MultiResHMMArtifacts(
+                daily_path=repo_root / self.cfg.hmm.model_path,
+                weekly_path=repo_root / cfg.weekly_model_path,
+                monthly_path=repo_root / cfg.monthly_model_path,
+            )
+            self._multires = MultiResolutionHMM(
+                artifacts=artifacts,
+                history_window_daily=cfg.history_window_daily,
+                history_window_weekly=cfg.history_window_weekly,
+                history_window_monthly=cfg.history_window_monthly,
+            )
+            _log.info(
+                f"Multi-resolution HMM loaded; cadences="
+                f"{self._multires.loaded_cadences}"
+            )
+        except Exception as exc:
+            _log.warning(f"Multi-resolution HMM init failed: {exc}")
+            self._multires = None
+
+    def _predict_multires(self, now: Optional[str]) -> Optional[Dict[str, Optional[dict]]]:
+        """Run multi-res classification at `now`. Returns advisory-format dict."""
+        if self._multires is None or not now:
+            return None
+        try:
+            ts = pd.Timestamp(now)
+            results = self._multires.classify_at(ts)
+            return self._multires.to_advisory_dict(results)
+        except Exception as exc:
+            _log.debug(f"Multi-res predict failed at {now}: {exc}")
+            return None
+
+    # ------------------------------------------------------------------
+    # Transition-warning detector (Workstream C slice 2 — 2026-05)
+    # ------------------------------------------------------------------
+    def _init_transition_warning(self) -> None:
+        """Initialize the streaming transition-warning detector + buffer."""
+        try:
+            from engines.engine_e_regime.transition_warning import (
+                TransitionWarningDetector,
+                TransitionWarningConfig as TwCfgInner,
+            )
+            cfg = self.cfg.transition_warning
+            self._tw_detector = TransitionWarningDetector(
+                TwCfgInner(
+                    window=cfg.window,
+                    entropy_threshold=cfg.entropy_threshold,
+                    kl_threshold=cfg.kl_threshold,
+                    smoothing_window=cfg.smoothing_window,
+                    min_history=cfg.min_history,
+                )
+            )
+            # Resize buffer to honor configured size
+            self._tw_buffer = deque(maxlen=cfg.posterior_buffer_size)
+            _log.info("TransitionWarningDetector initialized")
+        except Exception as exc:
+            _log.warning(f"TransitionWarningDetector init failed: {exc}")
+            self._tw_detector = None
+
+    def _update_transition_warning(
+        self, now: Optional[str], hmm_proba: Optional[Dict[str, float]],
+    ) -> Optional[dict]:
+        """Push new posterior into buffer + return current bar's warning read."""
+        if self._tw_detector is None:
+            return None
+        if hmm_proba is None or not now:
+            return None
+        try:
+            ts = pd.Timestamp(now)
+            history = list(self._tw_buffer)
+            read = self._tw_detector.detect_at(
+                timestamp=ts, posterior=hmm_proba, history=history,
+            )
+            # Append AFTER detection so detect_at sees `history` ending at t-1.
+            self._tw_buffer.append(dict(hmm_proba))
+            return read.to_dict()
+        except Exception as exc:
+            _log.debug(f"TransitionWarning update failed at {now}: {exc}")
             return None

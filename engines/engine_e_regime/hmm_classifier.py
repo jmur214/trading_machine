@@ -100,6 +100,7 @@ class HMMRegimeClassifier:
         feature_names: Tuple[str, ...] = DEFAULT_FEATURES,
         state_labels: Optional[Tuple[str, ...]] = None,
         random_state: int = 42,
+        covariance_type: str = "full",
     ):
         if state_labels is None:
             if n_states == 2:
@@ -120,6 +121,12 @@ class HMMRegimeClassifier:
         self.feature_names = tuple(feature_names)
         self.state_labels = tuple(state_labels)
         self.random_state = random_state
+        if covariance_type not in ("full", "diag", "tied", "spherical"):
+            raise ValueError(
+                f"covariance_type must be one of full/diag/tied/spherical, "
+                f"got {covariance_type!r}"
+            )
+        self.covariance_type = covariance_type
 
         # Filled in by fit() / load()
         self._hmm = None
@@ -136,6 +143,7 @@ class HMMRegimeClassifier:
         X_df: pd.DataFrame,
         train_start: Optional[str] = None,
         train_end: Optional[str] = None,
+        min_obs: int = 100,
     ) -> HMMTrainingArtifact:
         """Fit Gaussian HMM on a feature DataFrame.
 
@@ -163,9 +171,9 @@ class HMMRegimeClassifier:
                 f"Training frame missing required features: {missing}"
             )
         df = df[list(self.feature_names)].dropna()
-        if len(df) < 100:
+        if len(df) < min_obs:
             raise ValueError(
-                f"Insufficient training data ({len(df)} rows) — need >=100"
+                f"Insufficient training data ({len(df)} rows) — need >={min_obs}"
             )
 
         # Z-score normalize (HMM Gaussian emissions are scale-sensitive)
@@ -181,7 +189,7 @@ class HMMRegimeClassifier:
             try:
                 model = GaussianHMM(
                     n_components=self.n_states,
-                    covariance_type="full",
+                    covariance_type=self.covariance_type,
                     n_iter=200,
                     tol=1e-4,
                     random_state=self.random_state + seed_offset,
