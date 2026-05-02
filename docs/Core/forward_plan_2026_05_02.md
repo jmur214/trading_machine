@@ -38,15 +38,29 @@
 >
 > **Kill thesis status:** nominally triggered by the post-tax -0.577
 > reading (cost completeness shipped). Reinterpreted as deployment-
-> context drag rather than alpha refutation. Path A engineering and
-> Path B Roth deployment are both responses; combination is the plan.
-> But this re-accounting also reveals: the kill thesis was tied to
-> "post-Foundation" measurement, and Foundation is genuinely ~65%
-> not ~90% — the integrated rerun that would actually be "post-
-> Foundation" hasn't happened. So the -0.577 is post-cost-layer-only,
-> not post-full-foundation. Doesn't change the directional finding
-> (tax drag is real and large) but does mean the kill thesis trigger
-> reading is on incomplete data.
+> context drag rather than alpha refutation. But this re-accounting
+> also reveals: the kill thesis was tied to "post-Foundation"
+> measurement, and Foundation is genuinely ~65% not ~90% — the
+> integrated rerun that would actually be "post-Foundation" hasn't
+> happened. So the -0.577 is post-cost-layer-only, not post-full-
+> foundation. Doesn't change the directional finding (tax drag is
+> real and large) but does mean the kill thesis trigger reading is
+> on incomplete data.
+>
+> **Deployment-context update — 2026-05-02 evening:** Alpaca (the
+> deployment vehicle) may not offer Roth IRAs. Live-money deployment
+> is therefore TAXABLE individual unless the user opens a separate
+> Roth-supporting brokerage (non-engineering decision, deferred).
+> Paper trading is tax-free but doesn't model the real-money case.
+> **Tax-drag engineering (regime-conditional wash-sale gate,
+> longer-hold optimizer, tax-loss harvesting / lot selection) is
+> DEFERRED but HIGH PRIORITY.** Next-round dispatch prioritizes
+> context-agnostic improvements (features, regime detection, data
+> sources, sleeve abstractions) that help in BOTH contexts. The
+> wash-sale gate multi-year falsification (2021 Δ=-0.966) confirmed
+> that naive tax-drag fixes can hurt in taxable too — the
+> regime-conditional design is the right answer when we get to it,
+> not next round.
 
 ## What the reviewer docs added that we hadn't fully internalized
 
