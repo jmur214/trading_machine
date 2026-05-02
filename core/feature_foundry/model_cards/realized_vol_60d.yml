@@ -1,0 +1,18 @@
+feature_id: realized_vol_60d
+source_url: https://www.jstor.org/stable/2351086
+license: internal
+point_in_time_safe: true
+expected_behavior: |
+  Annualized standard deviation of trailing 60 daily log returns
+  (multiplied by sqrt(252)). Cross-sectional ranking primitive for the
+  low-vol anomaly (Black 1972; Frazzini-Pedersen 2014; Baker-Bradley-
+  Wurgler 2011). Convention: long bottom quintile by realized vol.
+  Output is positive; typical equity values 0.10-0.80. Returns None
+  when fewer than 61 closes available or any close ≤ 0.
+known_failure_modes:
+  - "Realized vol lags during regime change — the 60-day window blends pre- and post-shock samples, biasing the ranking right after a crisis."
+  - "Low-vol stocks are often interest-rate-sensitive (utilities, staples); the anomaly historically underperforms during sharp rate-rise regimes (1994, 2022)."
+  - "Capacity-constrained — institutional crowding has compressed the unconditional spread since the early 2010s; expect smaller gross alpha than the academic literature."
+  - "Defensiveness mistaken for alpha — much of the historical Sharpe is beta-adjusted; deploying without a beta hedge captures less than the literature claims."
+last_revalidation: never
+ablation_history: []

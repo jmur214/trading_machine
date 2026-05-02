@@ -1,0 +1,18 @@
+feature_id: reversal_1m
+source_url: https://www.jstor.org/stable/2329112
+license: internal
+point_in_time_safe: true
+expected_behavior: |
+  Trailing 21-trading-day return. Cross-sectional ranking primitive for
+  short-term mean reversion (Jegadeesh 1990, Lehmann 1990). Convention:
+  long the bottom decile, short the top decile, weekly or monthly
+  rebalance. Historically strong gross returns but high turnover and
+  liquidity sensitivity. Returns None when fewer than 22 closes are
+  available.
+known_failure_modes:
+  - "Effect concentrated in small/mid-cap and most heavily attenuated in mega-caps; signal quality scales inversely with market cap."
+  - "Highly turnover-driven — cost completeness layer (slippage + impact + borrow + tax) often kills retail-scale realized return."
+  - "Anti-momentum tail: persistent drift on news-driven moves overrides the reversal in the first 5 trading days."
+  - "Sensitive to bid-ask bounce on illiquid names; recommend using mid-price or VWAP downstream rather than raw close-on-close."
+last_revalidation: never
+ablation_history: []

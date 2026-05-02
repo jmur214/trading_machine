@@ -1,0 +1,16 @@
+feature_id: mom_6_1
+source_url: https://onlinelibrary.wiley.com/doi/10.1111/j.1540-6261.1993.tb04702.x
+license: internal
+point_in_time_safe: true
+expected_behavior: |
+  Return over t-126..t-21 trading days. Higher-frequency variant of
+  mom_12_1; same skip-month protection. Empirically lower long-run
+  Sharpe than mom_12_1 but reacts faster to trend formation. Returns
+  None when fewer than 127 trading-day closes are available.
+known_failure_modes:
+  - "More turnover than mom_12_1; transaction-cost sensitivity is higher."
+  - "Strongly correlated with mom_12_1 in stable trending regimes — provides little additional information when 12-1 is on."
+  - "Concentration risk on small universes (same as mom_12_1)."
+  - "Susceptible to sector momentum bleed-through when universe is sector-concentrated."
+last_revalidation: never
+ablation_history: []

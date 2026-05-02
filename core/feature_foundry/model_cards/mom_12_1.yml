@@ -1,0 +1,17 @@
+feature_id: mom_12_1
+source_url: https://onlinelibrary.wiley.com/doi/10.1111/j.1540-6261.1993.tb04702.x
+license: internal
+point_in_time_safe: true
+expected_behavior: |
+  Return over t-252..t-21 trading days. Cross-sectional ranking primitive
+  documented since Jegadeesh-Titman (1993). Top-decile/bottom-decile spread
+  has historically averaged ~12%/yr in US equities, with severe drawdowns
+  during regime transitions (2002, 2009 momentum crashes). Returns None
+  when fewer than 253 trading-day closes are available before `dt`.
+known_failure_modes:
+  - "Momentum crashes — sharp reversal at regime turning points (March 2009 ~75% factor drawdown)."
+  - "Concentration risk on small universes: top decile of 50 names is 5 stocks, dominated by sector beta."
+  - "Skip-month protection ineffective for short-horizon reversal in dislocated markets (March 2020)."
+  - "Stale CSV source on a holiday or data outage produces a future-dated last row; close_series respects file order, so dt-bounded slice handles it correctly only if the source is honest about index dates."
+last_revalidation: never
+ablation_history: []
