@@ -330,7 +330,7 @@ class TestHRPCompositionVsReplacement:
         )
 
     def test_hrp_composed_preserves_aggregate_score(self):
-        """Slice-2: aggregate_score == weighted_sum baseline; optimizer_weight emitted."""
+        """Slice-3: aggregate_score == weighted_sum baseline; optimizer_weight emitted."""
         data = self._build_data_map()
         baseline = self._processor("weighted_sum").process(
             data, pd.Timestamp("2024-04-30"),
@@ -350,9 +350,73 @@ class TestHRPCompositionVsReplacement:
             # Optimizer weight emitted as composition multiplier
             assert "optimizer_weight" in info
             assert "hrp_weight" in info
-            # Optimizer weight in [0, 1] (HRP-weight × N, clamped)
+            # Slice 3: lower-clamped at 0, no upper clamp (HRP weights are
+            # non-negative by construction so no negative output ever).
             ow = info["optimizer_weight"]
-            assert 0.0 <= ow <= 1.0
+            assert ow >= 0.0
+
+    def test_hrp_slice3_redistribution_not_reduction(self):
+        """Slice 3 invariant: optimizer_weight has mean ≈ 1.0 across firing
+        set AND at least one position is amplified (>1.0) and at least one
+        attenuated (<1.0). Slice 2's clamp at 1.0 made every position ≤ 1.0,
+        so this test would FAIL on slice 2.
+        """
+        data = self._build_data_map(n_tickers=8, n_bars=120, seed=0)
+        proc = self._processor("hrp_composed")
+        out = proc.process(
+            data, pd.Timestamp("2024-04-30"),
+            {t: {"e1": 0.7} for t in data},
+        )
+        active = [info for info in out.values() if "optimizer_weight" in info]
+        assert len(active) >= 4, (
+            f"need ≥4 firing tickers to exercise redistribution; got {len(active)}"
+        )
+        weights = [info["optimizer_weight"] for info in active]
+        mean_w = sum(weights) / len(weights)
+        # Mean of HRP_weight × N over all members exactly equals 1.0 by
+        # construction (committed sums to 1.0). Allow small float epsilon.
+        assert mean_w == pytest.approx(1.0, abs=1e-9)
+        # Redistribution invariant: at least one above and one below 1.0.
+        # On the synthetic 2-cluster data this is guaranteed by the cluster
+        # variance asymmetry HRP detects.
+        assert max(weights) > 1.0, (
+            f"slice 3 must amplify above-mean tickers; max={max(weights):.4f} "
+            f"means slice-2 clamp is still active"
+        )
+        assert min(weights) < 1.0, (
+            f"slice 3 should attenuate below-mean tickers; min={min(weights):.4f}"
+        )
+
+    def test_hrp_slice3_no_upper_clamp_degeneracy(self):
+        """Construct a high-concentration covariance (one ticker with sharply
+        higher HRP weight) and verify the resulting optimizer_weight goes
+        materially above 1.0 — the exact behaviour slice 2 was suppressing.
+        """
+        # Build 4 tickers where one has a much lower variance — HRP will
+        # concentrate weight on it.
+        rng = np.random.default_rng(42)
+        idx = pd.date_range("2024-01-01", periods=120, freq="D")
+        out_data = {}
+        for i in range(4):
+            sigma = 0.005 if i == 0 else 0.05  # T0 is 10× lower vol
+            close = 100.0 * np.exp(np.cumsum(rng.normal(0.0, sigma, 120)))
+            out_data[f"T{i}"] = pd.DataFrame({
+                "Close": close, "Open": close, "High": close * 1.001,
+                "Low": close * 0.999, "Volume": 1_000_000.0,
+            }, index=idx)
+
+        proc = self._processor("hrp_composed")
+        out = proc.process(
+            out_data, pd.Timestamp("2024-04-30"),
+            {t: {"e1": 0.7} for t in out_data},
+        )
+        # T0 should receive the highest HRP weight → optimizer_weight > 1.0
+        # (would be capped at exactly 1.0 under slice 2's clamp)
+        ow_t0 = out["T0"]["optimizer_weight"]
+        assert ow_t0 > 1.05, (
+            f"low-vol ticker should be amplified; got optimizer_weight={ow_t0:.4f}. "
+            f"Value ≈ 1.0 would indicate slice-2 clamp is still in place."
+        )
 
 
 # ============================================================================

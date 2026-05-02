@@ -617,12 +617,16 @@ class SignalProcessor:
           verification): replaces aggregate_score magnitude with
           HRP-weight × N. Strips edge-ensemble conviction; produces
           -0.63 Sharpe regression vs weighted_sum.
-        - ``method == "hrp_composed"`` (slice 2): preserves aggregate_score
+        - ``method == "hrp_composed"`` (slice 3): preserves aggregate_score
           (sign + magnitude) and emits per-ticker ``optimizer_weight``
-          (= HRP-weight × N, clamped) into the per-ticker info dict.
-          AlphaEngine threads optimizer_weight into signal.meta; Engine B
-          multiplies it into ATR-risk sizing. Composes conviction with
-          HRP rather than replacing it.
+          (= HRP-weight × N, lower-clamped at 0; mean is exactly 1.0
+          across the firing set so the multiplier redistributes size
+          rather than reducing it). AlphaEngine threads optimizer_weight
+          into signal.meta; Engine B multiplies it into ATR-risk sizing.
+          Composes conviction with HRP rather than replacing it. Slice 2
+          additionally clamped at 1.0 — that made the multiplier a strict
+          reducer (above-mean clamped down, below-mean attenuated; net
+          every position ≤ baseline). Slice 3 removes that upper clamp.
 
         Tickers with aggregate_score ≈ 0 are excluded from HRP and pass
         through unchanged. The turnover gate decides whether to commit
@@ -662,17 +666,25 @@ class SignalProcessor:
         for t, w in committed.items():
             if t not in out:
                 continue
-            magnitude = float(w) * scale
-            magnitude = max(0.0, min(1.0, magnitude))
+            raw_magnitude = float(w) * scale
             out[t]["hrp_weight"] = float(w)
 
             if is_composed:
-                # Compose: leave aggregate_score (Engine A's conviction) untouched
-                # and expose optimizer_weight as a separate sizing multiplier.
-                # Engine B reads signal.meta["optimizer_weight"] in prepare_order.
-                out[t]["optimizer_weight"] = magnitude
+                # Slice 3 — redistribution, not reduction.
+                # `committed` sums to 1.0 by HRP construction, so committed × N
+                # has mean exactly 1.0 across the firing set. Keeping only the
+                # lower clamp at 0 lets above-mean tickers amplify (>1.0) and
+                # below-mean tickers attenuate (<1.0). The slice-2 upper clamp
+                # at 1.0 made every position size-at-or-below baseline — a
+                # strict reducer, never a redistributor. Engine B's
+                # max_gross_exposure cap clips any pathological amplification.
+                out[t]["optimizer_weight"] = max(0.0, raw_magnitude)
             else:
                 # Slice-1 replacement (kept for D-cell verification only).
+                # aggregate_score is conventionally in [-1, 1]; keep the
+                # original clamp on this code path so slice-1 reproductions
+                # remain bit-identical to the falsified design.
+                magnitude = max(0.0, min(1.0, raw_magnitude))
                 sgn = 1.0 if out[t]["aggregate_score"] >= 0 else -1.0
                 out[t]["aggregate_score"] = sgn * magnitude
                 out[t]["optimizer_weight"] = 1.0  # already absorbed into score
