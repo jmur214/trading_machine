@@ -8,5 +8,19 @@
     "vol_lookback": 20,
     "rebalance_threshold": 0.05,
     "risk_free_rate": 0.04,
-    "debug": true
+    "debug": true,
+    "portfolio_optimizer": {
+        "method": "weighted_sum",
+        "hrp": {
+            "cov_lookback": 60,
+            "min_history": 30,
+            "use_ledoit_wolf": true,
+            "linkage_method": "single"
+        },
+        "turnover": {
+            "enabled": true,
+            "flat_cost_bps": 10.0,
+            "min_turnover_to_check": 0.01
+        }
+    }
 }
