@@ -1,0 +1,19 @@
+feature_id: ma_cross_50_200
+source_url: https://en.wikipedia.org/wiki/Moving_average_crossover
+license: internal
+point_in_time_safe: true
+expected_behavior: |
+  (SMA_50 - SMA_200) / SMA_200, where the SMAs are simple means over the
+  most recent 50 and 200 trading-day closes ending at `dt`. Sign matches
+  the textbook golden-cross / death-cross indicator; magnitude is the
+  fractional gap, typically in (-0.4, +0.6) for liquid US equities.
+  Cross-sectional ranking primitive — top quintile favors stocks in
+  established uptrends. Returns None when fewer than 200 trading-day
+  closes are available before `dt`.
+known_failure_modes:
+  - "Whipsaw behavior near zero — small SMA gap flips sign on a single day, generating false regime signals if used as a gate."
+  - "Lagging by construction — SMA_200 takes ~6 months to reflect a regime change, so the signal arrives late at trend turning points."
+  - "Heavy collinearity with mom_12_1 in trend regimes; ablation contributions may overlap."
+  - "200-day window biases toward large-cap survivors — short-history names (recent IPOs) silently drop out via the None branch."
+last_revalidation: never
+ablation_history: []
