@@ -10,6 +10,7 @@ import os
 import numpy as np
 
 from engines.execution.slippage_model import get_slippage_model, SlippageModel
+from backtester.alpaca_fees import AlpacaFees, AlpacaFeesConfig, get_alpaca_fees
 
 # ------------------------------- Config -------------------------------- #
 
@@ -66,7 +67,9 @@ class ExecutionSimulator:
                  prefer_close_fallback: bool = True,
                  conservative_intrabar: bool = True,
                  verbose: bool = True,
-                 slippage_extra: Optional[Dict[str, Any]] = None):
+                 slippage_extra: Optional[Dict[str, Any]] = None,
+                 alpaca_fees_cfg: Optional[Dict[str, Any]] = None,
+                 alpaca_fees: Optional[AlpacaFees] = None):
         self.params = ExecParams(
             slippage_bps=float(slippage_bps),
             slippage_model=str(slippage_model),
@@ -90,6 +93,21 @@ class ExecutionSimulator:
         if slippage_extra:
             slippage_cfg.update(slippage_extra)
         self.model: SlippageModel = get_slippage_model(slippage_cfg)
+
+        # Alpaca regulatory pass-through fees. When ``alpaca_fees`` is
+        # provided directly, use it; otherwise build from config dict.
+        # When neither is provided, fall back to a disabled instance so
+        # ``compute_fee`` returns the legacy ``commission`` constant
+        # untouched.
+        if alpaca_fees is not None:
+            self.alpaca_fees = alpaca_fees
+        elif alpaca_fees_cfg is not None:
+            self.alpaca_fees = get_alpaca_fees(alpaca_fees_cfg)
+        else:
+            # Disabled fallback: returns a flat `commission` per fill.
+            self.alpaca_fees = AlpacaFees(
+                AlpacaFeesConfig(enabled=False, base_commission=float(commission))
+            )
 
     # ---------------------------- internals ---------------------------- #
 
@@ -216,12 +234,19 @@ class ExecutionSimulator:
         # models (RealisticSlippageModel) can compute market impact.
         traded = self._apply_slippage(raw, side, ticker, next_bar_like, qty=qty)
 
+        # Alpaca regulatory pass-through fees (SEC Section 31 + FINRA TAF).
+        # When the model is disabled this returns the flat ``commission``
+        # constant, preserving legacy behavior bit-for-bit.
+        commission_total = self.alpaca_fees.compute_fee(
+            side=side, qty=qty, fill_price=float(traded)
+        )
+
         fill = {
             "ticker": ticker,
             "side": side,
             "qty": qty,
             "fill_price": float(traded),
-            "commission": float(self.params.commission),
+            "commission": float(commission_total),
         }
         # preserve attribution/meta if passed
         if "edge" in order:
@@ -339,12 +364,17 @@ class ExecutionSimulator:
         # so size-aware models compute the right market impact for the exit.
         px = self._apply_slippage(level, paid_side, ticker, bar_like, qty=qty)
 
+        # Alpaca pass-through fees on the stop/target close.
+        commission_total = self.alpaca_fees.compute_fee(
+            side=exec_side, qty=qty, fill_price=float(px)
+        )
+
         fill = {
             "ticker": ticker,
             "side": exec_side,
             "qty": qty,
             "fill_price": float(px),
-            "commission": float(self.params.commission),
+            "commission": float(commission_total),
             "trigger": trigger,
         }
         # Preserve attribution keys from position if present
