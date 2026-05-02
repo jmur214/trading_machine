@@ -69,11 +69,27 @@ git worktree add "$WT" -b "$BRANCH" origin/main
 echo "[3/4] Setting up data/ isolation..."
 mkdir -p "$WT/data"
 
-# Read-only / append-only directories — symlink back to main worktree
-for sub in processed trade_logs research macro_data earnings; do
-  if [ -e "${MAIN}/data/${sub}" ]; then
-    ln -s "${MAIN}/data/${sub}" "$WT/data/${sub}"
-    echo "    symlinked data/${sub}"
+# Symlink ALL directories under data/ except governor (which gets per-agent copy
+# below). Robust to future additions — no need to maintain a hardcoded allowlist.
+# governor is the only mutable shared state file group; the rest are read-only
+# caches (price data, macro, news, earnings, etc.) or UUID-keyed write dirs
+# (trade_logs, research) where collision is impossible.
+for entry in "${MAIN}/data"/*; do
+  if [ -d "$entry" ]; then
+    name=$(basename "$entry")
+    if [ "$name" != "governor" ]; then
+      ln -s "$entry" "$WT/data/${name}"
+      echo "    symlinked data/${name}"
+    fi
+  fi
+done
+
+# Symlink any non-governor files in data/ root (e.g., fundamentals_static.csv).
+for entry in "${MAIN}/data"/*; do
+  if [ -f "$entry" ]; then
+    name=$(basename "$entry")
+    ln -s "$entry" "$WT/data/${name}"
+    echo "    symlinked data/${name}"
   fi
 done
 
