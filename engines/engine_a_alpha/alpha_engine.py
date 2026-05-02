@@ -51,7 +51,7 @@ import os
 from .signal_collector import SignalCollector
 from .signal_processor import (
     SignalProcessor, RegimeSettings, HygieneSettings, EnsembleSettings,
-    MetaLearnerSettings,
+    MetaLearnerSettings, PortfolioOptimizerSettings,
 )
 from .signal_formatter import SignalFormatter
 
@@ -407,6 +407,32 @@ class AlphaEngine:
             ),
         )
 
+        # Engine C portfolio optimizer (Workstream B). Default method
+        # "weighted_sum" is identical to legacy behavior. Block can live
+        # in alpha_settings.*.json (caller-injected config) or fall back
+        # to config/portfolio_settings.json.
+        po_cfg_raw = cfg_raw.get("portfolio_optimizer")
+        if po_cfg_raw is None:
+            try:
+                ps_file = Path("config/portfolio_settings.json")
+                if ps_file.exists():
+                    po_cfg_raw = (_load_json(ps_file) or {}).get("portfolio_optimizer")
+            except Exception:
+                po_cfg_raw = None
+        po_cfg_raw = po_cfg_raw or {}
+        po_hrp_cfg = po_cfg_raw.get("hrp", {}) or {}
+        po_to_cfg = po_cfg_raw.get("turnover", {}) or {}
+        portfolio_optimizer_settings = PortfolioOptimizerSettings(
+            method=str(po_cfg_raw.get("method", "weighted_sum")),
+            cov_lookback=int(po_hrp_cfg.get("cov_lookback", 60)),
+            min_history=int(po_hrp_cfg.get("min_history", 30)),
+            use_ledoit_wolf=bool(po_hrp_cfg.get("use_ledoit_wolf", True)),
+            linkage_method=str(po_hrp_cfg.get("linkage_method", "single")),
+            turnover_enabled=bool(po_to_cfg.get("enabled", True)),
+            turnover_flat_cost_bps=_coerce_float(po_to_cfg.get("flat_cost_bps", 10.0)),
+            turnover_min_check=_coerce_float(po_to_cfg.get("min_turnover_to_check", 0.01)),
+        )
+
         self.cfg = AlphaConfig(
             enter_threshold=_coerce_float(self._env_enter if self._env_enter is not None else cfg_raw.get("enter_threshold", 0.2)),
             exit_threshold=_coerce_float(self._env_exit if self._env_exit is not None else cfg_raw.get("exit_threshold", 0.05)),
@@ -464,6 +490,7 @@ class AlphaEngine:
             edge_tiers=_edge_tiers,
             paused_edge_ids=_paused_edge_ids,
             paused_max_weight=float(cfg_raw.get("paused_max_weight", 0.5)),
+            portfolio_optimizer_settings=portfolio_optimizer_settings,
         )
         self.formatter = SignalFormatter(
             enter_threshold=self.cfg.enter_threshold,
