@@ -1,0 +1,1588 @@
+# Major shift — the diagnostics matured into something more sophisticated than my plan called for
+
+A lot has shipped. Let me sort what's actually meaningful from what's noise.
+
+## What landed (and matters)
+
+### Phase 2.10d structural fixes — shipped, all three
+- **Primitive 1**: per-bar fill-share ceiling (capital-rivalry kill). Exactly what I recommended.
+- **Primitive 2**: soft-pause weight ceiling (regime_gate leak fix).
+- **Primitive 3**: regime-summary floor on suggested_max_positions (regime-aware slot cap).
+- Plus **autonomous lifecycle triggers**: zero-fill detector, sustained-noise detector, TierClassifier post-backtest hook, revival-veto for heavy losers.
+
+This is the entire structural-cleanup batch I said was blocking. Done.
+
+### Determinism floor restored
+Identified `edges.yml` drift as the non-determinism source. Built `scripts/run_isolated.py` harness, verified 3-run bitwise identical. **This is a quietly enormous infrastructure win.** It means every Sharpe number from now on is reproducible. Drifted readings were overstating prior numbers by ~0.2 Sharpe.
+
+### Capital allocation dashboard — built
+The diagnostic tab I recommended exists in `cockpit/dashboard_v2`. Bottom-3 / top-2 fill-share visualization. Exactly the rivalry-pattern visualization I called for.
+
+### Gates 2-6 audit — bigger finding than expected
+**ALL FIVE other gates have the same geometry-mismatch bug as Gate 1.** Gates 2/3/5/6 fail by it; Gate 4 suspect. Plus two independent bugs in WFO (equity-stitching) and PBO (single-ticker bootstrap). **The architectural fix at top of `validate_candidate` fixes all 5 gates simultaneously.**
+
+This is a wider pivot than my "Reform Gate 1" recommendation. The entire gauntlet has been systematically generating false negatives across all gates because they're all measuring standalone-deployment-shape signals against ensemble-shape thresholds.
+
+### Goal C captured as load-bearing
+Commit `972f121`: "User Context — retail capital + asymmetric-upside priority." They documented the moonshot priority as project context. Good sign.
+
+### Sequencing decision: statistical moonshot first, LLM on top
+`da3d795`: explicit choice not to parallel-build Moonshot Sleeve via LLM. Statistical first, then LLM augmentation. **Reasonable but conservative.** I'd argue this is the one place to consider parallelism — moonshot capture really does benefit from LLM analysis of unstructured data — but the sequencing call is defensible.
+
+## The actual numbers under the new harness
+
+| Measurement | Sharpe | Status |
+|-------------|--------|--------|
+| In-sample multi-year (3-run deterministic) | **0.905** | Replaces drifted 1.063; honest ceiling |
+| 2025 OOS post-Phase-2.10d | **0.315** | Up from -0.049. **AMBIGUOUS** — doesn't clear my 0.5 threshold |
+| Universe-B + ADV floors + ML | 0.916 | Pending replication under harness |
+| MetaLearner ON (deterministic) | **-0.58 vs ML-off** | Currently a *drag*, not a lift |
+
+## The MetaLearner story is the most important methodological finding
+
+Three rounds of testing told a clean story:
+1. **Round 1 (uncontrolled):** ML on → Sharpe -0.049 → 1.064. Looked great.
+2. **Round 2 (universe-robust):** UB FAIL. Deployment-blocked outside prod-109.
+3. **Round 4 (under deterministic harness):** ML-on is **-0.58 Sharpe drag** vs ML-off. The Round 1 lift was governor-drift artifact.
+
+**Verdict: cap=0.20 + ML OFF is the recommended ship state.** Sharpe 0.984 in-sample multi-year, 3-run identical.
+
+This is an extraordinary methodological win. Most teams would have shipped Round 1's "1.064 with ML" as a headline. **This team built the harness, ran four rounds, and concluded "the lift wasn't real."** The MetaLearner — which I previously called the strategic answer to capital rivalry — is currently *not adding value* under honest measurement.
+
+That's not a failure. That's the gauntlet doing its job. **The architecture is correct (gradient boosting over edge scores). The current model isn't.** Either:
+- Per-ticker training needs more data (only N=1 OOS so far)
+- The features fed to the meta-learner aren't informative enough yet
+- The current model overfits to in-sample patterns that don't transfer
+
+## My updated assessment
+
+### Where I was right
+- OOS would likely come in below in-sample (confirmed: 0.315 vs 0.905)
+- The capital allocation defects were the binding constraint (confirmed by Sharpe lift)
+- The gauntlet had a measurement bug (confirmed and *broader than I called*)
+- The MetaLearner isn't ready for production (confirmed)
+
+### Where I underestimated
+- **The gauntlet bug is in all 5 gates, not just Gate 1.** My "Reform Gate 1" recommendation was directionally right but scope-narrow. The team's audit found the systematic version.
+- **Determinism non-floor was a real blocker** I didn't surface. They identified it and fixed it. Without `run_isolated.py`, every Sharpe number was contaminated by edges.yml drift.
+
+### Where the new state lands
+- **The system honestly has Sharpe ~0.3 OOS 2025 and ~0.9 in-sample multi-year, both deterministically measured.** 
+- **The 0.3 doesn't clear my pre-committed kill threshold of 0.5.** It's also not "failed" — it's "ambiguous."
+- **SPY 2025 was +0.955 Sharpe.** The system at +0.315 still loses to passive by a wide margin in OOS terms.
+
+## What I'd recommend now
+
+### Immediate (next 1-2 weeks)
+1. **Fix the geometry-mismatch architectural bug at top of `validate_candidate`.** This single fix repairs all 5 gates. Highest-leverage code change available.
+2. **Replicate the Path 2 ADV-floor result** (UB 0.225 → 0.916) under the deterministic harness. If it holds, you've found a major lift outside prod-109. If it doesn't, you've avoided shipping an artifact.
+3. **Re-run 2025 OOS** after the gauntlet fix. Some currently-rejected candidates may now pass and contribute. **This is the next critical data point.**
+
+### The kill thesis question — answer it now
+The 0.315 OOS sits in "ambiguous" but **per my pre-committed 0.5 threshold, this is closer to falsification than success.** Before the next OOS run, decide:
+- If post-gauntlet-fix 2025 OOS lands at <0.4, what's the response? Pivot? More structural work? Acknowledge the alpha thesis is weaker than hoped?
+- If it lands 0.4-0.7, what's the response? More edges? More gauntlet rigor?
+- If it lands >0.7, what's the response? Begin Phase 3 deployment infra prep?
+
+**Pre-register these responses before the result so the result can't move them.**
+
+### Don't enable the MetaLearner yet
+The 4-round audit said ML-off wins. Respect that. Continue building per-ticker training but **the burden of proof is on the next iteration to demonstrate real lift under harness, not a measurement artifact.** Probably needs 6-12 months of proper logging before there's enough per-ticker data to train on.
+
+### The gauntlet fix is the highest-leverage move available
+A single architectural fix at `validate_candidate` repairs all 5 gates. After that fix, **the candidate-promotion rate likely rises significantly** because real alphas that were being false-negative-rejected can now pass. This is more valuable than building new edges.
+
+## The bigger picture
+
+**The system is more honest than it was a week ago, less impressive than it briefly appeared, and more methodologically rigorous than I gave it credit for.** Sharpe 0.315 OOS is real if disappointing. The gauntlet bug being systemic across 5 gates suggests months of candidate work was being unfairly rejected. The MetaLearner audit showed the discipline to retract a headline result when honest measurement disagreed.
+
+**The trajectory is right. The pace is good. The honest current state is: solid foundation, ambiguous alpha, validated diagnostic apparatus, no real money yet justified.**
+
+The single most important question right now: **can the 0.315 become 0.5+ after the gauntlet fix and ADV-floor replication?** If yes, the alpha thesis is real and the path forward is clear. If no, the harder question — "is there meaningful alpha on this universe at retail size at all?" — needs a serious answer.
+
+Either way, **the discipline to ask the question honestly is the most valuable artifact in the project right now.** Keep it.
+
+_________________________________________
+(Context but not relevant: I asked it if it could do any work, it said no but could do documents, I didn't like any of the documents, it proposed other documents to work on, I didn't like those either - they all had to do with trader input where I said the below)
+no. the machine will be working autonomously at some point so I will have no input on any condition, and before i put money in i will paper trade. i’m more thinking about ways in the future we can get new data, find new alpha, sources, things to implement, fix, update, and definitely add, that aren’t already there/included in docs
+
+# Buffet of fresh ideas — none covered yet
+
+Going beyond what's in docs and what we've discussed. Mix of free data, exotic alphas, architectural gaps, and engineering plays.
+
+## Underused free data sources
+
+### 1. **CFTC Commitments of Traders (COT) reports**
+Weekly, free, decades of history. Tracks commercial-vs-speculative positioning in every major futures market. **Commercials are the hedgers (correct money); large specs are the trend-followers (often wrong at extremes).** Extreme commercial-net-long positions in oil, gold, currencies historically precede mean-reversion. Almost zero retail systems use this.
+
+### 2. **OpenSky Network — corporate jet movement data**
+Free aircraft tracking. **M&A signal:** when CEO jet flies to acquirer city repeatedly, deal often follows. Documented in academic literature ("The Power of Aircraft Tracking" — Goldman 2019). For event-driven sleeve.
+
+### 3. **USPTO patent + trademark filings**
+Free bulk data. Patent grant velocity by company correlates with future R&D productivity. Trademark filings telegraph product launches months before announcements. Underused signal.
+
+### 4. **EIA weekly petroleum + natural gas reports**
+Released Wednesdays 10:30 AM ET. Mechanical impact on energy stocks/ETFs. **Pre-release positioning + post-release drift** is a documented edge.
+
+### 5. **Container shipping / Baltic Dry Index**
+Free, daily. Real-time global trade activity. Leading indicator for industrials, transports, retailers with import-heavy supply chains.
+
+### 6. **FDA approvals/rejections database (PDUFA dates)**
+Real-time, free. PDUFA decision dates known months in advance. Pre-decision IV expansion + post-decision direction = binary event sleeve.
+
+### 7. **TreasuryDirect auction results**
+Bid-to-cover ratios, indirect bidder participation. **Weak demand at Treasury auctions is a leading rate-shock signal** — happened 6 weeks before the 2022 rate selloff.
+
+### 8. **NHTSA recall data + FDA recall data**
+Real-time, free. Auto/pharma single-name event drivers.
+
+### 9. **USAspending.gov federal contract awards**
+Government contract wins by ticker. Defense, healthcare, IT contractors. Often precedes earnings beats.
+
+### 10. **DNS + Certificate Transparency logs**
+When a company suddenly registers thousands of subdomains or TLS certs, something's launching. Cert.sh, crt.sh free APIs. Pre-announcement signal for product launches, M&A rebrands.
+
+### 11. **Glassdoor + LinkedIn job posting velocity (scraped)**
+**Job posting acceleration precedes revenue acceleration by ~6 months.** Slowing hires precede earnings misses. Legitimately scrapable.
+
+### 12. **Wikipedia page-view spike API**
+Free. Page-view spikes on lesser-known tickers correlate with attention-driven price moves. Underused because most retail uses Reddit/StockTwits instead.
+
+### 13. **Prediction markets (Kalshi, Polymarket APIs)**
+Free APIs. Probability the market assigns to recession, Fed cuts, election outcomes, geopolitical events. **Crowdsourced macro forecast you can use as a feature** without paying anyone.
+
+### 14. **EDGAR ATS-N filings (dark pool disclosures)**
+Quarterly disclosures of alternative trading system activity. Surfaces dark pool routing patterns by venue. Microstructure feature.
+
+## Exotic but retail-tractable alpha sources
+
+### 15. **Closed-end fund discount mean reversion**
+CEFs trade at persistent discounts/premiums to NAV. When discount > 2σ from 365-day mean, reversion plays out over 30-90 days. Low capacity but works perfectly at retail size.
+
+### 16. **Russell 2000 reconstitution front-running**
+**Reconstitution dates announced months in advance.** Stocks predicted to enter the index get bought; stocks dropping out get sold. Trading the predictions before the actual rebalance is a documented strategy that still works.
+
+### 17. **MLP/REIT December tax-loss season + January reversal**
+**Predictable December selling pressure** in losers, predictable January-effect bounce. Annual, mechanical, persistent.
+
+### 18. **Spinoff under-performance trade (first 60 days)**
+Newly spun-off companies systematically underperform for ~60 days due to forced index-fund selling. Greenblatt's research, still works. Short or avoid.
+
+### 19. **VIX term structure roll yield**
+Front-VIX vs back-VIX contango/backwardation. **Persistent contango → systematic short-vol via VXX puts. Backwardation → defensive.** Mechanical.
+
+### 20. **Earnings-day weekly options selling**
+Sell elevated IV pre-earnings, manage with stop or hedge. Capacity-limited but works at retail. Win rate 65-75%, occasional large losses — needs sizing discipline.
+
+### 21. **Options expiration week (OpEx) flows**
+Third Friday of every month has predictable dealer-gamma-driven price patterns. Tom McClellan and Jeff Hirsch documented. Can be traded mechanically.
+
+### 22. **Index inclusion/exclusion arb beyond Russell**
+S&P 500 inclusion announcements, NASDAQ-100 changes — same dynamics, smaller universe. The S&P inclusion drift is well-known but still works for the small caps that get added.
+
+### 23. **Bond/equity divergence reversion**
+When IEF and SPY decouple sharply (correlation rolls negative briefly), historically reverts within 5-15 days. Pair trade.
+
+### 24. **Bitcoin-equity correlation regime trade**
+BTC sometimes leads risk assets, sometimes decouples. **The transition periods are detectable via rolling correlation breaks** and predict near-term regime changes in equities.
+
+### 25. **Dispersion trading proxy**
+Long single-stock vol (via stock options), short index vol (via SPY puts/VXX). Captures correlation breakdowns. Tractable at retail with right strikes.
+
+## Architectural / engineering gaps not yet planned
+
+### 26. **Block bootstrap synthetic histories**
+Generate 10,000 plausible alternate market histories via Moving Block Bootstrap on returns. **Test every edge against histories that didn't happen but could have.** Robustness measure orthogonal to walk-forward.
+
+### 27. **Continuous shadow portfolios at scale**
+Not just A/B. Run **20+ portfolios in parallel forever**, each with different parameter sets. Compare actual to best-shadow weekly. The gap between best-shadow and actual is the cost of your specific choices — currently unknowable.
+
+### 28. **Self-modifying gauntlet**
+The gauntlet itself learns from its false-positive/negative history. If the gauntlet rejected real alphas (like volume_anomaly via Q3 standalone), auto-loosen the criteria; if it approved overfit junk, tighten. Meta-learning at the validation layer.
+
+### 29. **Edge "epigenetic" memory**
+Currently lifecycle pauses are binary and unconditional. Better: pauses are *contextual* — "this edge fails in stressed regimes, works in benign." Auto-revival when the regime that suits it returns. The lifecycle becomes a Markov-style state machine, not a binary switch.
+
+### 30. **Hedging asset auto-discovery**
+System runs continuous correlation + tail-correlation analysis, identifies the asset that *best hedges* the current portfolio. Not a fixed tail hedge — a dynamic one. May be GLD some weeks, TLT other weeks, BTC, foreign equities, even a sector ETF.
+
+### 31. **Information-leakage detector**
+Compare in-sample vs OOS Sharpe per feature. Features with steep degradation slope are leakage suspects. Auto-quarantine. Currently leakage detection is human-driven; it should be automated.
+
+### 32. **Model card per edge**
+Standard ML hygiene that's not in the project. Each edge gets a YAML doc with: inputs, assumptions, expected behavior, known failure modes, last revalidation date, factor exposures. Auto-generated, auto-updated. Standard at every serious ML org.
+
+### 33. **Data quality monitoring (Great Expectations or similar)**
+Automated tests on every data source: stale data detection, schema drift detection, missing-value spike detection, distribution shift. Auto-pause dependent edges when a source breaks.
+
+### 34. **Bayesian per-edge alpha estimation**
+Replace rolling-Sharpe-as-skill-estimate with proper Bayesian updating. Prior + per-trade likelihood = posterior over true alpha. More principled, gives credible intervals naturally, handles small-sample edges better.
+
+### 35. **Network-effects detector**
+When the entire edge stack agrees in one direction, that's either a high-conviction call or coordinated overfit. **Track stack-level concordance as a feature.** When all 5 momentum edges fire AND all 3 mean-reversion edges fire same direction, it's a meta-signal worth watching.
+
+## Workflow / engineering plays
+
+### 36. **Daily "state of the system" auto-report**
+Morning email/log: yesterday's PnL, attribution by edge, current regime classification, alerts, decisions made overnight. **For awareness, not action.** Currently you need to query for everything; passive notification builds intuition over months.
+
+### 37. **Auto-generated weekly post-mortem of biggest winner + biggest loser**
+Most informative trades each week, decomposed: what fired, what regime, what attribution, what's the takeaway. Searchable archive becomes pattern-recognition fuel.
+
+### 38. **CI for backtests**
+Every commit triggers full backtest run, posts to a dashboard. Drift detection at the codebase level — "this PR moved Sharpe by -0.05" before merge.
+
+### 39. **A/B framework for production parameter changes**
+Every config change runs as 30-day A/B before merging. Currently changes ship; the system has no quarantine for "this might be slightly worse."
+
+### 40. **Synthetic data testing harness**
+Generate fake market data with known properties (specific correlations, known regime changes, planted anomalies). Verify the system detects them. Catches regression bugs that real-data tests miss because real-data answers are unknown.
+
+### 41. **Reverse beta regression on every "alpha" edge**
+Every edge regressed continuously against factor exposures. When betas drift, alpha estimate is suspect. Currently the factor decomp is point-in-time; it should be a rolling diagnostic.
+
+### 42. **Inverse problem solver**
+"Given a target return profile, what universe / period / config would have produced it?" Helps map the system's response surface. Useful for diagnosing why current config produces current results.
+
+### 43. **Crowded-trade detector**
+Measure correlation of own positions vs ETF holdings, 13F overlap of top funds, options OI extremes. **When you're in crowded names, reduce sizing automatically.** Saves you from the Aug-2007-style coordinated unwind.
+
+### 44. **Microstructure latency profiler**
+Even at retail, latency to fill matters. Track median + tail latency to Alpaca per ticker per time-of-day. Detect degradation. Not for HFT — for execution quality monitoring.
+
+### 45. **Edge ablation studies, monthly, automated**
+Drop each edge from the active set, measure portfolio impact over the recent window. **Edges with negative ablation impact (removing them HELPS) are auto-flagged for review.** Currently the system might be running edges that hurt but no one notices.
+
+---
+
+## How to triage this list
+
+**Highest ROI (free data, plug into existing pipeline):** 1, 2, 6, 11, 13, 16, 24
+
+**Highest ROI (architectural, reusable forever):** 28, 31, 32, 33, 34, 41, 45
+
+**Most novel (alpha space):** 1 (COT), 16 (Russell rebal), 18 (spinoff drag), 22, 24 (BTC-equity)
+
+**Easiest to ship (hours, not weeks):** 13, 32, 36, 37, 41, 45
+
+If I had to pick three to implement next that nobody's talked about:
+1. **CFTC COT positioning data** as a feature — totally underused, decades of history, free
+2. **Edge ablation studies, automated, monthly** — the system might be running negative-contribution edges and not know it
+3. **Model card per edge** — standard hygiene that pays off forever as the edge inventory grows
+
+These three have the property of being *cheap to add now* and *compounding in value* as the system scales.
+_________________________________________
+the problem is i loved all these ideas, how can we pick only 3? how difficult would it be to incorporate almost all of these without just creating a shit ton of noise or issues that are hard to track down? 
+
+Also, when it comes to our current engines, where are they each significantly underperforming or missing critical components/aspects/features that would add huge value to their performance?
+
+# Two-part answer
+
+## Part 1 — "Pick 3" was the wrong framing
+
+You're right to push back. The bottleneck isn't *which* ideas — it's whether the infrastructure makes adding them cheap. Build the right infrastructure once, and adding the 50th feature is as cheap as adding the 5th. Without it, even 3 features create chaos.
+
+### The infrastructure that makes "many additions safe"
+
+**1. Feature Foundry — generic ingestion abstraction**
+Every new data source becomes a 50-line plugin conforming to one interface:
+```
+class DataSource:
+    name, license, latency, point_in_time_safe: bool
+    def fetch(start, end) -> DataFrame
+    def schema_check() -> bool
+    def freshness_check() -> bool
+```
+Once written, adding source #20 is the same cost as source #2.
+
+**2. Common feature interface (you already have via Tier system)**
+Every feature is a function `(ticker, date) → float` with metadata:
+```
+@feature(tier='B', horizon=5, license='public')
+def cot_commercial_net_long(ticker, date): ...
+```
+The meta-learner consumes them all interchangeably.
+
+**3. Auto-ablation cron — the noise filter**
+Monthly: drop each feature, rerun the system, measure portfolio impact. Features whose ablation *improves* performance get auto-archived. Features that contribute < 0.01 Sharpe for 6 months get archived. **The system actively prunes itself.** Without this, 50 features become 50 sources of noise.
+
+**4. Adversarial twin generator**
+For every real feature, auto-generate a permuted/random twin with the same statistical signature but no signal. Both go into the meta-learner. **Real features must rank above their twins** in feature importance. Twins that rank above real features are evidence of overfitting.
+
+**5. Feature audit dashboard**
+Single view: every feature, its current importance, ablation contribution, last validation date, age, schema-drift status. Color-coded green/yellow/red. **At a glance, see what's working and what's drifting.** No dashboard = no situational awareness.
+
+**6. Feature lineage / provenance**
+Every feature has a YAML model card committed to git: source URL, license, point-in-time discipline, when last verified, expected behavior, known failure modes. **Without lineage, restating a feature 3 months later is impossible.**
+
+### The discipline rules
+
+- **One feature per PR.** Never batch. Each gets reviewed, tested, validated.
+- **No feature ships without metadata + tests + adversarial twin.** Hard CI gate.
+- **90-day archive policy** for features without positive ablation contribution.
+- **Quarterly review** of the dashboard — manual sanity check on what survived.
+
+### The math of why this works
+
+Without infrastructure: marginal cost of feature N is roughly N (each one adds tracking complexity)
+With infrastructure: marginal cost of feature N is constant (the framework absorbs the complexity)
+
+**Cost of building infrastructure: ~3-4 weeks of focused work.**
+**Cost of NOT building it and adding 30 features ad-hoc: months of debugging, lost trust in numbers, eventual rewrite.**
+
+Build the foundry first. Then add features in any order, in parallel. The "pick 3" question becomes obsolete.
+
+---
+
+## Part 2 — Engine-by-engine gap analysis
+
+Where each engine is materially underperforming or missing load-bearing components.
+
+### Engine A — Alpha (signal/edge production)
+
+**Significantly missing:**
+- **Continuous probability outputs.** Most edges produce binary/ternary signals (-1, 0, +1). They should produce calibrated probabilities — the meta-learner can use the magnitude. Lossy compression at the edge layer.
+- **Auto-feature engineering** (tsfresh, Featuretools). Could 10x the feature count overnight without writing manual edges.
+- **Cross-sectional ranking framework as a primitive.** Currently each edge produces per-ticker scores; cross-sectional ranking strategies (long top decile / short bottom) need their own infrastructure.
+- **Edge horizon metadata explicit.** Every edge has an implicit holding period; it's not declared. Multi-horizon ensembling can't work without explicit horizons.
+- **Edge-vs-edge orthogonality check.** Two "different" edges might have 90% correlated returns. No automated check exists. **Discovering this would probably reduce the active edge count significantly without losing alpha.**
+- **Fundamental edges nearly absent.** ROIC change, FCF/sales trend, debt reduction, share buyback yield, accruals — all documented anomalies, all missing.
+
+### Engine B — Risk
+
+**Significantly missing:**
+- **Position-level vol targeting.** Still fixed-fraction `risk_per_trade_pct: 0.025`. Vol-targeting alone documents +0.2-0.4 Sharpe in literature.
+- **Correlation-aware sizing.** Positions sized independently — when 5 momentum edges all fire on AAPL/MSFT/GOOGL/META/NVDA, that's effectively one $X position in tech-megacap factor.
+- **Forecasted vol (GARCH/HAR-RV)** as input instead of realized ATR.
+- **Tail hedge sleeve.** Long-VIX or OTM puts. Discussed, not built. **Without this, the next 2008/2020 takes a -30%+ chunk.**
+- **Drawdown-conditioned exposure reduction.** When portfolio is in drawdown, no auto-de-risking.
+- **Event risk auto-reduction.** Pre-FOMC, pre-CPI, pre-earnings days for held names — automatic position reduction.
+- **Stress test infrastructure.** Current portfolio against historical regimes (2008, 2020, 2022) isn't auto-computed nightly.
+
+### Engine C — Portfolio
+
+**Significantly missing — this is the thinnest engine in the system:**
+- **Most "portfolio construction" actually happens in signal_processor.weighted_sum.** Engine C is mostly slot management. **Real portfolio optimization (mean-variance, HRP, risk parity) isn't running anywhere.**
+- **No turnover-aware rebalancing.** Every signal change triggers a trade even when cost > expected alpha.
+- **No tax-aware sequencing.** Wash sale rules, short-term vs long-term cap gains — ignored. **For a real money taxable account, this is huge** (30%+ haircut on short-term gains).
+- **No multi-asset allocation primitive.** Equity-only. Bonds/commodities/crypto/international as a strategic sleeve isn't possible because Engine C has no concept of asset class.
+- **No rebalance cadence policy.** Daily rebalancing is implicit. Weekly or threshold-triggered may be optimal — untested.
+- **No capital efficiency layer.** When meta-learner confidence is high, gross exposure should rise. When low, fall. Not parameterized.
+
+### Engine D — Discovery
+
+**Significantly missing (some being fixed):**
+- **GA is the wrong method.** Even with expanded vocabulary, GA produces overfit Frankensteins. **Bayesian optimization, symbolic regression, causal discovery** — known. Migration is a Phase 2 priority, hasn't started.
+- **The geometry-mismatch bug across all 5 gates.** Currently being fixed. Until shipped, the gauntlet rejects real alphas systematically.
+- **No counterfactual evaluation.** "What if this candidate had been in production for the last 3 years instead of `momentum_edge_v1`?" — should be auto-computed for every candidate that survives gauntlet.
+- **No automated hypothesis generation.** Candidates are GA-mutated. Should also have LLM-driven hypothesis stream feeding the same gauntlet (Phase 6, deferred).
+- **Edge graveyard with reasoning is partial.** Failed candidates archived but not labeled with *why* they failed in a structured way that prevents reinvention.
+- **No transfer-learning across instruments.** A discovery on US equities should partially transfer to ETFs, international, crypto. Currently each universe is siloed.
+
+### Engine E — Regime
+
+**Significantly missing:**
+- **Probably threshold-based, not HMM.** Need to verify, but the typical retail implementation is rules-based. **Real regime detection uses Hidden Markov Models with k-state validation via likelihood-ratio tests.**
+- **No regime confidence.** Binary outputs hide ambiguity. Should output `{regime_A: 0.73, regime_B: 0.19, regime_C: 0.08}` and Engine B should size by confidence.
+- **No predictive regime model.** Engine E describes the *current* regime. It should also predict regime *transitions* — those are the most expensive moments to be wrong.
+- **Macro signals are deployed as edges, not as regime inputs.** `macro_credit_spread_v1`, `macro_real_rate_v1` — these should be FEATURES feeding regime detection, not standalone edges. **Architectural mis-classification.**
+- **No multi-resolution regime detection.** Daily regime ≠ weekly regime ≠ monthly regime. Different edges care about different timescales. Currently only one regime classifier.
+- **No cross-asset regime confirmation.** Equity regimes are correlated with rates/credit/FX/commodity regimes. Confirmation across asset classes makes the regime call more robust.
+- **No transition warning system.** Should fire alerts when regime is *transitioning*, not just identifying the current regime.
+
+### Engine F — Governance
+
+**Significantly missing:**
+- **Capital allocation decisions are still made via signal_processor.weighted_sum.** Engine F should be the *primary* allocator. Currently it's the lifecycle manager but doesn't directly control sizing.
+- **No mode-of-operation switching.** Currently runs the same way always. Should have modes: `normal`, `cautious` (during stress), `aggressive` (during high-confidence regime), `quarantine` (when something feels off).
+- **Lifecycle policy versioning is implicit.** When you change the pause/retire criteria, no formal version. Hard to do "what would the *old* policy have done?" comparisons.
+- **No competing policy A/B.** Engine F could run 2-3 lifecycle policies in shadow simultaneously and learn which is most accurate over time.
+- **Governance self-evaluation missing.** How good is the lifecycle? Are pause decisions being made too aggressively or too leniently? Currently only known via human audits like Phase 2.10c.
+- **No real-time attribution feedback.** Trade attribution should feed into governance daily. Currently the lifecycle runs on slower cadence.
+- **Pre-mortem capability missing.** Engine F should be able to ask "if I retire edge X now and I'm wrong, what's the cost?" before doing it.
+
+### Cross-engine gaps (not assignable to a single engine)
+
+- **No event sourcing.** Engine state changes aren't logged as events. Cross-engine causality requires forensic reconstruction.
+- **No unified observability layer.** Each engine has logs but no time-series of "what was each engine thinking when the system did X."
+- **No full-system simulation harness.** Backtester replays history. It doesn't simulate "what if Engine A produced these signals and Engine E said this regime — how does the joint behavior unfold?"
+- **No engine-level versioning.** Engines don't have version numbers. When Engine D's behavior changes, no clean way to say "this trade was made by Engine D v2.3."
+
+---
+
+## Synthesis
+
+**To your "pick 3" pushback:** the right answer is build the Feature Foundry + Auto-ablation + Adversarial twins. Then the question of "which to add" stops being a constraint — you add them all over time, with the system pruning itself.
+
+**To the engine gaps:** the heaviest investments needed are:
+
+| Engine | Highest-leverage missing piece |
+|--------|-------------------------------|
+| A | Continuous probability outputs + auto-feature engineering (tsfresh) |
+| B | Vol-targeting + correlation-aware sizing + tail hedge sleeve |
+| C | Real portfolio optimization (HRP/risk parity) — currently nearly absent |
+| D | Migrate off GA → Bayesian opt / symbolic regression |
+| E | Confidence-aware HMM regime detection + transition prediction |
+| F | Take primary capital allocation control from signal_processor |
+
+**The single biggest engine-level gap:** **Engine C is dramatically thinner than the others.** Real portfolio construction logic is missing. Most of the work that should be in Engine C is being smuggled into signal_processor's linear sum. **A real Engine C with HRP or risk-parity allocation, turnover penalties, tax-awareness, and capital efficiency layer would be transformative.** This might be the highest single ROI engine investment in the project.
+
+**Second biggest:** **Engine E should be doing more, not less.** Confidence-aware probabilistic regime classification with cross-asset confirmation and transition prediction would feed every other engine better information. Currently it's a thin wrapper.
+
+If forced to rank engine-investments by expected impact: **C > E > A > B > D > F**. Engine F got most of Phase 2.10d's attention; Engines C and E haven't seen comparable architectural investment and are arguably more underbuilt relative to their charter.
+_________________________________________
+what about if we wanted to do as much as we could realistically do, what would the ideal path forward, in terms of all of what we just talked about, and the machine as a whole, be?
+
+# The Ideal Forward Path — Maximum Realistic Ambition
+
+Pulling everything together. The honest answer is **parallel tracks**, not sequential phases — because foundation work, alpha expansion, infrastructure, and the Moonshot Sleeve all need to happen at different paces and the dependencies don't enforce strict ordering. What matters is the *gates* between tracks, not the calendar.
+
+## The North Star
+
+A system that:
+1. **Beats passive net of all costs OOS** (goal B) — and proves it by ≥12 months shadow-live
+2. **Compounds steadily through regime changes** (goal A) — tail-hedged, vol-targeted, regime-aware
+3. **Captures asymmetric upside** (goal C) — Moonshot Sleeve catching 1–3 multibaggers per year
+4. **Self-improves autonomously** — Feature Foundry + auto-ablation + adversarial validation continuously prune and grow
+5. **Deployment-ready** — real OMS, kill switches, chaos-tested, reconciled
+
+## The five concurrent tracks
+
+```
+        Months:  1   2   3   4   5   6   7   8   9   10  11  12
+Track 1 (Found):  ████████████
+Track 2 (Factory):    ██████████████████████████
+Track 3 (Moonshot):       ████████████████
+Track 4 (ML upg):                 ████████████████
+Track 5 (Deploy):             ████████████████
+Track 6 (LLM):                            ████████████████
+                  ─────────────  ──────────────  ──────────
+                  Foundation     Factory+         Deploy +
+                  Gate           Moonshot         LLM
+                  (OOS>0.5)      Gate             Gate
+```
+
+Five tracks running in parallel, three gate-checkpoints. **Don't pretend they're sequential — they're not, and forcing them sequential wastes calendar months.**
+
+---
+
+## Track 1 — Foundation completion (months 1-3)
+
+**Goal: cross the OOS Sharpe > 0.5 net-of-costs threshold honestly.**
+
+### Critical path
+- **Gauntlet geometry-mismatch fix** (in progress) — single architectural change at top of `validate_candidate` repairs all 5 gates. Probably unlocks several rejected real alphas.
+- **ADV-floor + Path 2 replication under deterministic harness** — confirms or kills the UB Sharpe 0.225 → 0.916 lift
+- **2025 OOS rerun after gauntlet + ADV floors** — the next critical data point. Pre-register kill thesis at <0.4
+- **Cost completeness:** borrow rates for shorts, short-term cap gains tax drag, Alpaca fee tiers. Adds 0.05-0.15 Sharpe drag to honest measurement.
+
+### Engine-level gaps to close in this window
+- **Engine C: real portfolio optimizer.** Replace the implicit signal_processor.weighted_sum with HRP (Hierarchical Risk Parity) at minimum, ideally extended to mean-variance with shrinkage. **This is the single biggest engine-level gap and is mostly absent.** Likely worth 0.1-0.3 Sharpe alone.
+- **Engine E: confidence-aware HMM regime detection.** Output `{regime: prob}` instead of binary. Add transition-warning detector. Reclassify macro_credit_spread/macro_real_rate from edges to regime-detection features.
+
+### Foundation Gate criteria (must pass to proceed)
+- 2025 OOS Sharpe ≥ 0.5 net of realistic costs (incl. taxes & borrow)
+- Universe-B Sharpe ≥ 0.5 (no universe artifact)
+- 3-run deterministic reproducibility verified
+- All 5 gauntlet gates measuring correctly (no geometry mismatch)
+- Engine C real optimizer in production
+- Engine E confidence outputs feeding Engine B sizing
+
+**If foundation gate fails** → don't add more features; keep refining. The kill thesis was pre-committed — respect it.
+
+---
+
+## Track 2 — Feature Factory (months 1-9, parallel)
+
+**Goal: 100+ Tier-B features in the Foundry, auto-pruning the dead weight.**
+
+### Build the infrastructure FIRST (months 1-2)
+- **Feature Foundry** — generic ingestion layer, plugin architecture for arbitrary data sources
+- **Auto-ablation cron** — monthly, drops each feature, measures portfolio impact, archives non-contributors
+- **Adversarial twin generator** — auto-creates permuted features for every real one
+- **Feature audit dashboard** — single view of all features' status
+- **Feature lineage / model cards** — YAML metadata per feature, git-tracked
+
+### Then add features in parallel (months 2-9)
+This is where the 45+ ideas land. Roughly grouped:
+
+**Free data integrations** (~15-20 sources)
+- CFTC COT (highest-novelty)
+- USPTO patent + trademark filings
+- FDA approvals/PDUFA dates
+- Prediction markets (Kalshi, Polymarket)
+- OpenSky aircraft tracking (M&A signals)
+- TreasuryDirect auction results
+- EIA petroleum/gas reports
+- Container shipping (Baltic Dry, Drewry)
+- EDGAR ATS-N + Form 4 expansions
+- USAspending federal contracts
+- LinkedIn/Indeed job posting velocity
+- Wikipedia page-view spikes
+- Glassdoor reviews
+- Cross-asset (crypto, FX, commodities)
+- Macro features reclassified to regime inputs
+
+**Cross-sectional ranking primitives** (~10 features)
+- 12-1 momentum, 6-1 momentum, 1-month reversal
+- Value composite (P/E + P/B + EV/EBITDA + EV/Sales)
+- Quality composite (ROIC + margin + debt-equity + accruals)
+- Profitability rank
+- Size factor
+- Asset growth (low)
+- Net stock issuance (buyback bias)
+- Low-vol / low-beta
+
+**Event-driven** (~10 features)
+- PEAD variants, earnings revision drift
+- Spinoff drag (60-day short)
+- Buyback announcement drift
+- Russell rebalance front-running
+- Dividend initiation drift
+- M&A risk arb (post-announcement)
+- Index inclusion/exclusion
+- 52-week breakout with volume confirm
+- Insider cluster expansion (small-caps too)
+- 13F top-fund tracking
+
+**Calendar anomalies** (single ~200-line file)
+- FOMC drift, pre-FOMC reduce
+- Turn-of-month
+- Pre-holiday
+- Day-of-week
+- Sell-in-May
+- Tax-loss season
+- Triple-witching
+
+**Pairs/stat-arb** (~10 features)
+- 10-15 cointegrated pairs
+- Bond/equity divergence reversal
+- Closed-end fund discount mean reversion
+- VIX term structure trades
+- Dispersion proxy
+
+**Auto-engineered features** (~800 from tsfresh + Featuretools)
+- Statistical: entropy, peaks, autocorrelations
+- Spectral: dominant frequencies, wavelet coefficients
+- Pattern-based: trend, complexity measures
+- Most won't pass adversarial filter; enough will
+
+### Factory Gate criteria
+- ≥100 features active in Foundry
+- ≥50 features passing adversarial twin filter
+- ≥30 features with positive ablation contribution
+- Combined system Sharpe (under harness) ≥ Foundation Gate result + 0.2
+
+---
+
+## Track 3 — Moonshot Sleeve (months 2-6, parallel)
+
+**Goal: catch 1-3 multibaggers per year on average over backtested history.**
+
+### Different mandate, different gauntlet
+- **Universe:** Russell 2000 + recent IPOs (last 5 years) + theme-tagged equities (AI, space, biotech, EV, semis)
+- **Signals:** long-term momentum (12-mo + 24-mo), 52-week breakouts, earnings beat+raise, insider clusters (small-caps), short-interest squeeze setups, sentiment velocity, FDA approval drift, contract win signals
+- **Sizing:** 30–50 simultaneous positions, each 1-2% of sleeve; uncapped upside, 50% trailing stop
+- **Objective:** Sortino + skewness + upside capture (NOT Sharpe)
+- **Allocation:** 15-20% of total system capital
+- **Holding period:** months to years
+
+### Why parallel-build
+The Moonshot Sleeve is *architecturally independent* of the core. Different universe, different objective, different gates. **Don't let core's struggles delay it.** A 20-something with 40-year horizon needs this sleeve more than the core's incremental refinements.
+
+### Moonshot Gate criteria
+- Historical backtest 2010-2024 shows ≥1 5x+ winner per year on average
+- Hit rate (positions returning >2x) ≥ 5% — most lose, the math still works
+- Sleeve-level CAGR > 15% in backtest with realistic costs
+- Drawdown profile separately stress-tested through 2008/2020/2022
+
+---
+
+## Track 4 — Statistical ML upgrades (months 4-9, parallel)
+
+**Goal: graduate Engine D from genetic algorithm noise factory to genuinely productive autonomous discovery.**
+
+### The progression
+1. **Bayesian optimization** replacing GA for hyperparameter search (~200 lines via BoTorch)
+2. **Symbolic regression** (PySR) for human-readable formula discovery
+3. **Self-supervised time-series representations** (TS2Vec, SimMTM) — 64-dim embeddings as features
+4. **Causal discovery layer** (PC algorithm, NOTEARS) for finding *causal* features
+5. **Graph Neural Networks** on the universe (sectors, correlations, supply chains)
+6. **Topological Data Analysis** for non-linear regime structure
+7. **Online Bayesian model averaging** over multiple meta-learners
+
+### Validation discipline
+Every new method's outputs run through the same gauntlet. None gets a free pass for being modern.
+
+### ML Gate criteria
+- ≥1 symbolic-regression-discovered edge passes gauntlet
+- ≥1 SSL-feature-derived edge passes gauntlet
+- Replacement of GA shows zero degradation in candidate quality
+
+---
+
+## Track 5 — Deployment infrastructure (months 4-9, parallel)
+
+**Goal: deployment-ready when alpha is proven.**
+
+### Critical components
+- **Real OMS:** retry, idempotency, partial fills, cancel-on-disconnect, position-vs-broker reconciliation, rate-limit handling
+- **Vol-targeting at portfolio level** with correlation-aware sizing
+- **Tail hedge sleeve** — long 30-delta SPY puts, monthly roll, bleeds 1-1.5%/year, caps drawdowns at -10%
+- **Portfolio-level kill switches** with chaos engineering tests (-5% daily, -10% weekly, position mismatch, latency spike, data feed gap)
+- **Shadow-live mode** running 24/7 from month 4 onward
+- **Reconciliation cron** — broker truth vs internal state, every 5 minutes
+- **Engine F takes primary capital allocation control** away from signal_processor
+
+### Deploy Gate criteria
+- 90 days shadow-live agreement with backtest expectations (Sharpe gap < 0.2)
+- All chaos tests pass
+- All kill switches tested with simulated failures
+- Reconciliation discrepancies < 0.5% sustained
+
+---
+
+## Track 6 — LLM augmentation (months 9-15)
+
+**Goal: layer LLM intelligence on top of a working system, NOT instead of one.**
+
+### The progression
+1. **LLM-as-analyst pipeline** — score 10-Q/10-K/8-K, earnings call transcripts. Becomes feature, not edge.
+2. **LLM hypothesis generator** — proposes testable edges, runs through standard gauntlet
+3. **Multi-agent research team** — Theorist/Skeptic/Historian/Coder/Reviewer dialogue
+4. **Adversarial critic at decision time** — disagrees with proposed trades, log mined for signal
+5. **For Moonshot Sleeve specifically:** earnings-call sentiment, theme detection, patent+contract cross-referencing — this is where LLM analysis is highest-EV
+
+### LLM Gate criteria
+- ≥1 LLM-discovered edge passes the same gauntlet that mathematical methods face
+- LLM-critic-flagged trades have measurably worse outcomes than non-flagged
+
+---
+
+## Cross-cutting workstreams (run forever)
+
+These don't fit in any track because they're continuous:
+
+1. **Capital allocation dashboard** — already built, keep evolving
+2. **Determinism harness** — already built, never break
+3. **Auto-ablation cron** — once in Track 2, runs forever
+4. **Edge graveyard with structured failure-mode tagging**
+5. **Decision diary** — every trade with rationale, queryable
+6. **Reproducibility / DVC data versioning**
+7. **Quarterly thesis review** — Q-cadence sanity check on the kill thesis
+8. **Health check discipline** — keep `health_check.md` as living truth
+
+---
+
+## The realistic timeline
+
+```
+Q1: Foundation (Track 1) ships. 2025 OOS gate result determines path.
+Q2: Factory + Moonshot in parallel. ML upgrades begin. Deployment infra begins.
+Q3: Factory matures. Statistical ML produces first novel edges. Deployment infra completes.
+Q4: Shadow-live runs continuously. LLM track begins. First serious deployment readiness.
+
+Year 2 Q1-Q2: LLM track matures. Real money pilot at 1-2% net worth.
+Year 2 Q3-Q4: Scale-up decisions based on live track record.
+```
+
+**Real money no earlier than Year 2.** Probably mid-to-late Year 2 in honest calendar terms.
+
+## What this requires
+
+- **The discipline to run tracks in parallel** — single-thread sequencing wastes 6-9 calendar months
+- **The Foundry infrastructure investment** in months 1-2 — without it, Track 2 becomes noise
+- **Strict gate discipline** — Foundation Gate failure should pause Track 2 until resolved
+- **The Moonshot Sleeve treated as first-class** — not deferred to "after the core works"
+- **LLM held as Track 6, not 1** — the temptation to start LLM early is real and should be resisted
+
+## The single most important meta-decision
+
+**Don't optimize for "ship something live in 3 months."** Optimize for **"have a defensible deployment-ready system in 18 months."** The 3-month version will fail in real markets in ways that destroy the longer-term project. The 18-month version compounds for 40 years.
+
+For a 20-something investor: 18 months of patience for a system that runs your retirement is the most valuable trade in your life. **The slowness is the alpha.**
+
+## Bottom line
+
+The ideal path is parallel-track aggressive but discipline-gated. **Five workstreams running concurrently, three hard gates between them, one continuous pruning mechanism (auto-ablation), and one orthogonal Moonshot Sleeve serving goal C while the core serves goals A+B.**
+
+Total scope: probably 12-18 months of focused work to a defensibly-deployable state. **A retail quant system genuinely capable of 0.5+ alpha-Sharpe net of taxes, with asymmetric upside capture, autonomous discovery, and institutional-grade validation.** That's the ceiling honestly achievable from where the project is now. Higher than that requires capital and human PhDs the project doesn't have.
+
+But landing that ceiling — landing it *honestly* — would put this system in the top 5% of retail quant attempts. Maybe the top 1%. The trajectory is real. The discipline is real. The path is buildable.
+_________________________________________
+can you look at the repos in https://github.com/stars/jmur214/lists/trading-machine/ and see if any would add any more real value (still, not ai based)? 
+
+and let’s say we do hit that ceiling, what does that look like? is there any way to make money/leverage the machine in a way to make money outside of just my own return from capital?
+
+# Two-part answer
+
+## Part 1 — Repo audit, non-AI value only
+
+I went through your list. Most are AI-first or low-relevance. The non-AI candidates worth real attention:
+
+### High value — investigate further
+
+**`noterminusgit/statarb`** — *"Production-grade statistical arbitrage system with 20+ alpha strategies and portfolio optimization."*
+**If the claim holds**, this is the highest-leverage repo in the list. 20+ alpha strategies + portfolio optimization is potentially years of edge-discovery work. Verify that the strategies are actually working code (not just stubs/markdown), check for survivorship bias / lookahead in the backtest infrastructure, and look at the portfolio-optimization module specifically — that's exactly what your Engine C is missing. **Worth a Saturday afternoon to clone, audit, and steal what's reusable.**
+
+**`ScottfreeLLC/AlphaPy`** — *"Python AutoML tool designed for trading systems and sports betting."*
+This is a well-known mature project. **AutoML for trading is exactly what your Feature Foundry needs**, and AlphaPy already wraps tsfresh, scikit-learn, XGBoost, etc. for time-series classification/regression. Probably faster than building from scratch. Likely needs adaptation to your edge interface, but the engineering is real. **High value, low risk.**
+
+**`warproxxx/poly_data`** — *"Polymarket data retrieval tool."*
+I specifically called out Polymarket as a free data source for prediction-market features. **A ready-made integration saves you the API research.** Drop into your Feature Foundry as a Tier-B feature source for macro event probabilities (Fed cuts, recession, election outcomes). **Half-day integration, real signal.**
+
+**`je-suis-tm/quant-trading`** — *"Python quantitative trading strategies including pattern recognition and Monte Carlo simulations."*
+Community strategy library. Treat it as a **reference / inspiration archive**, not as code to merge. Useful for cross-checking your existing edges against alternative implementations, finding strategy ideas you haven't considered. **Browsing value, not integration value.**
+
+### Medium value — peek but don't depend
+
+**`Fincept-Corporation/FinceptTerminal`** — Finance app with market analytics. Could surface ideas for what to track, but probably duplicates capabilities you have. Worth 30 minutes of browsing.
+
+### Skip — AI-first or low-relevance
+
+- `algo2t/alphatrade` — Indian broker (SAS), wrong platform
+- `ginlix-ai/LangAlpha` — AI-first
+- `koala73/worldmonitor` — AI-first
+- `bloomberg-terminal/bloomberg-terminal-free` — claims "free Bloomberg" almost always overpromise. Skip.
+- `gsd-build/gsd-2` — agent dev framework, not trading
+- `garrytan/gstack` — Claude Code workflow tools
+- `666ghj/MiroFish` — vague, AI-flavored
+- `shiyu-coder/Kronos` — financial foundation model, AI
+- `0xemmkty/QuantMuse` — AI-flavored
+- `virattt/dexter` — AI agent
+
+### Honest summary
+
+Of 16 repos, **2-3 are worth real time** (statarb, AlphaPy, poly_data). The rest are either AI-based (excluded by your constraint), wrong platform, or marginal browsing value. **Star-list quality is mostly low** because the trading-tools space is saturated with AI-flavored projects right now. Don't feel obligated to extract value from all of them.
+
+---
+
+## Part 2 — If you hit the ceiling, what does that look like?
+
+**Realistic ceiling state:** OOS Sharpe ~1.0 net of all costs and taxes, CAGR 12-18% (depending on profile), max drawdown -10% to -15%, autonomous discovery loop producing 1-2 new validated edges per quarter, Moonshot Sleeve catching 1-3 multibaggers per year.
+
+That's a top-1% retail quant outcome. **Now what do you do with it?**
+
+### Path A: Manage other people's money (the obvious one)
+
+**Registered Investment Advisor (RIA)**
+- Register with state (under $100M AUM) or SEC (over $100M)
+- Form an LLC, set up custodian relationship (Schwab, Fidelity, IB)
+- Charge management fee (1-2% AUM annual) + optionally performance fee (typically 15-20% over benchmark)
+- Compliance overhead: Form ADV, annual audit, ongoing reporting
+- **Realistic ramp:** $1-5M AUM friends/family year 1, $25-50M AUM by year 5 if track record is real
+
+**Realistic income at $25M AUM:**
+- 1.5% management fee = $375k/year base
+- 15% performance fee on outperformance — variable, often $0-300k
+- Total: ~$400-700k/year sustainable
+
+**Hard requirement:** verifiable live track record (audited returns), typically 3+ years before serious money flows.
+
+**Private fund (Reg D 506(b)/(c))**
+Higher capacity than RIA SMAs but requires accredited investors only, more legal/audit complexity. Skip unless you're at $50M+ AUM scale.
+
+### Path B: Separately Managed Accounts (SMA) — easier intermediate
+
+Each client opens their own Alpaca / IB account, gives you trading authority, you run the same strategy across all. **Doesn't require fund formation.** Just RIA registration + client agreements.
+
+- Cleaner regulatory profile
+- No commingled assets, no audit complexity
+- Each client sees their own returns, taxes, holdings
+- **Best path for years 2-5** before scaling to fund
+
+Realistic: 10-30 SMAs at $250k-2M each = $5-25M AUM.
+
+### Path C: Newsletter / signal subscription
+
+Substack-style premium subscription publishing daily/weekly signals.
+
+- $50-500/month per subscriber
+- 1000 subs × $150/month = **$1.8M/year ARR**
+- Lower regulatory bar (you're publishing opinions, not managing money)
+- Marketing is the bottleneck — content distribution
+- **Capacity-friendly**: subscribers can act on signals at their own size; your strategy doesn't degrade
+
+Genuine quant systems running this model successfully: a handful (Macro Ops, Quantpedia, etc.). Bar is high but doable.
+
+### Path D: License the system to other RIAs / family offices
+
+White-label the signal feed or full architecture to 5-10 small RIAs who lack quant capability.
+
+- $10-50k/month per client
+- 10 clients × $25k/month = **$3M/year ARR**
+- Higher value-per-customer, B2B sales cycle
+- Capacity-managed by limiting client count
+- Compliance simpler than running money yourself
+
+This is what some prop firms quietly do — license edges to mid-tier RIAs/wealth managers.
+
+### Path E: Data productization
+
+Discovered features can be productized:
+- "Crowding signal" (you'd need to build it)
+- "Regime classifier output"
+- "Capital-allocation efficiency score"
+
+Sell to prop shops, smaller hedge funds. Realistic: $5-50k/year per customer × 20-50 customers = **$100k-2M/year**.
+
+This is the QuantConnect / Quandl model.
+
+### Path F: Sell or get acqui-hired
+
+5-10 years in, with a real live track record at $50M+ AUM:
+- Quant firms acquire small shops with proven edges
+- Range: $1M-$25M+ depending on Sharpe, AUM, and IP defensibility
+- Or you take an institutional seat at a larger fund (typical: $300k-$1M+ base + bonus)
+
+### Path G: Educational content + course
+
+Document the journey publicly, build an audience, monetize via course/book/speaking.
+
+- Course: $500-2000 one-time × 500 students = $250k-1M one-shot
+- Book: $50k-200k typical
+- Speaking: $5-25k/talk
+- **Mostly builds optionality and credibility for paths A-D**
+
+### Path H: Open source + premium
+
+Open-source the framework (Foundry, gauntlet, governance). Monetize:
+- Managed hosting
+- Premium edge library
+- Support contracts
+- Consulting
+
+Lower direct revenue, higher reputational value. Probably $100-500k/year sustainable but builds a community moat.
+
+---
+
+## Realistic 10-year income trajectory
+
+```
+Year 1-2:  $0 incremental (own capital trading + system development)
+Year 3:    $50-150k    (small RIA, $5-10M AUM, friends/family)
+Year 5:    $300-700k   ($25-30M AUM at 1.5% + performance)
+Year 7:    $500k-2M    ($50-100M AUM if scaling continues)
+Year 10:   $1-10M+     (decision point: stay small / scale fund / sell / license)
+```
+
+**The bottleneck isn't the system.** It's:
+1. **Live track record** (must accrue over years, can't compress)
+2. **AUM acquisition skill** (sales, networking, marketing — different muscle than coding)
+3. **Compliance bandwidth** (regulatory work scales with AUM)
+4. **Capacity ceiling** (some strategies break above $50M-$500M depending on edge type)
+
+### What you should do now to optionalize
+
+Even if monetization is years away, do these now to keep all paths open:
+
+1. **Register all live trading under a separate LLC** — clean entity for future RIA registration
+2. **Audit-ready record-keeping** — every trade decision logged with rationale, every backtest reproducible, every config versioned. **GIPS-compliant performance reporting from day 1 of real money.**
+3. **Capacity testing as a routine** — know honestly at what AUM each edge breaks. This determines which path (newsletter? fund? license?) makes sense.
+4. **Public-facing content from day 1** — even minimal blog/Substack documenting the journey. Audience is asset; built only by years of consistency.
+5. **Don't take any institutional money on handshake deals** — even friends/family. The first dollar of OPM should ideally be after RIA registration.
+
+### The most underrated path
+
+**Pure newsletter (Path C)**, oddly. Reasons:
+- Lowest regulatory friction
+- Capacity-friendly (subscribers don't crowd your fills)
+- Compounds trust over years (your audience IS your asset)
+- Optionalizes everything else (newsletter audience converts to fund LPs later)
+- Doesn't require giving up own-capital trading
+
+A 20-something with 40 years of horizon could realistically build a $5-50M/year newsletter business while ALSO running their own capital — without ever taking outside money.
+
+### The bigger question
+
+**The most valuable thing the system gives you isn't the dollars per se — it's the option set.** A working autonomous trading system is unusual enough that you can pick which monetization path fits your life: passive own-capital, active fund management, content business, B2B licensing, or sell/exit. Most quants only have one path open. **Building the system right preserves all of them.**
+
+Don't pick a monetization path until year 3 of live track record. **Don't optimize for monetization until then either** — premature optimization for revenue distorts the system. Build the engine. Run real capital. Document everything publicly. **The path will pick itself when the track record is undeniable.**
+_________________________________________
+let’s make the path to 1% undeniable. starting right now.
+
+# Path to 1% — Year 1 Plan, Starting 2026-05-01
+
+This is what "undeniable" looks like as a concrete 12-month plan with dates, gates, and pre-commitments. Drop this into `docs/Core/path_to_1pct.md` and treat it as a load-bearing artifact.
+
+---
+
+## The premise
+
+**A retail quant system in the top 1% has three properties:**
+1. **Honest live track record** — auditable, reproducible, GIPS-compliant from day 1
+2. **Validated alpha** — multiple methods agreeing under deterministic measurement
+3. **Optionality preserved** — every monetization path stays open until you choose
+
+Everything below serves these three.
+
+---
+
+## Pre-registered commitments (signed today, immutable)
+
+### Kill thesis criteria — pre-committed before each gate
+
+| Date | Gate | Required OOS Sharpe (deterministic, net of realistic costs+borrow+tax) | Failure response |
+|------|------|----------|------------------|
+| 2026-05-31 | Post geometry-mismatch fix + ADV floors | ≥ 0.4 | If <0.4: alpha thesis itself questioned. Pause feature work, deeper structural review. |
+| 2026-07-31 | Post Engine C HRP + Engine E HMM | ≥ 0.6 | If <0.6: portfolio optimization wasn't the bottleneck. Re-examine fundamentals. |
+| 2026-10-31 | Post Foundry + 50 features | ≥ 0.8 | If <0.8: edge inventory isn't the limiter. Real concern about whether retail-tractable alpha exists at this universe size. |
+| 2027-01-31 | Post deployment infrastructure | ≥ 1.0 sustained 90-day shadow-live | If <1.0: don't deploy real money. Reassess whether to continue or pivot to newsletter-only model. |
+
+**These numbers are committed in advance so that future-you cannot move them.** Sign with today's date in the doc. If a gate misses, the response is what was pre-committed — not what feels right at the time.
+
+### What I will NOT do
+
+- Deploy real money before 2027-01-31 sustained shadow-live result
+- Run fewer than 3 deterministic-harness verifications per major change
+- Add features without adversarial-twin filtering
+- Trust any in-sample number again
+- Take outside money before RIA registration
+- Optimize Sharpe at the expense of skewness for the Moonshot Sleeve
+
+---
+
+## Five-track parallel execution — month by month
+
+### May 2026 — Foundation completion
+
+**Week 1 (May 1-7): Critical path**
+- [ ] Geometry-mismatch fix at top of `validate_candidate` — repairs all 5 gates
+- [ ] ADV floor result replication under deterministic harness
+- [ ] Tax cost layer added to `RealisticSlippageModel` (short-term cap gains drag)
+- [ ] Borrow cost layer added to slippage model
+
+**Week 2 (May 8-14):**
+- [ ] 2025 OOS rerun under harness with all fixes — **Gate 1 evaluation**
+- [ ] If pass: ship state recorded as `2026-05-14_foundation_baseline`
+- [ ] If fail: kill-thesis-A response triggered
+
+**Week 3-4 (May 15-31):**
+- [ ] Engine C real portfolio optimizer — design doc + HRP scaffold
+- [ ] Engine E HMM regime detector — design doc + 3-state baseline
+- [ ] Macro signals reclassified from edges to regime-input features
+
+### June 2026 — Engine C + E rebuild
+
+- [ ] Engine C HRP shipping with turnover penalty
+- [ ] Engine E HMM with `{regime: prob}` confidence outputs
+- [ ] Engine B sizing consumes Engine E confidence
+- [ ] 2025 OOS rerun — **Gate 2 evaluation**
+- [ ] Kill thesis check: ≥0.6 required
+
+### July 2026 — Feature Foundry infrastructure
+
+- [ ] Generic ingestion plugin architecture
+- [ ] Feature interface (per-ticker, per-date, with metadata)
+- [ ] Auto-ablation cron (monthly)
+- [ ] Adversarial twin generator
+- [ ] Feature audit dashboard
+- [ ] Feature lineage YAML / model cards
+- [ ] First 10 features through Foundry: cross-sectional 12-1 momentum, value composite, quality composite, low-vol, profitability, asset growth, accruals, low-beta, size, net issuance
+
+### August 2026 — Foundry expansion + Moonshot Sleeve start
+
+- [ ] **Foundry track:** CFTC COT, USPTO patents, FDA approvals, Polymarket prediction markets, OpenSky M&A signals, container shipping, TreasuryDirect, EIA petroleum, USAspending contracts, Wikipedia spikes, calendar anomaly battery — target 30+ active features
+- [ ] **Moonshot Sleeve track:** universe definition (Russell 2000 + recent IPO + theme-tagged), first edges (long-momentum, 52-week breakout, earnings beat+raise, insider clusters, FDA approval drift)
+- [ ] **ML track:** Bayesian optimization replacing GA in Engine D
+
+### September 2026 — Statistical ML upgrades + Foundry continuation
+
+- [ ] Symbolic regression layer (PySR) operational
+- [ ] Self-supervised time-series representations (TS2Vec) feeding meta-learner
+- [ ] Causal discovery (PC algorithm) layer
+- [ ] Foundry: 50+ active features, auto-ablation pruning weekly
+- [ ] Pairs trading / cointegration sleeve operational
+- [ ] Moonshot Sleeve backtest 2010-2024 validation
+
+### October 2026 — Deployment infrastructure
+
+- [ ] Real OMS replacing 22-line stub (retry, idempotency, partial fills, reconciliation)
+- [ ] Portfolio-level vol-targeting
+- [ ] Correlation-aware sizing
+- [ ] Tail hedge sleeve (long 30-delta SPY puts, monthly roll)
+- [ ] Portfolio-level kill switches
+- [ ] Chaos engineering test harness
+- [ ] Reconciliation cron (5-min cadence)
+- [ ] **Gate 3 evaluation:** Sharpe ≥0.8 required to proceed to shadow-live
+
+### November-December 2026 — Shadow-live
+
+- [ ] Shadow-live mode online: same code path as live, paper-trades against Alpaca
+- [ ] Continuous monitoring vs backtest expectations
+- [ ] 90-day sustained run
+- [ ] LLC formed for separate trading entity
+- [ ] Public-facing scaffolding launched (Substack or equivalent)
+
+### January 2027 — Final evaluation + first real money
+
+- [ ] **Gate 4 evaluation:** sustained shadow-live Sharpe ≥1.0 over 90 days
+- [ ] If pass: deploy $1,000 of real capital under same code path
+- [ ] If fail: kill-thesis-D response triggered
+
+---
+
+## Public-facing scaffolding — start TODAY
+
+### Why this matters
+
+A live track record nobody knows about isn't worth much. **The audience IS the asset.** Building it from day 1 of a 12-month foundation period means by 2028, you have 2 years of public documentation. By 2030, four years. **Compounding credibility.**
+
+### What to set up this week
+
+1. **Pseudonymous Substack** — name like "Quant Garage" or "Solo Algo." NOT your real name yet.
+2. **First post: "Why I'm building this"** — your goals A/B/C, the architecture overview, the kill thesis pre-commitments. Public, honest, dated.
+3. **Monthly cadence** — last day of each month, post containing:
+   - That month's OOS Sharpe number (deterministic)
+   - Any gate evaluations
+   - What was learned, what was wrong
+   - What's next
+4. **No promises, no predictions of future returns** — just documentation of what was built and what was measured
+
+### Why pseudonymous to start
+
+- Reduces psychological pressure during failures
+- Lets you walk away from the public identity if the project fails the kill thesis
+- When you want to formalize (RIA, fund), can transition to real name with track record intact
+- Until you have something verified-by-others, public real-name commitments are premature
+
+### What NOT to put in public
+
+- Specific trade ideas, signals, edges (capacity protection)
+- Your own positions or returns in dollar amounts
+- Anything that could be construed as advice
+- The exact gauntlet criteria (lets people game it)
+
+---
+
+## GIPS-compliance scaffolding — from day 1 of real money
+
+When real money flows in 2027, every record needed for audited performance reporting must already exist. Set up now:
+
+- [ ] **Time-weighted return calculation** matching CFA Institute methodology
+- [ ] **Daily portfolio valuation** captured + archived
+- [ ] **Trade-by-trade ledger** with reasoning, signal source, expected outcome
+- [ ] **Independent custodian** (Alpaca acceptable; later Schwab/IB for RIA)
+- [ ] **Fee transparency** documentation
+- [ ] **Quarterly performance attestation** (self-attested at first; audited later)
+- [ ] **Composite definition** for SMA business later
+
+When you're ready to go pro in 2028+, having 12+ months of GIPS-track-able records is the difference between "credible" and "starting from scratch."
+
+---
+
+## What you can do TONIGHT (or as soon as you're back at your laptop)
+
+**These three actions, this week, are the highest-leverage moves available:**
+
+1. **Drop this document into `docs/Core/path_to_1pct.md`** — sign with today's date. Commit. This becomes the load-bearing artifact for the next 12 months.
+
+2. **Drop the kill thesis pre-commitments into `docs/Core/kill_thesis.md`** — separate document, dated, signed, immutable. Future-you cannot rewrite this without leaving git evidence.
+
+3. **Set up the Substack tonight.** Name it. Write the first post: "Why I'm building this." 600-1000 words. Includes: your three goals, the kill thesis numbers, the 12-month timeline, the commitment to monthly updates. Publish. **The act of publishing is the commitment.**
+
+---
+
+## What "undeniable" looks like at the end of Year 1
+
+By 2027-04-30:
+- 12 months of dated, public documentation of the journey
+- Foundation Gate cleared (Sharpe ≥1.0 deterministic) — or kill thesis triggered honestly
+- Engine C real optimizer + Engine E HMM regime detection in production
+- 50+ Tier-B features in Foundry, auto-pruning monthly
+- Moonshot Sleeve operational with backtest validation
+- Real OMS + tail hedge + chaos-tested kill switches
+- 90+ days of sustained shadow-live agreement
+- $1,000 in real capital running for 90 days post-shadow
+
+By 2027-12-31:
+- 18+ months of live + shadow public track record
+- LLC formed, GIPS-compliant records since real money started
+- 5,000+ Substack subscribers (if monthly updates have been honest and substantive)
+- First friends-and-family conversation about SMAs (if Year 1 results justify)
+
+By 2028-12-31 (Year 3):
+- 12 months of real-money live track record
+- RIA registration filed
+- 1-3 friends/family SMAs running ($1-5M AUM)
+- Substack at 10,000+ paid subscribers if monetized
+
+By 2030 (Year 5):
+- $25M+ AUM at RIA OR
+- $200k+/year newsletter revenue OR
+- Both
+
+**The path to top 1% is dated. Each gate has a number. Each gate has a kill thesis response. The work is parallel-tracked. The audience is built from day 1.**
+
+---
+
+## The single most important thing about this plan
+
+**It's not optional that the kill thesis numbers stick.** The reason most retail quant projects fail isn't that the system was wrong — it's that the operator rationalized past the moments where the data said "stop." **Pre-registering the kill thesis with dates and numbers, in public on a Substack and in a git-tracked doc, is the single most powerful discipline mechanism available.**
+
+If May 31 OOS Sharpe lands at 0.35, the response is **not** "let me rerun with different parameters." The response is the pre-committed structural review. **Otherwise the entire plan is a fiction.**
+
+The path is the path. The work is parallel. The gates are real. Sign the document, set up the Substack, and start. Today is day 1.
+
+_________________________________________
+
+(contents of docs/Progress_Summaries/Other-dev-opinion/05-1-26_1-percent.md - very relevant)
+I'm not asking about the actual compliance/real world/regulatory aspect. All I want is to get the machine itself to the 1%. Lets lay out both the general and simultaneously specific plan I can give to my team of developers.
+
+# The Path to 1% — Engineering Plan
+
+For your dev team. General philosophy + specific workstreams + acceptance criteria + dependencies.
+
+---
+
+# Part 1: The General Plan
+
+## Mental model — what we're building
+
+**A self-improving alpha factory with rigorous validation infrastructure.** Three loops running in concert:
+
+1. **Discovery loop** — generates candidate edges from multiple methods (genetic, Bayesian, symbolic, causal, ML)
+2. **Validation gauntlet** — every candidate runs through honest gates that match deployment geometry
+3. **Allocation engine** — combines validated features non-linearly via meta-learner; the linear `weighted_sum` is dead
+
+Around these three loops: **infrastructure that makes adding things cheap and removing dead weight automatic.**
+
+## The five non-negotiable rules
+
+1. **Deterministic measurement always.** Every Sharpe number runs through the harness. Drifted readings are not data.
+2. **Adversarial validation by default.** Every feature ships with a permuted twin. Real features must outperform their twins.
+3. **One feature per PR.** Never batch. Each gets its own review, tests, ablation result.
+4. **90-day archive rule.** Features without positive ablation contribution for 90 days auto-archive. The system actively prunes itself.
+5. **Geometry of measurement matches deployment.** The Q3 false-negative bug taught this. Standalone tests for ensemble-deployed strategies are forbidden.
+
+## What "top 1% retail quant" means in technical terms
+
+- **Deterministic OOS Sharpe ≥ 1.0** sustained over a rolling 12 months under realistic costs (slippage + impact + borrow + tax)
+- **Edge inventory ≥ 50 active features**, auto-pruned monthly
+- **Discovery loop generates ≥ 4 promotion-ready candidates per quarter** without human handcrafting
+- **Combination engine is non-linear** (gradient-boosted meta-learner minimum)
+- **Three-layer architecture rigorously enforced** (lifecycle / tier / allocation as separate concerns)
+- **All five gauntlet gates measure correctly** (no geometry mismatch)
+- **Tail-hedged portfolio** with documented drawdown floor at -10% to -15%
+- **Moonshot sleeve operating in parallel** capturing asymmetric upside on a separate universe
+- **Shadow-live reproducibility verified** — backtest matches paper-traded reality within ±0.2 Sharpe over 90 days
+
+## Track structure (high-level)
+
+Ten parallel workstreams. Foundation work blocks everything; everything else is parallel. **A 6-developer team can run all 10 concurrently after foundation completes.**
+
+```
+A. Foundation completion         (BLOCKING)
+B. Engine C rebuild              ─┐
+C. Engine E rebuild              ─┤
+D. Feature Foundry infra         ─┤── Parallelizable
+E. Edge factory expansion        ─┤
+F. External data sources         ─┤
+G. Statistical ML upgrades       ─┤
+H. Moonshot Sleeve              ─┤
+I. Deployment infrastructure     ─┤
+J. Cross-cutting infrastructure  ─┘
+```
+
+---
+
+# Part 2: The Specific Plan
+
+Each workstream has scope, deliverables, acceptance criteria, dependencies, and rough effort.
+
+---
+
+## Workstream A — Foundation completion (BLOCKING)
+
+**Goal:** unblock everything else by fixing what's measurably wrong now.
+**Effort:** 1 dev, 4-6 weeks
+**Dependencies:** none
+**Blocks:** all other workstreams
+
+### Deliverables
+
+1. **Gauntlet geometry-mismatch fix** at top of `validate_candidate`. Single architectural change repairs all 5 gates simultaneously.
+2. **ADV floor replication** — verify under deterministic harness whether UB Sharpe 0.225 → 0.916 result holds.
+3. **Cost completeness layer** in `RealisticSlippageModel`:
+   - Borrow rate by ticker (5-25 bps/day)
+   - Short-term capital gains tax drag (configurable rate, default 30%)
+   - Alpaca fee tier model
+4. **2025 OOS rerun under harness** with all fixes applied.
+
+### Acceptance criteria
+
+- All 5 gauntlet gates pass identical-input identical-output across 3 deterministic runs
+- Cost model produces statistically-different (>3σ) results from prior 5-bps-flat baseline
+- 2025 OOS Sharpe deterministic, reproducible, documented with full attribution
+- Health check finding "geometry mismatch across 5 gates" marked RESOLVED
+
+### Kill thesis
+
+If 2025 OOS Sharpe < 0.4 net of all costs after geometry fix + ADV floors: **stop. Run structural review.** Do not proceed to other workstreams.
+
+---
+
+## Workstream B — Engine C rebuild
+
+**Goal:** real portfolio construction. Currently this engine is dramatically underbuilt; most of its job happens implicitly in `signal_processor.weighted_sum`.
+**Effort:** 1 dev, 4-6 weeks
+**Dependencies:** Workstream A (foundation)
+**Parallel with:** C, D
+
+### Deliverables
+
+1. **Hierarchical Risk Parity (HRP) optimizer** as the primary allocation method (López de Prado).
+2. **Optional mean-variance with shrinkage** (Ledoit-Wolf) as alternative.
+3. **Turnover penalty** in the optimizer — reject rebalances where expected alpha < transaction cost.
+4. **Tax-aware rebalancing** — wash sale rule enforcement, prefer long-term over short-term gains realization.
+5. **Capital efficiency layer** — gross exposure scales with meta-learner confidence (1.0× to 1.3× range).
+6. **Multi-asset class scaffolding** — engine accepts non-equity inputs (bonds, commodities) for future expansion.
+
+### Acceptance criteria
+
+- HRP optimizer integrated, replaces `weighted_sum` as default
+- Backtest shows ≥0.1 Sharpe improvement from HRP vs linear sum on identical signals
+- Turnover penalty reduces fill count by ≥15% with ≤5% Sharpe degradation
+- Wash sale rule: zero violations in backtest
+- Multi-asset interface documented even if only equities active
+
+---
+
+## Workstream C — Engine E rebuild
+
+**Goal:** confidence-aware probabilistic regime detection feeding all other engines.
+**Effort:** 1 dev, 4-6 weeks
+**Dependencies:** Workstream A
+**Parallel with:** B, D
+
+### Deliverables
+
+1. **Hidden Markov Model (HMM) regime classifier** — 3-state baseline (benign / stressed / crisis), expandable to 4-5 states.
+2. **Probabilistic outputs** — `{regime: prob}` not binary. K-state validated via likelihood-ratio test.
+3. **Multi-resolution regime detection** — daily, weekly, monthly classifications running in parallel.
+4. **Cross-asset confirmation** — equity regime confirmed against rates regime (yield curve slope), credit regime (HYG/IEF), FX regime (DXY).
+5. **Transition-warning detector** — fires alerts when regime is *changing*, not just when it has changed.
+6. **Reclassify macro signals** — `macro_credit_spread_v1`, `macro_real_rate_v1`, `macro_dollar_regime_v1`, `macro_unemployment_momentum_v1` move from `tier=alpha` to regime-input features.
+
+### Acceptance criteria
+
+- HMM 3-state classifier trained, validated via OOS log-likelihood
+- Engine B sizing API consumes regime-confidence (not just regime label)
+- Multi-resolution outputs available
+- Macro signals removed from active edge set, available as regime inputs
+- Transition warnings backtested against historical regime changes (March 2020, October 2022) — must fire ≥48 hours ahead in ≥80% of cases
+
+---
+
+## Workstream D — Feature Foundry infrastructure
+
+**Goal:** make adding features cheap, validating them automatic.
+**Effort:** 1-2 devs, 6-8 weeks
+**Dependencies:** Workstream A
+**Parallel with:** B, C
+**Blocks:** E, F, G, H
+
+### Deliverables
+
+1. **Generic ingestion plugin architecture** — `DataSource` base class with `fetch`, `schema_check`, `freshness_check`, point-in-time validation.
+2. **Feature interface** — every feature is a function `(ticker, date) → float | None` with metadata decorator.
+3. **Auto-ablation cron** — monthly job that drops each feature, reruns the deterministic harness, measures portfolio impact, archives non-contributors.
+4. **Adversarial twin generator** — for every real feature, auto-creates permuted/shuffled version with same statistical signature. Both go into meta-learner.
+5. **Feature audit dashboard** — single view in `cockpit/dashboard_v2`: feature name, importance, ablation contribution, last validated date, age, schema-drift status, twin comparison. Color-coded.
+6. **Feature lineage YAML / model cards** — git-tracked metadata per feature: source URL, license, point-in-time discipline, expected behavior, known failure modes.
+7. **Adversarial filter** — feature must outperform its twin in meta-learner importance to remain active.
+
+### Acceptance criteria
+
+- New feature can be added to Foundry with <50 lines of code (plugin + decorator)
+- Auto-ablation runs monthly without manual intervention
+- Adversarial twins automatically generated for every real feature
+- Dashboard shows current state of all features at-a-glance
+- 90-day archive rule enforced automatically
+
+---
+
+## Workstream E — Edge factory expansion
+
+**Goal:** populate Foundry with diverse alpha sources.
+**Effort:** 1-2 devs, ongoing 6+ weeks
+**Dependencies:** Workstream D (Foundry must be live)
+**Parallel with:** F, G, H, I
+
+### Deliverables (target ~50 features)
+
+**Cross-sectional ranking primitives (~15):**
+- 12-1 momentum, 6-1 momentum, 1-month reversal
+- Industry-relative momentum
+- Volume-confirmed momentum
+- Value composite (P/E + P/B + EV/EBITDA + EV/Sales)
+- Quality composite (ROIC + margin + debt-equity + accruals)
+- Profitability rank, asset growth (low), accruals (low), net stock issuance, low-vol, low-beta, size, sector momentum
+
+**Event-driven (~10):**
+- PEAD variants (already exist), earnings revision drift
+- Spinoff drag (60-day short)
+- Buyback announcement drift
+- Russell rebalance front-running
+- Dividend initiation drift
+- M&A risk arb
+- Index inclusion/exclusion arb
+- 52-week breakout with volume confirmation
+- Insider cluster (small-cap expansion of existing edge)
+
+**Calendar anomaly battery (single ~200-line file, ~6 features):**
+- FOMC drift, pre-FOMC reduce, turn-of-month, pre-holiday, day-of-week, sell-in-May
+
+**Pairs / mean-reversion (~10):**
+- 10-15 cointegrated pairs (Engle-Granger + Johansen tested)
+- Bond/equity divergence reversal
+- Closed-end fund discount mean reversion
+- VIX term-structure trades
+- Dispersion proxy
+
+**Auto-engineered (via tsfresh):**
+- ~800 features extracted automatically
+- Most pruned by adversarial twin filter
+- Survivors integrated as Tier-B features
+
+### Acceptance criteria
+
+- Each feature ships with model card + tests + adversarial twin
+- Each feature passes 90-day adversarial filter to remain active
+- Combined system Sharpe (under harness) increases with each batch of additions
+- No feature ships without ablation contribution >0 in walk-forward
+
+---
+
+## Workstream F — External data sources
+
+**Goal:** ingest underused free data into Foundry as Tier-B features.
+**Effort:** 1 dev, parallel ongoing
+**Dependencies:** Workstream D
+**Parallel with:** E, G, H, I
+
+### Deliverables (~12 sources)
+
+1. **CFTC Commitments of Traders (COT)** — weekly, futures positioning by trader category
+2. **USPTO patents + trademarks** — bulk data, patent grant velocity, trademark filings
+3. **FDA approvals + PDUFA dates** — real-time, biotech/pharma binary events
+4. **Polymarket / Kalshi prediction markets** — macro event probabilities (use `warproxxx/poly_data` repo as reference)
+5. **OpenSky Network** — corporate jet tracking, M&A signal
+6. **TreasuryDirect auction results** — bid-to-cover, indirect bidder %
+7. **EIA petroleum/gas reports** — weekly, oil/gas event-driven
+8. **USAspending.gov federal contracts** — government spending by ticker
+9. **Wikipedia page views API** — attention spikes
+10. **DNS / Certificate Transparency logs** — pre-launch corporate signals
+11. **Container shipping rates** — Baltic Dry, Drewry indices
+12. **Glassdoor + LinkedIn job posting velocity** — hiring proxy (legitimately scrapable)
+
+### Acceptance criteria
+
+- Each source: parquet-cached, point-in-time validated, schema-drift detected, freshness-monitored
+- Each source feeds at least 1 Foundry feature
+- Each feature passes adversarial twin filter
+- Documentation: license, freshness expectations, known failure modes
+
+---
+
+## Workstream G — Statistical ML upgrades (no LLMs)
+
+**Goal:** graduate Engine D from genetic algorithm to genuinely productive autonomous discovery.
+**Effort:** 1 dev, 8-12 weeks
+**Dependencies:** Workstream D
+**Parallel with:** E, F, H, I
+
+### Deliverables
+
+1. **Bayesian optimization** replacing GA for hyperparameter search (BoTorch, ~200 lines).
+2. **Symbolic regression** (PySR) — searches for human-readable formulas over feature space. Output: equations that pass the gauntlet.
+3. **Self-supervised time-series representations** (TS2Vec or SimMTM) — 64-dim embeddings per (ticker, date), used as features.
+4. **Causal discovery layer** — PC algorithm or NOTEARS over feature space → causal graph between features and returns. Trade only on causal edges.
+5. **Graph Neural Network** — stocks as nodes, sector/correlation/supply-chain as edges. Message passing finds influence patterns.
+6. **Online ensemble** (Bayesian model averaging) over multiple meta-learners.
+7. **Migrate Engine D's primary candidate generation** off GA onto Bayesian optimization + symbolic regression.
+
+### Acceptance criteria
+
+- ≥1 symbolic regression-discovered edge passes gauntlet within 90 days of methodology going live
+- ≥1 SSL-feature-derived edge passes gauntlet
+- Replacement of GA shows zero degradation in candidate-pass rate
+- Causal edges have higher post-promotion stability than correlational edges (measured over 6 months)
+
+---
+
+## Workstream H — Moonshot Sleeve
+
+**Goal:** asymmetric upside capture via separate engine with different mandate.
+**Effort:** 1 dev, 8-12 weeks
+**Dependencies:** Workstream D, A
+**Parallel with:** E, F, G, I
+
+### Deliverables
+
+1. **Universe definition module** — Russell 2000 + IPOs (last 5 years) + theme-tagged equities (AI, space, biotech, EV, semis). Refreshed quarterly.
+2. **Edge set:**
+   - Long-term momentum (12-month + 24-month)
+   - 52-week breakout with volume confirmation
+   - Earnings beat + raised guidance
+   - Insider cluster buying (small-cap)
+   - Short-interest squeeze setups
+   - Sentiment velocity (free sources)
+   - FDA approval drift
+   - Federal contract win signal
+3. **Asymmetric sizing engine** — many small bets, each capped at 1-2% of sleeve, uncapped upside, 50% trailing stop.
+4. **Trailing stop infrastructure** — 50% from peak, configurable.
+5. **Different gauntlet criteria** — skewness > 0.5, upside capture > 1.2× downside capture, hit rate ≤ 30% acceptable.
+6. **Sleeve-level allocation:** 15-20% of total portfolio capital.
+7. **Different objective function** — Sortino + skewness + upside capture (NOT Sharpe).
+
+### Acceptance criteria
+
+- Backtest 2010-2024 shows ≥1 5x+ winner per year on average
+- Hit rate ≥5% (positions returning ≥2x)
+- Sleeve CAGR ≥15% under realistic costs
+- Sleeve drawdown profile separately stress-tested through 2008/2020/2022
+- Sleeve volume sized to ≤1% of sleeve impact at expected ADV
+
+---
+
+## Workstream I — Deployment infrastructure
+
+**Goal:** make the system deployment-ready when alpha is proven.
+**Effort:** 1 dev, 8-12 weeks
+**Dependencies:** Workstream A
+**Parallel with:** B, C, D, E, F, G, H
+
+### Deliverables
+
+1. **Real OMS** replacing 22-line `live_trader/live_controller.py`:
+   - Retry / idempotency
+   - Partial-fill handling
+   - Cancel-on-disconnect
+   - Position-vs-broker reconciliation
+   - Rate-limit handling
+   - Max-order-size guard
+   - Max-orders-per-minute guard
+   - Heartbeat monitor
+2. **Portfolio-level vol-targeting** — target 10% annualized vol, scale gross exposure inversely.
+3. **Correlation-aware sizing** — covariance matrix in sizing.
+4. **Forecasted vol via GARCH/HAR-RV** as sizing input (replaces realized ATR).
+5. **Tail hedge sleeve** — long 30-delta SPY puts rolled monthly, sized to 1-2% notional.
+6. **Portfolio-level kill switches** — -5% daily, -10% weekly, position mismatch, latency spike, data-feed gap.
+7. **Chaos engineering harness** — simulated broker outages, doubled fills, dropped connections, stale data.
+8. **Reconciliation cron** — every 5 minutes, broker truth vs internal state.
+9. **Shadow-live mode** — same code path as live, paper-trades against Alpaca API, full reconciliation.
+
+### Acceptance criteria
+
+- All chaos tests pass: simulated failures don't propagate beyond OMS
+- Reconciliation discrepancies < 0.5% sustained
+- Kill switches activate within 1 second of trigger condition
+- Shadow-live runs continuously from week 4 of workstream onward
+
+---
+
+## Workstream J — Cross-cutting infrastructure
+
+**Goal:** observability + discipline mechanisms running forever.
+**Effort:** 1 dev, ongoing
+**Dependencies:** none
+**Parallel with:** all others
+
+### Deliverables
+
+1. **Capital allocation diagnostic dashboard** (already built — evolve)
+2. **Continuous shadow portfolios** — N parallel paper portfolios with different parameter sets, comparing actual to best-shadow weekly.
+3. **Edge ablation studies, monthly, automated** — drop each edge, measure portfolio impact, flag negative-contribution edges.
+4. **Decision diary** — every trade logged with: which features fired, model output, regime, override status, expected outcome distribution.
+5. **Edge graveyard with structured failure-mode tagging** — failed candidates archived with WHY they failed in YAML.
+6. **Information-leakage detector** — compare in-sample vs OOS slope per feature, auto-quarantine steep degradation.
+7. **Data quality monitoring** (Great Expectations or similar) — auto-pause edges when source breaks.
+8. **CI for backtests** — every commit triggers full backtest, results posted to dashboard, drift detected pre-merge.
+9. **Engine-level versioning** — each engine carries semver, every trade tagged with engine versions used.
+10. **Synthetic data testing harness** — fake market data with known properties, verify system detects them.
+
+### Acceptance criteria
+
+- Dashboard accessible at any time, updated daily
+- Auto-ablation flags non-contributing edges within 48 hours of measurement
+- Decision diary searchable by feature / regime / outcome
+- Information leakage detector quarantines suspect features autonomously
+
+---
+
+## Phase gates (when do we advance)
+
+### Foundation Gate (after A)
+- 2025 OOS Sharpe ≥ 0.4 deterministic, net of all costs
+- All 5 gauntlet gates measure correctly
+- 3-run reproducibility verified
+
+### Architecture Gate (after B + C)
+- Combined system Sharpe (under harness) ≥ Foundation baseline + 0.2
+- Macro signals removed from active edges, in regime inputs
+- Engine C real optimizer in production
+
+### Factory Gate (after D + E + F)
+- ≥50 active features in Foundry
+- Auto-ablation pruning < 5 features/month
+- Combined Sharpe ≥ 0.7
+
+### Discovery Gate (after G)
+- ≥1 symbolic regression edge in production
+- ≥1 SSL-derived edge in production
+- GA replacement complete
+
+### Deployment Gate (after I)
+- All chaos tests pass
+- Shadow-live for 90 days, Sharpe gap < 0.2 vs backtest
+- Sustained Sharpe ≥ 1.0 over the 90 days
+
+### Moonshot Gate (after H, separate from above)
+- Backtest validation of asymmetric strategy passes
+- Sleeve operates independently of core
+- 15-20% allocation defined
+
+---
+
+## Effort summary
+
+| Workstream | Devs | Weeks | Parallel-with |
+|-----------|------|-------|---------------|
+| A. Foundation | 1 | 4-6 | (blocks all) |
+| B. Engine C | 1 | 4-6 | C, D |
+| C. Engine E | 1 | 4-6 | B, D |
+| D. Foundry | 1-2 | 6-8 | B, C |
+| E. Edge factory | 1-2 | 6+ ongoing | F, G, H, I |
+| F. Data sources | 1 | parallel ongoing | E, G, H, I |
+| G. Statistical ML | 1 | 8-12 | E, F, H, I |
+| H. Moonshot Sleeve | 1 | 8-12 | E, F, G, I |
+| I. Deployment infra | 1 | 8-12 | B-H |
+| J. Cross-cutting | 1 | ongoing | all |
+
+**With 6 developers**, the entire plan completes in roughly 6-8 months calendar time. **With 2-3 developers**, 12-18 months. **With 1 developer**, 18-24+ months.
+
+---
+
+## What "done" looks like
+
+When all workstreams ship and all gates pass:
+
+- Sharpe ≥ 1.0 sustained 90 days deterministic, OOS, net of all costs
+- 50+ active features in Foundry, auto-pruned
+- Multiple discovery methods (Bayesian opt, symbolic regression, SSL, causal) producing candidates
+- Real-time observability via dashboards
+- Shadow-live verified
+- Tail hedged, vol-targeted, regime-aware
+- Moonshot Sleeve operating in parallel
+- Cross-cutting discipline mechanisms (ablation, leakage detection, data quality) running autonomously
+
+**That's the technical state of top 1% retail quant.** No AI, no LLMs (those are layered later as Phase 6 augmentation, not foundation).
+
+---
+
+## Single most important guidance for the team
+
+**Build the infrastructure first, then the features.** The Feature Foundry + auto-ablation + adversarial twins is what makes adding 50 features tractable instead of overwhelming. Most teams skip the infrastructure investment and end up drowning in feature debt by feature #15. **Don't.** Build A, B, C, D first — those four workstreams are the foundation. Then E, F, G, H, I can run in parallel because the substrate makes it safe.
+
+The other rule: **deterministic harness for every measurement, always.** The Sharpe 1.063 → 0.905 (drift) → 0.315 (OOS) → 0.984 (under harness) sequence taught the team this. **Don't unlearn it.**
