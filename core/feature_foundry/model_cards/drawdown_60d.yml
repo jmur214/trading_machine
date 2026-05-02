@@ -1,0 +1,18 @@
+feature_id: drawdown_60d
+source_url: https://en.wikipedia.org/wiki/Drawdown_(economics)
+license: internal
+point_in_time_safe: true
+expected_behavior: |
+  (close_t / max(close[t-59 .. t])) - 1. Bounded in (-1, 0]. Zero exactly
+  when today is a fresh 60-day high; -0.10 means trading 10% below the
+  trailing-quarter high. Behavior contrasts with dist_52w_high — shorter
+  window emphasizes recent dislocation rather than year-scale trend
+  position. Returns None when fewer than 60 trading-day closes are
+  available before `dt`.
+known_failure_modes:
+  - "High correlation with dist_52w_high in long-trending names — both pin to zero. Cross-sectional dispersion thinnest in unidirectional bull regimes."
+  - "Sensitive to single-day spikes — one earnings gap can dominate the 60-day max for the next quarter."
+  - "Splits/dividends adjustment dependence — relies on data/processed CSVs being adjusted; raw close history would corrupt the rolling max."
+  - "On short windows (~60 trading days) the max is dominated by the most recent ~3 weeks, so the feature is effectively a momentum signal in disguise during steady trends."
+last_revalidation: never
+ablation_history: []

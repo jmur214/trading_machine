@@ -1,0 +1,19 @@
+feature_id: skew_60d
+source_url: https://www.sciencedirect.com/science/article/abs/pii/S0304405X10002370
+license: internal
+point_in_time_safe: true
+expected_behavior: |
+  Bias-corrected (Fisher-Pearson) sample skewness of the trailing 60
+  daily log returns ending at `dt`. Equivalent to scipy.stats.skew with
+  bias=False. Negative skew = fat left tail (downside dominance);
+  positive skew = lottery-like upside. Cross-sectional convention: long
+  the bottom quintile (most negative skew) per the low-skewness premium
+  documented in Bali, Engle, & Tang (2011) and follow-on work. Returns
+  None when fewer than 61 trading-day closes are available before `dt`.
+known_failure_modes:
+  - "60-sample skew is high-variance — single 4-sigma day can swing the value by ±0.5."
+  - "Earnings-day jumps create transient skew spikes that decay over ~3 months."
+  - "Sign convention varies in literature (some papers report 'coskewness' or systematic skew); this is the simple realized-return third-moment estimator."
+  - "Heavy tails violate the moment-existence assumption underlying the bias correction; for very low n this estimator is biased."
+last_revalidation: never
+ablation_history: []

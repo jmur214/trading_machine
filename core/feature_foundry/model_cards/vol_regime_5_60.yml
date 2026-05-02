@@ -1,0 +1,19 @@
+feature_id: vol_regime_5_60
+source_url: https://en.wikipedia.org/wiki/Volatility_clustering
+license: internal
+point_in_time_safe: true
+expected_behavior: |
+  Ratio of trailing-5-day stdev of log returns to trailing-60-day stdev.
+  Centered near 1.0 in stable regimes; >1.5 indicates recent vol shock,
+  <0.7 indicates compression. Cross-sectional convention is mixed —
+  high ratios precede mean-reverting reversals (sell-the-spike); low
+  ratios mark coiling/breakout setups. Useful as a sizing-modulation
+  input as well as a standalone signal. Returns None when fewer than
+  61 trading-day closes are available before `dt`.
+known_failure_modes:
+  - "5-sample numerator is high-variance — single 4-sigma day inflates the ratio for a week."
+  - "Earnings-day spikes mechanically flag false-positive regime shifts."
+  - "Denominator (60d vol) lags actual vol regime by ~30 days; during sustained vol expansion the ratio drifts toward 1 even as absolute vol stays elevated."
+  - "ddof=1 with n=5 means denominator divides by 4 — small-sample bias non-negligible."
+last_revalidation: never
+ablation_history: []

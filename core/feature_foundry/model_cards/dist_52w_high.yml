@@ -1,0 +1,18 @@
+feature_id: dist_52w_high
+source_url: https://onlinelibrary.wiley.com/doi/10.1111/j.1540-6261.2004.00695.x
+license: internal
+point_in_time_safe: true
+expected_behavior: |
+  (close_t / max(close[t-251 .. t])) - 1. Bounded in (-1, 0]. Zero exactly
+  when today is a fresh 52-week high; -0.20 means trading 20% below the
+  trailing-year high. Cross-sectional ranking primitive — top quintile
+  (closest to 52w high) historically continues trending per George & Hwang
+  (2004). Returns None when fewer than 252 trading-day closes are available
+  before `dt`.
+known_failure_modes:
+  - "Splits/dividends not pre-adjusted in source CSV would corrupt the rolling max — relies on data/processed CSVs being adjusted."
+  - "Universe-wide drawdowns (March 2020) compress the cross-section: most names cluster near -30%, eroding rank dispersion."
+  - "Mechanically biased toward low-volatility names; high-vol names rarely sit on their high. Combine with vol normalization for cleaner cross-section."
+  - "Stale CSV without recent updates anchors the max to a future-impossible level after a long gap; freshness_check on the source catches the gap."
+last_revalidation: never
+ablation_history: []
