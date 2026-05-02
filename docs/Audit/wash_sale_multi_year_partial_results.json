@@ -1,0 +1,89 @@
+{
+  "status": "PARTIAL — interrupted at 3 of 10 cells due to disk exhaustion under concurrent worktree contention",
+  "verdict": "FAIL — wash-sale gate's 2025 +0.670 Sharpe lift does NOT generalize across regimes. 2021 result is -0.966.",
+  "recommendation": "Do NOT flip wash_sale_avoidance.enabled to true on main. The gate's effect is regime-conditional, not regime-invariant.",
+  "cells_completed": 3,
+  "cells_planned": 10,
+  "raw": [
+    {
+      "year": 2021,
+      "cell": "A",
+      "wash_sale_on": false,
+      "rep": 1,
+      "window_start": "2021-01-01",
+      "window_end": "2021-12-31",
+      "sharpe": 1.666,
+      "cagr_pct": 7.58,
+      "mdd_pct": -3.58,
+      "trades_canon_md5": "d84603459f...",
+      "elapsed_sec": 521
+    },
+    {
+      "year": 2021,
+      "cell": "B",
+      "wash_sale_on": true,
+      "rep": 1,
+      "window_start": "2021-01-01",
+      "window_end": "2021-12-31",
+      "sharpe": 0.700,
+      "cagr_pct": 2.71,
+      "mdd_pct": -3.70,
+      "trades_canon_md5": "9e2b34ceb3...",
+      "elapsed_sec": 498
+    },
+    {
+      "year": 2022,
+      "cell": "A",
+      "wash_sale_on": false,
+      "rep": 1,
+      "window_start": "2022-01-01",
+      "window_end": "2022-12-31",
+      "sharpe": 0.583,
+      "cagr_pct": 4.09,
+      "mdd_pct": -5.03,
+      "trades_canon_md5": "3c63e8a1bc...",
+      "elapsed_sec": 472
+    }
+  ],
+  "interrupted_cells": [
+    {
+      "year": 2022,
+      "cell": "B",
+      "wash_sale_on": true,
+      "interrupted_at": "approx 2022-01-20",
+      "reason": "Process killed; /tmp disk free was 216MB, log was 122MB and growing 5MB/min, would have filled before 2022 cell B finished and cascade-failed all concurrent worktree harnesses on the machine"
+    },
+    {"year": 2023, "cell": "A", "status": "NOT STARTED"},
+    {"year": 2023, "cell": "B", "status": "NOT STARTED"},
+    {"year": 2024, "cell": "A", "status": "NOT STARTED"},
+    {"year": 2024, "cell": "B", "status": "NOT STARTED"},
+    {"year": 2025, "cell": "A", "status": "NOT STARTED — referenced from prior round"},
+    {"year": 2025, "cell": "B", "status": "NOT STARTED — referenced from prior round"}
+  ],
+  "reference_2025_from_prior_round": {
+    "source": "docs/Audit/path_a_tax_efficient_core_ab_results.json",
+    "merged_commit": "5c3cd3a",
+    "cell_A_baseline_sharpe": 0.954,
+    "cell_B_tax_only_sharpe": 1.624,
+    "delta_B_minus_A": 0.670,
+    "note": "Cell B in prior round enabled both wash-sale AND LT-hold preference, but per memory project_wash_sale_exposes_turnover_bug_2026_05_02.md line 31 LT-hold fired 0 times in 1-year 2025 window; +0.670 lift attributable to wash-sale alone"
+  },
+  "deltas_per_year": [
+    {"year": 2021, "cell_A_sharpe": 1.666, "cell_B_sharpe": 0.700, "delta_B_minus_A": -0.966},
+    {"year": 2022, "cell_A_sharpe": 0.583, "cell_B_sharpe": null, "delta_B_minus_A": null},
+    {"year": 2025, "cell_A_sharpe": 0.954, "cell_B_sharpe": 1.624, "delta_B_minus_A": 0.670, "source": "prior round reference"}
+  ],
+  "delta_stats_partial": {
+    "mean_of_2_measured": -0.148,
+    "min_of_2_measured": -0.966,
+    "max_of_2_measured": 0.670,
+    "n_years_positive": 1,
+    "n_years_total": 2
+  },
+  "best_case_extrapolation": {
+    "assumption": "all 4 unmeasured cells (2022 B, 2023, 2024) match 2025's +0.670 lift",
+    "implied_mean_delta_5_year": 0.343,
+    "still_fails_min_criterion_due_to_2021": true,
+    "verdict_under_best_case": "CONDITIONAL — barely clears mean ≥ 0.30 but fails min > 0 because 2021 = -0.966"
+  }
+}
