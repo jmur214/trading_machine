@@ -68,6 +68,12 @@ def analytics_parent_layout():
                                         style=SUB_TAB_STYLE,
                                         selected_style=SUB_TAB_SELECTED_STYLE,
                                     ),
+                                    dcc.Tab(
+                                        label="Feature Foundry",
+                                        value="feature_foundry",
+                                        style=SUB_TAB_STYLE,
+                                        selected_style=SUB_TAB_SELECTED_STYLE,
+                                    ),
                                 ],
                                 className="analytics-sub-tabs",
                             ),
