@@ -32,11 +32,14 @@ Tier vocabulary:
 """
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, field
 from datetime import date, datetime, timezone
 from typing import Callable, Dict, List, Optional
 
 import pandas as pd
+
+logger = logging.getLogger(__name__)
 
 
 VALID_TIERS = {"A", "B", "adversarial"}
@@ -158,6 +161,24 @@ def feature(
             description=description or (func.__doc__ or "").strip(),
         )
         get_feature_registry().register(feat)
+        # Advisory leakage scan at registration time. Local import avoids
+        # an import cycle with `core.observability` and keeps the Foundry
+        # consumable in environments where observability isn't installed.
+        # Failures here are logged at WARNING but never block registration
+        # — the detector is advisory this round, gate next round.
+        try:
+            from core.observability.leakage_detector import scan_callable
+            warnings_found = scan_callable(func, log_warnings=False)
+            for w in warnings_found:
+                logger.warning(
+                    "feature_foundry: leakage advisory on feature %r: %s",
+                    feature_id, w.format(),
+                )
+        except Exception as exc:  # pragma: no cover — defence in depth
+            logger.debug(
+                "feature_foundry: leakage scan unavailable for %r: %s",
+                feature_id, exc,
+            )
         return feat
 
     return _wrap
