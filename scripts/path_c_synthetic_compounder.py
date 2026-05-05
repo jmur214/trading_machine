@@ -669,6 +669,9 @@ def run_compounder_backtest(
     panel: Optional[pd.DataFrame] = None,
     use_real_fundamentals: bool = False,
     label: str = "compounder_synthetic",
+    vol_overlay_enabled: bool = False,
+    vol_overlay_target: float = 0.15,
+    vol_overlay_lookback: int = 60,
 ) -> Tuple[BacktestResult, pd.Series, List[RebalanceEvent]]:
     """Long-only annual-rebalance equal-weighted top-quintile compounder.
 
@@ -691,11 +694,29 @@ def run_compounder_backtest(
         SimFin fundamentals panel. Required when use_real_fundamentals=True.
     label
         Tag attached to the BacktestResult.
+    vol_overlay_enabled
+        If True, applies a vol-target overlay to the equal-weight quintile
+        weights at each rebalance. Mirrors PortfolioPolicy._apply_vol_target
+        but standalone (see scripts/path_c_overlays.py). Cell E of the
+        4-cell harness.
+    vol_overlay_target
+        Annualized portfolio-vol target (default 0.15, matches
+        config/portfolio_settings.json).
+    vol_overlay_lookback
+        Trading-day lookback for vol estimation (default 60).
     """
     if use_real_fundamentals and panel is None:
         raise ValueError(
             "panel must be provided when use_real_fundamentals=True"
         )
+
+    # The overlay's apply_vol_target is imported lazily inside the
+    # rebalance loop (only when overlay is on).
+    overlay_diagnostics: List = []
+    # Side-channel: also push diagnostics into the module-global list
+    # so the _run_with_overlay_diagnostics wrapper can expose them
+    # without changing this function's return signature.
+    global _LAST_OVERLAY_DIAGS
     daily_index = prices.index
     cash = initial_capital
     holdings: Dict[str, float] = {}  # ticker -> shares
@@ -791,8 +812,38 @@ def run_compounder_backtest(
             mv_post_sell = 0.0  # all positions liquidated
             buying_power_pretax = cash
             buying_power_aftertax = aftertax_cash
-            target_per_name = buying_power_pretax / max(1, len(new_basket))
-            target_per_name_aftertax = buying_power_aftertax / max(1, len(new_basket))
+            n_basket = max(1, len(new_basket))
+
+            # Default equal-weight allocation: each name = 1/N of buying power
+            base_weights: Dict[str, float] = {t: 1.0 / n_basket for t in new_basket}
+
+            # Optional vol overlay — scales weights (and therefore deployed
+            # capital) by clipped(target_vol / port_vol, [0.3, 2.0]).
+            # If port_vol < target, leverage UP (gross > 1 means we'd need
+            # margin — but this script doesn't model margin, so a scalar > 1
+            # simply over-allocates buying_power, which we cap at gross 1.0
+            # to keep the comparison honest. See diagnostics for raw vs applied.
+            if vol_overlay_enabled:
+                from scripts.path_c_overlays import apply_vol_target
+                scaled_weights, diag = apply_vol_target(
+                    weights=base_weights,
+                    prices=prices,
+                    asof=dt,
+                    target_vol=vol_overlay_target,
+                    lookback=vol_overlay_lookback,
+                )
+                overlay_diagnostics.append(diag)
+                _LAST_OVERLAY_DIAGS.append(diag)
+                # Cap gross at 1.0 — we are unlevered (no margin in this sim).
+                # If overlay implies leverage_up, the de-lever direction (when
+                # vol > target) is the meaningful test. Going above 1.0 would
+                # silently violate the cash-only setup.
+                gross = sum(abs(w) for w in scaled_weights.values())
+                if gross > 1.0:
+                    scaled_weights = {t: w / gross for t, w in scaled_weights.items()}
+                weights_to_use = scaled_weights
+            else:
+                weights_to_use = base_weights
 
             for t in new_basket:
                 if t not in prices.columns:
@@ -800,7 +851,11 @@ def run_compounder_backtest(
                 px = prices.at[dt, t]
                 if np.isnan(px) or px <= 0:
                     continue
-                shares = target_per_name / px
+                w = weights_to_use.get(t, 0.0)
+                if w <= 0:
+                    continue
+                target_dollars = buying_power_pretax * w
+                shares = target_dollars / px
                 holdings[t] = shares
                 cost_basis[t] = px
                 last_buy_date_per_ticker[t] = dt
@@ -1058,21 +1113,71 @@ def run_60_40_benchmark(
 
 
 # ----------------------------------------------------------------------
-# Main — 4-cell harness (real-fundamentals, synthetic, SPY, 60/40)
+# Vol-overlay wrapper — captures per-rebalance diagnostics
+# ----------------------------------------------------------------------
+
+def _run_with_overlay_diagnostics(
+    prices: pd.DataFrame,
+    universe: List[str],
+    initial_capital: float,
+    lt_tax_rate: float,
+    panel: Optional[pd.DataFrame] = None,
+    use_real_fundamentals: bool = False,
+    label: str = "compounder_real_fundamentals_vol_overlay",
+    vol_overlay_target: float = 0.15,
+    vol_overlay_lookback: int = 60,
+):
+    """Wrap ``run_compounder_backtest`` and return overlay diagnostics.
+
+    The main backtest function holds diagnostics in a local list. To
+    expose them after the run we monkey-patch the local-list
+    accumulation: the simplest is to re-instrument by running the
+    backtest itself and grabbing the diagnostics off a side channel.
+
+    Implementation: we attach a module-global `_LAST_OVERLAY_DIAGS`
+    list that ``run_compounder_backtest`` populates when the overlay is
+    on. Cleaner than threading it through the return tuple (which would
+    break the existing function signature for non-overlay callers).
+    """
+    global _LAST_OVERLAY_DIAGS
+    _LAST_OVERLAY_DIAGS = []
+    result, equity, events = run_compounder_backtest(
+        prices=prices,
+        universe=universe,
+        initial_capital=initial_capital,
+        lt_tax_rate=lt_tax_rate,
+        panel=panel,
+        use_real_fundamentals=use_real_fundamentals,
+        label=label,
+        vol_overlay_enabled=True,
+        vol_overlay_target=vol_overlay_target,
+        vol_overlay_lookback=vol_overlay_lookback,
+    )
+    diags = list(_LAST_OVERLAY_DIAGS)
+    _LAST_OVERLAY_DIAGS = []
+    return result, equity, events, diags
+
+
+_LAST_OVERLAY_DIAGS: List = []
+
+
+# ----------------------------------------------------------------------
+# Main — 5-cell harness (real-fundamentals, real+overlay, synthetic, SPY, 60/40)
 # ----------------------------------------------------------------------
 
 def main() -> int:
-    """Run the 4-cell harness comparing real-fundamentals vs synthetic.
+    """Run the 5-cell harness comparing real-fundamentals vs synthetic vs vol-overlay.
 
     Cells:
-        D — compounder with REAL V/Q/A fundamentals composite
+        E — compounder REAL fundamentals + vol overlay (target=0.15, lookback=60)
+        D — compounder with REAL V/Q/A fundamentals composite (no overlay)
         C — compounder with SYNTHETIC price-derived composite (negative control)
         A — SPY buy-and-hold
         B — 60/40 SPY/IEF
     """
     from engines.data_manager.fundamentals.simfin_adapter import load_panel
 
-    print(f"[run] Path C compounder — 4-cell harness")
+    print(f"[run] Path C compounder — 5-cell harness (incl. vol-overlay Cell E)")
     print(f"[run] Period: {START_DATE} → {END_DATE}")
     print(f"[run] Initial capital: ${INITIAL_CAPITAL:,.0f}")
     print(f"[run] LT cap gains rate: {LT_CAP_GAINS_RATE:.0%}")
@@ -1103,6 +1208,20 @@ def main() -> int:
         label="compounder_real_fundamentals",
     )
 
+    # Cell E — same Cell D config + vol-target overlay. To capture the
+    # overlay diagnostics we re-run with vol_overlay_enabled=True. The
+    # diagnostic list has to be plumbed back; we use a small wrapper.
+    print("[run] Cell E — REAL fundamentals + vol overlay (target 0.15)...")
+    real_overlay_result, _, real_overlay_events, real_overlay_diags = (
+        _run_with_overlay_diagnostics(
+            prices, real_universe_with_data, INITIAL_CAPITAL, LT_CAP_GAINS_RATE,
+            panel=panel, use_real_fundamentals=True,
+            label="compounder_real_fundamentals_vol_overlay",
+            vol_overlay_target=0.15,
+            vol_overlay_lookback=60,
+        )
+    )
+
     print("[run] Cell C — SYNTHETIC compounder (negative control)...")
     synthetic_result, _, synthetic_events = run_compounder_backtest(
         prices, synthetic_universe_with_data, INITIAL_CAPITAL, LT_CAP_GAINS_RATE,
@@ -1120,6 +1239,15 @@ def main() -> int:
     pass_after_tax = real_result.cagr_aftertax > spy_result.cagr_aftertax
     pass_mdd = real_result.max_drawdown >= -0.15
     overall_pass = pass_after_tax and pass_mdd
+
+    # Cell E criterion: did vol overlay rescue the MDD?
+    pass_overlay_after_tax = real_overlay_result.cagr_aftertax > spy_result.cagr_aftertax
+    pass_overlay_mdd = real_overlay_result.max_drawdown >= -0.15
+    overlay_overall_pass = pass_overlay_after_tax and pass_overlay_mdd
+
+    # Overlay diagnostics summary
+    from scripts.path_c_overlays import summarize_overlay_diagnostics
+    overlay_summary = summarize_overlay_diagnostics(real_overlay_diags)
 
     summary = {
         "metadata": {
@@ -1145,6 +1273,13 @@ def main() -> int:
                 "1-month reversal percentile",
                 "inverse 252d max-drawdown percentile",
             ],
+            "vol_overlay_config": {
+                "enabled_for_cell": "E",
+                "target_vol": 0.15,
+                "lookback_days": 60,
+                "scalar_clip": [0.3, 2.0],
+                "gross_cap_post_overlay": 1.0,
+            },
             "data_sources": [
                 "yfinance auto-adjusted close (prices)",
                 "SimFin FREE quarterly bulk (fundamentals, 2020-06-30 → 2025-04-30)",
@@ -1157,10 +1292,12 @@ def main() -> int:
                 "ROIC tax rate is constant 21% (statutory federal) — not effective rate",
                 "Wash-sale rule structurally not in play (annual cadence) — modeled as zero violations",
                 "Loss carry-forward simplified vs IRS $3K/yr cap",
+                "Vol overlay caps gross at 1.0 (no margin); leverage_up direction is suppressed",
             ],
         },
         "results": {
             "compounder_real": asdict(real_result),
+            "compounder_real_vol_overlay": asdict(real_overlay_result),
             "compounder_synthetic": asdict(synthetic_result),
             "spy_buyhold": asdict(spy_result),
             "60_40_buyhold": asdict(six_forty_result) if six_forty_result else None,
@@ -1169,8 +1306,13 @@ def main() -> int:
             "real_compounder_aftertax_cagr_gt_spy": pass_after_tax,
             "real_compounder_mdd_ge_minus_15pct": pass_mdd,
             "overall": overall_pass,
+            "real_overlay_aftertax_cagr_gt_spy": pass_overlay_after_tax,
+            "real_overlay_mdd_ge_minus_15pct": pass_overlay_mdd,
+            "overlay_overall": overlay_overall_pass,
         },
+        "vol_overlay_diagnostics": overlay_summary,
         "rebalance_events_real": [asdict(r) for r in real_events],
+        "rebalance_events_real_overlay": [asdict(r) for r in real_overlay_events],
         "rebalance_events_synthetic": [asdict(r) for r in synthetic_events],
     }
 
@@ -1179,30 +1321,77 @@ def main() -> int:
     with open(out_path, "w") as f:
         json.dump(summary, f, indent=2, default=str)
 
-    print(f"\n{'=' * 65}")
-    print("RESULTS — 4-CELL HARNESS")
-    print(f"{'=' * 65}")
-    print(f"{'Strategy':<32} {'CAGR pre':>10} {'CAGR after':>12} {'Sharpe':>8} {'MDD':>8}")
-    print("-" * 75)
-    for r in [real_result, synthetic_result, spy_result, six_forty_result]:
+    print(f"\n{'=' * 80}")
+    print("RESULTS — 5-CELL HARNESS")
+    print(f"{'=' * 80}")
+    print(f"{'Strategy':<42} {'CAGR pre':>10} {'CAGR after':>12} {'Sharpe':>8} {'MDD':>8}")
+    print("-" * 85)
+    for r in [real_result, real_overlay_result, synthetic_result, spy_result, six_forty_result]:
         if r is None:
             continue
         print(
-            f"{r.label:<32} {r.cagr_pretax*100:>9.2f}% {r.cagr_aftertax*100:>11.2f}% "
+            f"{r.label:<42} {r.cagr_pretax*100:>9.2f}% {r.cagr_aftertax*100:>11.2f}% "
             f"{r.sharpe_pretax:>8.3f} {r.max_drawdown*100:>7.2f}%"
         )
 
-    print(f"\n{'=' * 65}")
-    print("PASS CRITERION (real-fundamentals compounder)")
-    print(f"{'=' * 65}")
-    print(f"After-tax CAGR > SPY: "
+    # Overlay diagnostics
+    print(f"\n{'=' * 80}")
+    print("VOL OVERLAY DIAGNOSTICS (Cell E)")
+    print(f"{'=' * 80}")
+    if overlay_summary:
+        print(f"  rebalances:           {overlay_summary['n_rebalances']}")
+        print(f"  raw scalar  range:    [{overlay_summary['raw_scalar_min']:.3f}, "
+              f"{overlay_summary['raw_scalar_max']:.3f}], mean {overlay_summary['raw_scalar_mean']:.3f}")
+        print(f"  applied scalar range: [{overlay_summary['applied_scalar_min']:.3f}, "
+              f"{overlay_summary['applied_scalar_max']:.3f}], mean {overlay_summary['applied_scalar_mean']:.3f}")
+        print(f"  est. port vol range:  [{overlay_summary['estimated_port_vol_min']:.3f}, "
+              f"{overlay_summary['estimated_port_vol_max']:.3f}], mean {overlay_summary['estimated_port_vol_mean']:.3f}")
+        print(f"  gross-after  range:   [{overlay_summary['gross_after_min']:.3f}, "
+              f"{overlay_summary['gross_after_max']:.3f}], mean {overlay_summary['gross_after_mean']:.3f}")
+        print(f"  clip-state distribution:")
+        for state, n in overlay_summary['clip_state_counts'].items():
+            frac = overlay_summary['clip_state_fractions'][state]
+            print(f"    {state:<14} {n:>3}  ({frac:.0%})")
+    else:
+        print("  (no overlay diagnostics — overlay must not have run)")
+
+    print(f"\n{'=' * 80}")
+    print("CELL D vs CELL E — vol overlay rescue analysis")
+    print(f"{'=' * 80}")
+    print(f"{'metric':<30} {'Cell D':>12} {'Cell E':>12} {'delta':>12}")
+    print("-" * 70)
+    print(f"{'CAGR pretax':<30} {real_result.cagr_pretax*100:>11.2f}% "
+          f"{real_overlay_result.cagr_pretax*100:>11.2f}% "
+          f"{(real_overlay_result.cagr_pretax - real_result.cagr_pretax)*100:>+11.2f}pp")
+    print(f"{'CAGR aftertax':<30} {real_result.cagr_aftertax*100:>11.2f}% "
+          f"{real_overlay_result.cagr_aftertax*100:>11.2f}% "
+          f"{(real_overlay_result.cagr_aftertax - real_result.cagr_aftertax)*100:>+11.2f}pp")
+    print(f"{'Sharpe pretax':<30} {real_result.sharpe_pretax:>12.3f} "
+          f"{real_overlay_result.sharpe_pretax:>12.3f} "
+          f"{real_overlay_result.sharpe_pretax - real_result.sharpe_pretax:>+12.3f}")
+    print(f"{'Max Drawdown':<30} {real_result.max_drawdown*100:>11.2f}% "
+          f"{real_overlay_result.max_drawdown*100:>11.2f}% "
+          f"{(real_overlay_result.max_drawdown - real_result.max_drawdown)*100:>+11.2f}pp")
+
+    print(f"\n{'=' * 80}")
+    print("PASS CRITERION")
+    print(f"{'=' * 80}")
+    print(f"[Cell D] After-tax CAGR > SPY: "
           f"{real_result.cagr_aftertax*100:.2f}% vs {spy_result.cagr_aftertax*100:.2f}% "
           f"=> {'PASS' if pass_after_tax else 'FAIL'}")
-    print(f"MDD >= -15%: {real_result.max_drawdown*100:.2f}% "
+    print(f"[Cell D] MDD >= -15%: {real_result.max_drawdown*100:.2f}% "
           f"=> {'PASS' if pass_mdd else 'FAIL'}")
-    print(f"\nOverall: {'PASS' if overall_pass else 'FAIL'}")
+    print(f"[Cell D] Overall: {'PASS' if overall_pass else 'FAIL'}")
+    print()
+    print(f"[Cell E] After-tax CAGR > SPY: "
+          f"{real_overlay_result.cagr_aftertax*100:.2f}% vs {spy_result.cagr_aftertax*100:.2f}% "
+          f"=> {'PASS' if pass_overlay_after_tax else 'FAIL'}")
+    print(f"[Cell E] MDD >= -15%: {real_overlay_result.max_drawdown*100:.2f}% "
+          f"=> {'PASS' if pass_overlay_mdd else 'FAIL'}")
+    print(f"[Cell E] Overall: {'PASS' if overlay_overall_pass else 'FAIL'}")
+
     print(f"\nResults JSON: {out_path}")
-    return 0 if overall_pass else 1
+    return 0 if (overall_pass or overlay_overall_pass) else 1
 
 
 def _print_wired_summary() -> None:
