@@ -1,10 +1,11 @@
 # Session Summary: YYYY-MM-DD
 
 > Template for session summaries. Copy this file to 
-> `docs/Progress_Summaries/YYYY-MM-DD_session.md` (replace YYYY-MM-DD 
-> with the actual date) and fill it in. The SessionStart hook reads 
-> the most recent summaries to give the next session continuity 
-> with the previous one — write these well, future-you depends on it.
+> `docs/Sessions/YYYY-MM/YYYY-MM-DD_session.md` (replace YYYY-MM with 
+> the year-month bucket and YYYY-MM-DD with the actual date) and fill 
+> it in. The SessionStart hook reads the most recent summaries to give 
+> the next session continuity with the previous one — write these well, 
+> future-you depends on it.
 > 
 > If multiple sessions happen on the same day, append a suffix: 
 > `2026-04-24_session.md`, `2026-04-24_session_2.md`, etc.
@@ -29,7 +30,7 @@ faster than code.*
 
 *New patterns, gotchas, or surprises. If something behaved 
 differently than expected, document it here. Should also have 
-been logged to `docs/Progress_Summaries/lessons_learned.md` if 
+been logged to `docs/State/lessons_learned.md` if 
 significant.*
 
 -

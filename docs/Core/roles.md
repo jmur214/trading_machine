@@ -59,6 +59,6 @@ When working on the Trading Machine, match the user's request to the **Triggers*
 - **Tasks:** Reviewing engine charters, auditing documentation for drift, verifying cross-references between files, identifying where logic bleeds across engine boundaries.
 - **Required Reading:** Start with `docs/Audit/README.md` for orientation. The key files are:
   - `docs/Core/engine_charters.md` — target design (what engines SHOULD do)
-  - `docs/Audit/high_level-engine_function.md` — current state (what engines DO today)
-  - `docs/Audit/health_check.md` — living tracker of current code-quality findings (maintained by subagents)
+  - `docs/Core/high_level_engine_function.md` — current state (what engines DO today)
+  - `docs/State/health_check.md` — living tracker of current code-quality findings (maintained by subagents)
 - **Rules:** Compare the charter against the actual code. Flag discrepancies between aspirational design and actual implementation — never conflate the two. The gap between `high_level-engine_function.md` and `engine_charters.md` IS the refactoring work remaining.

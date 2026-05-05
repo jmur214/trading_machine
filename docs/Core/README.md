@@ -23,8 +23,8 @@ If you need to work on engine-level logic, are reviewing the architecture, or wa
 |------|---------|
 | **`docs/Core/simple_engine_roles.md`** | Plain-English "hedge fund room" metaphor — gives you the intuitive feel for each engine's personality |
 | **`docs/Core/engine_charters.md`** | Formal authority boundaries, input/output contracts, invariants, and the interaction map |
-| **`docs/Audit/high_level-engine_function.md`** | What each engine actually does TODAY in the code (compare against charters to see the gap) |
-| **`docs/Audit/health_check.md`** | Living tracker of current code-quality findings — maintained by the `engine-auditor` and `code-health` subagents |
+| **`docs/Core/high_level_engine_function.md`** | What each engine actually does TODAY in the code (compare against charters to see the gap) |
+| **`docs/State/health_check.md`** | Living tracker of current code-quality findings — maintained by the `engine-auditor` and `code-health` subagents |
 | **`engines/*/index.md`** | Module-level documentation inside each engine directory — architecture notes + auto-generated code reference |
 
 ### Tier 2: Reference (Consult During Work)
@@ -91,8 +91,8 @@ SESSION START
 | Location | Purpose |
 |----------|---------|
 | `docs/Audit/` | Living code-health tracking. Contains `health_check.md` (current findings, maintained by subagents) and `high_level-engine_function.md` (what each engine does today). Compare the latter against `docs/Core/engine_charters.md` to see refactoring drift. |
-| `docs/Progress_Summaries/` | Session summaries (`YYYY-MM-DD_session.md`), `lessons_learned.md`, and the `_template.md` used for new summaries. |
-| `docs/Progress_Summaries/Other-dev-opinion/` | Outside-reviewer takes captured at end-of-session after a push. The user typically asks a separate Claude instance to review what shipped; that response is saved here as `<MM-DD-YY>_<tag>.md`. Multiple user follow-ups within one file are separated by horizontal underscore dividers (`_____________________`). When acting on one of these files, also update `docs/Core/forward_plan_<YYYY-MM-DD>.md` and `ROADMAP.md` if the review proposes new phases or re-sequencing. See `SESSION_PROCEDURES.md` "Post-push outside-opinion review" for the full convention. |
+| `docs/Sessions/` | Session summaries (`YYYY-MM-DD_session.md`), `lessons_learned.md`, and the `_template.md` used for new summaries. |
+| `docs/Sessions/Other-dev-opinion/` | Outside-reviewer takes captured at end-of-session after a push. The user typically asks a separate Claude instance to review what shipped; that response is saved here as `<MM-DD-YY>_<tag>.md`. Multiple user follow-ups within one file are separated by horizontal underscore dividers (`_____________________`). When acting on one of these files, also update `docs/Core/forward_plan_<YYYY-MM-DD>.md` and `ROADMAP.md` if the review proposes new phases or re-sequencing. See `SESSION_PROCEDURES.md` "Post-push outside-opinion review" for the full convention. |
 | `docs/Archive/` | Gitignored historical content — old audits, retired specs, prior roadmaps. Snapshots, not current state. |
 | `.claude/agents/` | Subagent definitions implementing the cognitive lenses in `roles.md`. |
 | `.claude/skills/` | Reusable skills (e.g. `commit/SKILL.md` for commit-message format). |

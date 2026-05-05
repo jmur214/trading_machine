@@ -3,7 +3,7 @@
 DESIGN-PHASE FEASIBILITY TEST. Not production code.
 
 Tests the architectural premise of the compounder sleeve from
-docs/Audit/path_c_compounder_design_2026_05.md without committing to
+docs/Measurements/2026-05/path_c_compounder_design_2026_05.md without committing to
 a particular Engine C implementation. Standalone — does NOT touch
 the production backtester.
 
@@ -62,7 +62,7 @@ Outputs (only when --run is passed)
 -----------------------------------
 - Console summary
 - JSON results to data/research/path_c_synthetic_backtest.json
-- Markdown summary to docs/Audit/path_c_compounder_synthetic_backtest_2026_05.md
+- Markdown summary to docs/Measurements/2026-05/path_c_compounder_synthetic_backtest_2026_05.md
 """
 from __future__ import annotations
 

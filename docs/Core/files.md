@@ -68,7 +68,7 @@ This is a high-level, quick-reference guide to the primary directories of the Tr
 | `docs/Core/` | AI command center — `CLAUDE.md` reading order entry, `SESSION_PROCEDURES.md`, `GOAL.md`, `PROJECT_CONTEXT.md`, `ROADMAP.md`, `engine_charters.md`, `simple_engine_roles.md`, `execution_manual.md`, `roles.md`, `agent_instructions.md`, `files.md` |
 | `docs/Core/Ideas_Pipeline/` | 3-stage idea promotion workflow (human → backlog → evaluations → ROADMAP) |
 | `docs/Audit/` | Living code-health tracking — `health_check.md` (current findings, maintained by subagents) and `high_level-engine_function.md` (what each engine does today; compare against `docs/Core/engine_charters.md`) |
-| `docs/Progress_Summaries/` | Per-session summaries (`YYYY-MM-DD_session.md`), `lessons_learned.md`, `_template.md` |
+| `docs/Sessions/` | Per-session summaries (`YYYY-MM-DD_session.md`), `lessons_learned.md`, `_template.md` |
 | `docs/Archive/` | Gitignored historical content — old audits, retired specs, prior roadmaps |
 
 ## AI Configuration

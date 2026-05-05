@@ -2,7 +2,7 @@
 
 **Status:** GATE-CONDITIONAL. Fire only after `scripts/run_multi_year.py`
 reports `Gate status: PASS` (mean 2021-2025 Sharpe ≥ 0.5) in
-`docs/Audit/multi_year_foundation_measurement.md`. If status is
+`docs/Measurements/2026-05/multi_year_foundation_measurement.md`. If status is
 AMBIGUOUS or FAIL, suppress this dispatch — the kill-thesis review
 path takes over instead.
 
@@ -58,7 +58,7 @@ modules in there are usable as drop-in replacements for our
 Engine C weighted_sum baseline?
 
 Deliverables (no code merge expected):
-- /Users/jacksonmurphy/Dev/trading_machine-2/docs/Audit/ws_f_fundamentals_data_scoping.md
+- /Users/jacksonmurphy/Dev/trading_machine-2/docs/Measurements/2026-05/ws_f_fundamentals_data_scoping.md
   — comparison matrix + recommendation memo
 - /Users/jacksonmurphy/Dev/trading_machine-2/docs/Core/Ideas_Pipeline/path_c_unblock_plan.md
   — concrete prerequisites to enable Path C compounder once data lands
@@ -187,7 +187,7 @@ Acceptance:
   like 1 of 3 signals)
 - Smoke run completes deterministically: 3/3 reps bitwise-identical
   canon md5
-- docs/Audit/ws_c_cross_asset_confirmation.md captures: cross-asset
+- docs/Measurements/2026-05/ws_c_cross_asset_confirmation.md captures: cross-asset
   feature sources + confirmation logic + smoke Sharpe (with HMM on
   vs. baseline HMM-off equivalent)
 
@@ -213,7 +213,7 @@ subagent_type: ml-architect
 prompt:
 
 Close out Workstream D (Feature Foundry) from ~60% to "complete per
-named deliverables" in /Users/jacksonmurphy/Dev/trading_machine-2/docs/Core/forward_plan_2026_05_02.md.
+named deliverables" in /Users/jacksonmurphy/Dev/trading_machine-2/docs/State/forward_plan.md.
 
 The three remaining deliverables:
 
@@ -245,7 +245,7 @@ Acceptance:
 - A test commit that adds a real feature passes
 - 90-day archive flag mechanism works end-to-end (create a synthetic
   90d-old failing feature, verify it gets `review_pending`)
-- docs/Audit/ws_d_foundry_closeout.md lists what is now AUTO vs. what
+- docs/Measurements/2026-05/ws_d_foundry_closeout.md lists what is now AUTO vs. what
   still requires human in the loop
 
 Hard constraints:
@@ -312,7 +312,7 @@ Acceptance:
 - Leakage detector flags at least one obvious test case (a feature
   that does `df['close'].shift(-1)`) and passes a clean feature
 - All three have unit tests
-- docs/Audit/ws_j_cross_cutting_trio.md describes each component +
+- docs/Measurements/2026-05/ws_j_cross_cutting_trio.md describes each component +
   how it integrates
 
 Hard constraints:

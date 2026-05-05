@@ -13,7 +13,7 @@ realistic model.
 Output:
 - Aggregate table: average bps charged by ADV bucket, total $ cost
   difference, per-side breakdown.
-- Markdown report at `docs/Audit/realistic_slippage_diagnostic.md`.
+- Markdown report at `docs/Measurements/2026-04/realistic_slippage_diagnostic.md`.
 
 Does NOT modify any code path. Does NOT trigger a backtest. Safe to run
 during another backtest in the background — only reads from
@@ -80,7 +80,7 @@ def main():
     parser.add_argument("--sample-cap", type=int, default=10_000,
                         help="Max fills to analyze (sampled uniformly if exceeded)")
     parser.add_argument("--output", default=None,
-                        help="Output markdown path (default: docs/Audit/realistic_slippage_diagnostic.md)")
+                        help="Output markdown path (default: docs/Measurements/2026-04/realistic_slippage_diagnostic.md)")
     args = parser.parse_args()
 
     # --- Locate trade log -------------------------------------------------
@@ -217,7 +217,7 @@ def main():
     lines.append("")
     lines.append("Re-prices each historical fill from the most recent backtest run using the")
     lines.append("`RealisticSlippageModel` (Phase 0.1 cost-model fix from")
-    lines.append("`docs/Core/forward_plan_2026_04_28.md`). The legacy model charged a flat")
+    lines.append("`docs/Archive/forward_plans/forward_plan_2026_04_28.md`). The legacy model charged a flat")
     lines.append(f"{args.legacy_bps} bps per side regardless of order size, ticker liquidity, or")
     lines.append("volatility. The realistic model uses ADV-bucketed half-spread plus")
     lines.append("Almgren-Chriss square-root market impact.")

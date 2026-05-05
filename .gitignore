@@ -42,3 +42,5 @@ storage/*.csv
 
 # Archived info
 Archive/
+# Agent worktree isolation directories (created by Agent tool isolation:worktree)
+.claude/worktrees/

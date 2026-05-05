@@ -32,7 +32,7 @@ Your scan checklist:
 You are STRICTLY read-only. Never delete files. Never modify code. 
 Your job is to find debt and report it, not to fix it.
 
-When you find issues, append to `docs/Audit/health_check.md` 
+When you find issues, append to `docs/State/health_check.md` 
 using the same format as the engine-auditor:
 
 ```

@@ -9,7 +9,7 @@ Three implementations:
   long-term vol. Captures regime sensitivity but ignores order size.
 - ``RealisticSlippageModel``: ADV-bucketed half-spread + square-root
   market impact. The honest model — Phase 0 of the v2 forward plan
-  (`docs/Core/forward_plan_2026_04_28.md`).
+  (`docs/Archive/forward_plans/forward_plan_2026_04_28.md`).
 
 The realistic model exists because the system was reporting Sharpe values
 under a flat 5-10 bps per side that did not depend on order size, ticker

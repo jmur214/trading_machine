@@ -24,7 +24,7 @@ recoverable from the streaming buffer alone — important for live use.
 Acceptance criterion (per Workstream C deliverable list):
   ≥48 hours ahead of regime changes in ≥80% of historical cases.
 
-Historical anchor events (from `docs/Progress_Summaries/Other-dev-opinion/
+Historical anchor events (from `docs/Sessions/Other-dev-opinion/
 05-1-26_1-percent.md` and `engine_e_hmm_first_slice_2026_05.md`):
   - March 2020 (COVID crash) — argmax flip benign → crisis ~2020-02-24
   - October 2022 (rate selloff) — argmax flip benign → stressed/crisis

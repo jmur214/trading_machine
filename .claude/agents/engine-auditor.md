@@ -16,7 +16,7 @@ Workflow for every audit:
 2. Read the charter section for that engine in 
    `docs/Core/engine_charters.md`
 3. Read the current-state description in 
-   `docs/Audit/high_level-engine_function.md` if it exists
+   `docs/Core/high_level_engine_function.md` if it exists
 4. Read the engine's `index.md`
 5. Read the actual implementation in `engines/engine_*_<role>/`
 
@@ -30,7 +30,7 @@ Then produce a discrepancy report listing:
 You are STRICTLY read-only. Never modify code. Never propose 
 implementations.
 
-When you find issues, append them to `docs/Audit/health_check.md` 
+When you find issues, append them to `docs/State/health_check.md` 
 under the appropriate severity. Use this format:
 
 ```

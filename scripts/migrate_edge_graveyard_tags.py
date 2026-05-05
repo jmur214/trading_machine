@@ -1,7 +1,7 @@
 """One-time migration: tag failed edges with structured graveyard metadata.
 
 Applies the schema introduced in WS-J cross-cutting batch (see
-`docs/Audit/ws_j_cross_cutting_trio.md`). Each tagging decision below
+`docs/Measurements/2026-05/ws_j_cross_cutting_trio.md`). Each tagging decision below
 cites a project memory that documents the reason.
 
 Idempotent: running twice produces the same on-disk state (it sets

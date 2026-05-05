@@ -11,7 +11,7 @@ Here is the reference map:
 - **Architecture:** Review `docs/Core/PROJECT_CONTEXT.md` to understand the fundamental structure and the system's philosophy.
 - **Codebase Navigation:** Consult `docs/Core/files.md` for a quick directory map. For deep module-level details, see the `index.md` file inside each engine or component directory (e.g., `engines/engine_a_alpha/index.md`).
 - **Execution Manual:** Reference `docs/Core/execution_manual.md` for the exact CLI commands required to operate the system's various engines, scripts, and workflows.
-- **Progress & Trajectory:** `docs/Core/ROADMAP.md` dictates forward-looking goals, while `docs/Progress_Summaries/lessons_learned.md` logs what has historically worked or failed, and `docs/Progress_Summaries/` contains timestamped summaries of completed phases.
+- **Progress & Trajectory:** `docs/State/ROADMAP.md` dictates forward-looking goals, while `docs/State/lessons_learned.md` logs what has historically worked or failed, and `docs/Sessions/` contains timestamped summaries of completed phases.
 - **Operational Rules:** `docs/Core/agent_instructions.md` holds operating protocols and coding standards.
 - **Cognitive Lenses:** `docs/Core/roles.md` outlines specific parameter focuses and mindsets based on the problem at hand (Risk, Quant, UI/UX, etc.) - adopt the corresponding cognitive lens dynamically.
 

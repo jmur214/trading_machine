@@ -3,7 +3,7 @@
 Run the extended autonomous LifecycleManager against the 5-year
 integration data (in-sample anchor abf68c8e + 2025 OOS 72ec531d) in
 **readonly** mode and check whether the trigger output matches
-docs/Audit/pruning_proposal_2026_04.md's hand classification.
+docs/Measurements/<year-month>/pruning_proposal_2026_04.md's hand classification.
 
 Falsifiable spec:
   - 6 KEEP edges must NOT be paused/retired by any trigger.
@@ -38,7 +38,7 @@ from engines.engine_f_governance.lifecycle_manager import (  # noqa: E402
 )
 
 
-# Hand classification from docs/Audit/pruning_proposal_2026_04.md
+# Hand classification from docs/Measurements/<year-month>/pruning_proposal_2026_04.md
 HAND_CLASSIFICATION: Dict[str, str] = {
     # KEEP (6)
     "volume_anomaly_v1": "KEEP",
@@ -127,7 +127,7 @@ def _seed_synthetic_pause_history(history_path: Path) -> None:
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--out",
-                    default="docs/Audit/lifecycle_triggers_validation_2026_04.md")
+                    default="docs/Measurements/2026-04/lifecycle_triggers_validation_2026_04.md")
     ap.add_argument("--scratch-dir", default="/tmp/lifecycle_validation_2026_04")
     args = ap.parse_args()
 

@@ -14,7 +14,7 @@ Walk-forward rolling folds:
 
 Output:
   - data/governor/metalearner_<profile>.pkl  (trained model)
-  - docs/Audit/metalearner_validation_<profile>.md  (validation report)
+  - docs/Measurements/<year-month>/metalearner_validation_<profile>.md  (validation report)
 
 This is a portfolio-level meta-learner for the first build (Session N+1).
 Per-ticker training is a Session N+1.5 follow-up — it requires logging

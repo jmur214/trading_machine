@@ -167,7 +167,7 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--smoke", action="store_true",
                     help="Tiny universe + 6-month window for wiring check")
-    ap.add_argument("--out", default="docs/Audit/gauntlet_revalidation_2026_04.md")
+    ap.add_argument("--out", default="docs/Measurements/2026-04/gauntlet_revalidation_2026_04.md")
     ap.add_argument("--start", default="2021-01-01")
     ap.add_argument("--end", default="2024-12-31")
     args = ap.parse_args()

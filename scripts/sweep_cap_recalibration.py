@@ -45,7 +45,7 @@ TRADES_DIR = ROOT / "data" / "trade_logs"
 #
 # 2026-05-01 update: list synced with scripts/run_isolated.py
 # (lifecycle_history.csv added). Per
-# docs/Audit/determinism_floor_restore_2026_05.md the bisect found
+# docs/Measurements/2026-05/determinism_floor_restore_2026_05.md the bisect found
 # `edges.yml` is the exclusive drift source, but lifecycle_history.csv
 # is in the harness for divergence-check observability.
 GOVERNOR_DIR = ROOT / "data" / "governor"

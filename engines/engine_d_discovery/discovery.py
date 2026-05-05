@@ -713,7 +713,7 @@ class DiscoveryEngine:
         - Gate 6: FF5+Mom regression on attribution stream — t > 2 AND
                   α annualized > 2%.
 
-        Threshold rationale — see `docs/Audit/gauntlet_architectural_fix_2026_05.md`
+        Threshold rationale — see `docs/Measurements/2026-05/gauntlet_architectural_fix_2026_05.md`
         for calibration.
 
         Caching

@@ -4,7 +4,7 @@ description: Golden Invariants and Rules for the Trading Machine Codebase
 
 # Trading Machine Rules
 
-These rules must be followed by all agents working on this codebase. For full system context, start with `docs/Core/GOAL.md`. For engine authority boundaries, see `docs/Audit/engine_charters.md`.
+These rules must be followed by all agents working on this codebase. For full system context, start with `docs/State/GOAL.md`. For engine authority boundaries, see `docs/Audit/engine_charters.md`.
 
 ## 1. Golden Invariants (DO NOT BREAK)
 

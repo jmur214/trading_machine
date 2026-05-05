@@ -14,7 +14,7 @@ Usage:
   # Anchor must already exist (run_isolated.py --save-anchor first).
   PYTHONHASHSEED=0 python -m scripts.run_multi_year \\
       --years 2021,2022,2023,2024,2025 --runs 3 \\
-      --output docs/Audit/multi_year_foundation_measurement.md
+      --output docs/Measurements/2026-05/multi_year_foundation_measurement.md
 
   # Smoke test on one year × 1 rep:
   PYTHONHASHSEED=0 python -m scripts.run_multi_year --years 2024 --runs 1
@@ -65,7 +65,7 @@ def _run_year(year: int) -> dict:
 
 
 def _format_markdown_report(results: list[dict], output_path: Path) -> None:
-    """Write a human-readable summary to docs/Audit/."""
+    """Write a human-readable summary to docs/Measurements/<year-month>/."""
     by_year: dict[int, list[dict]] = {}
     for r in results:
         by_year.setdefault(r["year"], []).append(r)
@@ -153,10 +153,10 @@ def main() -> int:
     parser.add_argument("--runs", type=int, default=3,
                         help="Reps per year (3 = within-year determinism check).")
     parser.add_argument("--output", type=str,
-                        default="docs/Audit/multi_year_foundation_measurement.md",
+                        default="docs/Measurements/2026-05/multi_year_foundation_measurement.md",
                         help="Markdown summary path (relative to repo root).")
     parser.add_argument("--json-output", type=str,
-                        default="docs/Audit/multi_year_foundation_measurement.json",
+                        default="docs/Measurements/2026-05/multi_year_foundation_measurement.json",
                         help="Raw JSON results path.")
     args = parser.parse_args()
 

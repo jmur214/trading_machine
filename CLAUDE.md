@@ -46,10 +46,13 @@ there. You may read it. Never echo its contents into chat output.
 Never commit literal values derived from it.
 
 **Historical audits are not current state.** Files in 
-`docs/Archive/audits/` are point-in-time snapshots that have been 
+`docs/Archive/` are point-in-time snapshots that have been 
 superseded by the current docs. Do not treat their findings as 
-present-day truth. For current code quality state, read 
-`docs/Audit/health_check.md`.
+present-day truth. Files in `docs/Measurements/<year-month>/` are 
+also point-in-time — useful for context, but not authoritative on 
+current behavior. For current code-quality state, read 
+`docs/State/health_check.md`. For current strategy/plan, read 
+`docs/State/forward_plan.md` and `docs/State/ROADMAP.md`.
 
 ## Git discipline
 
@@ -164,13 +167,13 @@ jargon-roleplay, no fictional voice.
 
 Before ending the session:
 - Update `docs/Core/execution_manual.md` if new CLI was used
-- Update `docs/Core/ROADMAP.md` if a roadmap item is complete
-- Update `docs/Audit/health_check.md` if you found or resolved a 
+- Update `docs/State/ROADMAP.md` if a roadmap item is complete
+- Update `docs/State/health_check.md` if you found or resolved a 
   code quality issue
 - Run `python scripts/sync_docs.py` if you touched files in 
   `engines/**/*.py`
-- Write a session summary to `docs/Progress_Summaries/` using the 
-  template at `docs/Progress_Summaries/_template.md`
+- Write a session summary to `docs/Sessions/<year-month>/` using the 
+  template at `docs/Sessions/_template.md`
 
 These steps run automatically via hooks where possible. When they 
 don't, do them yourself.

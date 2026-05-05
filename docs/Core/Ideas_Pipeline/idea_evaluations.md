@@ -4,7 +4,7 @@
 
 > **AI Workflow Rule (Stage 2: Evaluation)**: Once the user explicitly approves an idea with an `[x]` in `ideas_backlog.md`, REMOVE it from the backlog and PROMOTE it here. Adopt the appropriate Cognitive Lens and provide: 1) The Core Concept, 2) Technical Feasibility (Low/Med/High), 3) Potential Impact (Low/Med/High), 4) Strict Execution Rules/Risks. Flag ideas with 🟢 (High Conviction), 🟡 (Evaluating), 🔴 (High Risk), or ⚠️ (Needs Clarification).
 
-> **Promotion Rule (Stage 3: Roadmap)**: When the user explicitly approves an evaluation here, REMOVE it from this file. Synthesize it into a main bullet point, followed by a list of formal, actionable sub-steps and inject it into the appropriate Phase in `docs/Core/ROADMAP.md`.
+> **Promotion Rule (Stage 3: Roadmap)**: When the user explicitly approves an evaluation here, REMOVE it from this file. Synthesize it into a main bullet point, followed by a list of formal, actionable sub-steps and inject it into the appropriate Phase in `docs/State/ROADMAP.md`.
 
 ---
 

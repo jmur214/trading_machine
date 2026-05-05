@@ -7,7 +7,7 @@ membership history. Designed to feed any cross-sectional / factor edge
 that needs to know "which tickers were in the index on date X" without
 peeking at today's constituents — the failure mode that killed
 ``momentum_factor_v1`` on the 39-ticker universe (see
-``docs/Progress_Summaries/2026-04-24_strategic_pivot.md`` post-experiment
+``docs/Sessions/2026-04/2026-04-24_strategic_pivot.md`` post-experiment
 notes).
 
 Why this exists

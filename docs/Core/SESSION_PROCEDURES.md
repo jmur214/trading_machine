@@ -22,7 +22,7 @@ continue it. Check conversation context first, then `ROADMAP.md`
 for items marked `[~]` (in progress).
 
 ### Path 2 — Critical findings
-Check `docs/Audit/health_check.md` for unresolved HIGH-severity 
+Check `docs/State/health_check.md` for unresolved HIGH-severity 
 items. These are technical debt actively harming the system. 
 Prioritize them before adding features.
 
@@ -169,8 +169,8 @@ automatically via hooks; do them manually if hooks didn't fire.
 - [ ] Did I learn something non-obvious? → append to 
       `lessons_learned.md`
 - [ ] Was substantive work done this session? → write a summary to 
-      `docs/Progress_Summaries/YYYY-MM-DD_session.md` using the 
-      template at `docs/Progress_Summaries/_template.md`
+      `docs/Sessions/YYYY-MM/YYYY-MM-DD_session.md` using the 
+      template at `docs/Sessions/_template.md`
 - [ ] Is there uncommitted work? → review with `git status`, commit 
       logical units via `/commit` skill, stash only if genuinely 
       interrupting mid-thought
@@ -191,7 +191,7 @@ docs, see how things have changed, where the project stands, and
 how to move forward. Those reviewer responses are saved to:
 
 ```
-docs/Progress_Summaries/Other-dev-opinion/<MM-DD-YY>_<short-tag>.md
+docs/Sessions/Other-dev-opinion/<MM-DD-YY>_<short-tag>.md
 ```
 
 (Example: `04-29-26_a-and-i.md` — "audit-and-improvements" review 
@@ -207,13 +207,13 @@ monolithic essay.
 
 **When you're invoked AS the reviewer** (the session opens with 
 "review this doc" or similar after the user has just pushed):
-1. Read the latest file in `docs/Progress_Summaries/Other-dev-opinion/` 
+1. Read the latest file in `docs/Sessions/Other-dev-opinion/` 
    for context on what the prior reviewer said — your assessment 
    should build on that, not repeat it.
 2. Read `git log --oneline origin/main~20..HEAD` to see what 
    actually shipped between reviews.
 3. Read the most recent session summary (or two) in 
-   `docs/Progress_Summaries/`.
+   `docs/Sessions/<latest-month>/`.
 4. Compare claims-in-summaries to code reality. Be brutally 
    honest — that's the whole point of an outside opinion.
 
@@ -222,10 +222,9 @@ monolithic essay.
 you to act on it, as in the 2026-04-29 case):
 1. Read it at length.
 2. Synthesize a forward-plan update if the doc proposes 
-   architectural or sequencing changes — write to 
-   `docs/Core/forward_plan_<YYYY-MM-DD>.md`. The latest 
-   `forward_plan_*.md` is the live roadmap interpretation; older 
-   ones are historical context.
+   architectural or sequencing changes — UPDATE 
+   `docs/State/forward_plan.md` in place. Prior versions live in 
+   `docs/Archive/forward_plans/` (auto-archived when superseded).
 3. Update `ROADMAP.md` with any new phases or re-ordering the 
    plan implies.
 4. Note outstanding empirical questions (e.g., "OOS validation of 
@@ -308,3 +307,78 @@ When reporting to the user:
   If the next step is obvious and within autonomous scope, take it
 - "Brutal realism" applies to your own work too. If a change you 
   made looks worse than you hoped, say that — don't oversell it
+---
+
+## Documentation lifecycle (the A layer)
+
+The `docs/` tree is organized by **lifecycle**, not by topic. Knowing 
+which folder a doc belongs in is mostly about answering "how does 
+this doc age?"
+
+### The 6 folders, by lifecycle
+
+| Folder | What lives here | Lifecycle |
+|---|---|---|
+| `docs/Core/` | Stable design (engine charters, procedures, philosophy) | **Rarely changes.** When it does, the change is itself a substantive decision. |
+| `docs/State/` | Current truth (`health_check.md`, `forward_plan.md`, `ROADMAP.md`, `GOAL.md`, `lessons_learned.md`, `deployment_boundary.md`) | **Mutates in place.** No date suffixes. `git log` is the history. When `forward_plan.md` is superseded, the prior version moves to `Archive/forward_plans/`. |
+| `docs/Measurements/<YYYY-MM>/` | One-shot reports — backtests, ablations, audits, workstream close-outs | **Append-only, frozen.** A measurement is a point-in-time fact. Bucketed by month. Never edited after the run. Cite by full path. |
+| `docs/Sessions/<YYYY-MM>/` | Per-session summaries + outside reviewer pastes | **Append-only, frozen.** Same lifecycle as Measurements. The `Other-dev-opinion/` subfolder is flat (not month-bucketed) per the existing convention. |
+| `docs/Archive/` | Anything explicitly retired — old forward plans, deprecated design docs, superseded audits | **Frozen.** Don't read for current truth. Useful for "what did we believe at time X". |
+| `docs/Sources/` | External reference material (paper reviews, third-party analysis) | **Append-only.** Cite freely; treat like a bibliography. |
+
+### Naming conventions
+
+- **State files:** `health_check.md`, `forward_plan.md`, `ROADMAP.md` 
+  — no date suffix. The file *is* the current state.
+- **Measurement files:** `<topic>_<YYYY_MM_DD>.md` or 
+  `ws_<letter>_<short_name>.md` — date in filename if dated, 
+  workstream-prefix if WS-tagged.
+- **Session files:** `YYYY-MM-DD_session.md` (single session) or 
+  `YYYY-MM-DD_session_<N>.md` (multi-session day) or 
+  `YYYY-MM-DD_<short_descriptor>.md`.
+
+### Supersession discipline
+
+When you update a State doc, the **prior content is in `git log`**. 
+You don't need to keep both versions in the tree.
+
+When you supersede a `forward_plan.md`:
+1. Move the existing `forward_plan.md` to `docs/Archive/forward_plans/forward_plan_<YYYY_MM_DD>.md` (preserve as historical context).
+2. Write the new content into `docs/State/forward_plan.md`.
+
+Same pattern applies if a Core design doc gets fundamentally redone — 
+`git mv` the old version to `Archive/` first, then write the new one 
+clean.
+
+### When you write a measurement report
+
+Always include in the doc:
+- **Date** of the measurement (in filename + frontmatter)
+- **What was measured** (one sentence)
+- **What was decided/learned** (one paragraph)
+- **Reproduce command** if applicable
+- **Status block** if the result is reversible: 
+  `Status: CURRENT | SUPERSEDED-BY-<file> | OBSOLETE`
+
+If a later run supersedes this one, edit just the status block — 
+don't delete the file. Future-you may need to compare measurements.
+
+### Archive trigger (90-day rule)
+
+Anything in `docs/Measurements/<old-month>/` that hasn't been cited 
+or referenced in 90 days is a candidate for `docs/Archive/`. Don't 
+auto-move on a cron — but as part of any major doc cleanup pass, 
+move stale measurement folders to `Archive/measurements/<YYYY-MM>/`.
+
+### What goes WHERE — a worked example
+
+- I just ran a multi-year measurement → `docs/Measurements/2026-05/multi_year_foundation_measurement.md`
+- That measurement found a bug → append finding to `docs/State/health_check.md`
+- The bug is fixed and the finding is closed → edit the same `health_check.md` entry to mark `[HIGH → RESOLVED]`
+- The fix was substantial enough to write up → `docs/Sessions/2026-05/2026-05-05_session.md`
+- A new architectural pattern was learned → append to `docs/State/lessons_learned.md`
+- The roadmap item is done → mark `[x]` in `docs/State/ROADMAP.md`
+
+If you can't decide where something goes, ask: **"will this still be 
+true in 90 days?"** If yes → State or Core. If no → Measurements 
+(dated, frozen).

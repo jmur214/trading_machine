@@ -3,7 +3,7 @@
     "additionalDirectories": [
       "/Users/jacksonmurphy/Dev/trading_machine-2/data/processed",
       "/tmp",
-      "/Users/jacksonmurphy/Dev/trading_machine-2/docs/Progress_Summaries"
+      "/Users/jacksonmurphy/Dev/trading_machine-2/docs/Sessions"
     ]
   },
   "hooks": {
@@ -12,7 +12,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash -c 'echo \"=== LAST 3 SESSION SUMMARIES ===\"; ls -t docs/Progress_Summaries/*_session*.md 2>/dev/null | head -3 | while read f; do echo \"--- $f ---\"; head -25 \"$f\"; echo; done; echo; echo \"=== RECENT GIT ACTIVITY ===\"; git log --oneline -10 2>/dev/null; echo; echo \"=== HEALTH CHECK STATE ===\"; grep -E \"^### \\[(HIGH|MEDIUM)\\]\" docs/Audit/health_check.md 2>/dev/null | head -10; echo; echo \"Reading order: CLAUDE.md -> docs/Core/SESSION_PROCEDURES.md -> docs/Core/README.md (only if needed)\"'"
+            "command": "bash -c 'echo \"=== LAST 3 SESSION SUMMARIES ===\"; ls -t docs/Sessions/*/*_session*.md 2>/dev/null | head -3 | while read f; do echo \"--- $f ---\"; head -25 \"$f\"; echo; done; echo; echo \"=== RECENT GIT ACTIVITY ===\"; git log --oneline -10 2>/dev/null; echo; echo \"=== HEALTH CHECK STATE ===\"; grep -E \"^### \\[(HIGH|MEDIUM)\\]\" docs/State/health_check.md 2>/dev/null | head -10; echo; echo \"Reading order: CLAUDE.md -> docs/Core/SESSION_PROCEDURES.md -> docs/README.md (for navigation)\"'"
           }
         ]
       }
@@ -22,7 +22,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash -c 'echo >&2; echo \"Session ending. If substantive work was done this session, write a summary to docs/Progress_Summaries/$(date +%Y-%m-%d)_session.md using the template at docs/Progress_Summaries/_template.md. Skip if the session was trivial. Also: did you update execution_manual.md if new CLI was used? Mark roadmap items [x] if completed? Append health_check.md findings? Run sync_docs.py if engines/ files changed?\"; exit 0'"
+            "command": "bash -c 'echo >&2; ym=$(date +%Y-%m); ymd=$(date +%Y-%m-%d); echo \"Session ending. If substantive work was done, write a summary to docs/Sessions/${ym}/${ymd}_session.md using the template at docs/Sessions/_template.md. Skip if trivial. Also: did you update execution_manual.md if new CLI was used? Mark roadmap items [x] if completed? Append docs/State/health_check.md findings? Run sync_docs.py if engines/ files changed?\"; exit 0'"
           }
         ]
       }

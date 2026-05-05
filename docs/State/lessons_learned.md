@@ -211,7 +211,7 @@ Whenever a significant bug is fixed, a new operational paradigm is adopted, or a
   
   **Architectural takeaway:** Sharpe deltas under ~0.2 magnitude measured before 2026-04-23 are unreliable. "The code is correct" and "the code moves the metric" are independent claims — verify both under a deterministic harness before citing a number. And when the mechanism-of-action is *conditional* (branch only fires under specific tracker state), check whether that state is reachable in the test data before claiming the branch caused the observed delta. **Rule: any reported metric improvement must include the bitwise-canon md5 delta that accompanied it — if md5s match both before and after the change, the claim is false.**
   
-  **Files:** `engines/engine_f_governance/governor.py` (passthrough retained), `docs/Core/ROADMAP.md`, memory files.
+  **Files:** `engines/engine_f_governance/governor.py` (passthrough retained), `docs/State/ROADMAP.md`, memory files.
 
 - **2026-04-23 | Regime-Conditional Activation — Architecture Correct, Inputs Broken |** While investigating why the kill-switch never fired, surfaced a structural gap: `StrategyGovernor._regime_weights` was populated ONLY inside `update_from_trades()`, which (a) runs end-of-backtest and (b) is gated on `not no_governor`. Under the deterministic harness (`--no-governor`) and even in normal runs, regime-conditional weighting was unreachable during trade generation — `get_edge_weights(regime_meta)` always fell through to `self._weights` (global). All three regimes looked identical in A/B tests because they were.
 
