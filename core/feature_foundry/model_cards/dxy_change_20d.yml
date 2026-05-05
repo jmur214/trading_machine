@@ -1,0 +1,22 @@
+feature_id: dxy_change_20d
+source_url: https://fred.stlouisfed.org/series/DTWEXBGS
+license: public
+point_in_time_safe: true
+expected_behavior: |
+  20-business-day percent change in the broad trade-weighted U.S.
+  Dollar Index (FRED DTWEXBGS). Risk-off proxy: rapid USD rallies are
+  part of the classic 'crash signature' alongside HY-spread widening
+  and vol-of-vol spikes. Reads from `data/macro/DTWEXBGS.parquet` via
+  the FREDMacro source. Ticker-independent — every name on a given
+  date sees the same scalar; the meta-learner is expected to interact
+  with USD-revenue exposure to produce cross-sectional sensitivity, but
+  the constant-broadcast behavior of this feature is intentional for
+  the cross-asset regime confirmation use case.
+known_failure_modes:
+  - "DTWEXBGS publishes with ~1 business-day lag (FRED's standard exchange-rate cadence). Features must call `s[s.index <= dt]` to enforce no-leakage at the (ticker, dt) cell — this feature does."
+  - "Trade-weighted broad basket index, not the futures-traded DXY (which weights against EUR/JPY/GBP/CAD/CHF/SEK only). The two correlate ~0.95 in normal conditions but can decouple in EM-led FX stress. For a strict crash-signature confirmation, DXY-futures would be the more comparable signal — DTWEXBGS is the cleanest available substitute in the current data layer."
+  - "20-business-day window is short enough to catch acute risk-off episodes (March 2020, October 2008) and long enough to filter intraday FX noise. Calibration was eyeballed against historical VIX spikes; not formally optimized."
+  - "Ticker-independent value reduces panel-information per row — contributes a single scalar to every (ticker, date) cell. Ablation contribution will scale with how heavily the meta-learner uses it as an interaction feature, not as a standalone."
+  - "USD strength is regime-conditional in its sign for risk: in EM-stress episodes, strong USD = risk-off; in growth-shock episodes, USD can weaken alongside risk assets (US-led drawdowns). The +2% threshold in the cross-asset confirmation gate is calibrated for the EM-stress / flight-to-quality channel; the meta-learner should learn the regime-conditional sign for cross-sectional use."
+last_revalidation: never
+ablation_history: []

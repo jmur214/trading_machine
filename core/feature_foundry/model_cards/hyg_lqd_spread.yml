@@ -1,0 +1,26 @@
+feature_id: hyg_lqd_spread
+source_url: https://fred.stlouisfed.org/series/BAMLH0A0HYM2
+license: public
+point_in_time_safe: true
+expected_behavior: |
+  60-business-day z-score of (BAMLH0A0HYM2 - BAMLC0A0CM) — the
+  high-yield-minus-investment-grade option-adjusted-spread spread
+  expressed in basis points, normalized as a rolling z-score. Z > +1
+  indicates credit-risk regime stress (HY underperforming IG); Z < -1
+  indicates risk-on / yield-reach. Substitute for the spec'd HYG/LQD
+  ETF closing-price ratio: HYG_1d.csv and LQD_1d.csv are NOT in
+  `data/processed/`, only SPY and TLT. The HY-minus-IG OAS spread
+  captures the same credit-stress channel at index level rather than
+  ETF level — academically equivalent in sign and direction (both rise
+  in stress), z-score normalization erases the units mismatch.
+  Ticker-independent; broadcasts the same scalar to every name on a
+  given dt. Used as the credit-stress leg in the cross-asset
+  confirmation gate at `engines/engine_e_regime/cross_asset_confirm.py`.
+known_failure_modes:
+  - "DATA GAP — substitute for unavailable HYG/LQD ETF data. The HY-minus-IG OAS spread tracks the same credit-stress channel but is index-level (BAML composites) rather than ETF-level. If HYG/LQD CSVs are added to `data/processed/`, the ETF-ratio version is the cleaner expression and this should be retired."
+  - "BAML OAS parquets in this project start 2023-04-25. The 60d z-score is None before ~2023-07-21 (61 business days after series start). For 2021-2022 backtests this feature returns None — meta-learner and cross-asset confirmation gate must degrade gracefully (single-leg gate when this and any other cross-asset signal is None)."
+  - "OAS spreads are derived measures with their own modeling assumptions (option-adjusted vs nominal). BAML's methodology occasionally revises historically (rare but documented). Past z-scores can therefore drift slightly between vintages — not catastrophic for regime detection, but full PIT replay across BAML methodology updates is non-trivial."
+  - "Z-score uses ddof=1 sample std on the trailing 60-bar window. In a steadily-trending spread regime (slow widening or narrowing), the z-score reverts toward zero even as the absolute spread keeps moving — the z-score is a deviation-from-recent-mean signal, not an absolute level signal. Pair with absolute-level features for a complete credit picture."
+  - "Holiday calendars between FRED publication and the trading calendar can produce occasional 1-2 day staleness in the spread input — manageable for a 60d z-score, but worth noting."
+last_revalidation: never
+ablation_history: []
