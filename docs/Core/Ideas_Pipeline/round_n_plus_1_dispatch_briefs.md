@@ -13,6 +13,13 @@ none touch Engine B / live_trader, none require user approval beyond
 "go." Briefs below are designed to paste directly into `Agent` tool
 calls.
 
+**Isolation pattern:** Use `isolation: "worktree"` on each `Agent`
+call so the 5 run in genuinely parallel directories without write-
+conflicts. Auto-cleanup if the agent makes no changes; otherwise the
+agent returns the worktree path + branch in its result, and the
+director can review/merge. This avoids the "create 5 worktrees by
+hand" overhead of the prior round.
+
 ---
 
 ## Agent 1 — WS F: Fundamentals data scoping (research only)
