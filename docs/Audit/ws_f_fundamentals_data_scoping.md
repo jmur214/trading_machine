@@ -10,7 +10,9 @@
 
 ## TL;DR — Recommendation
 
-**Adopt SimFin BASIC ($420 / yr, 40 % annual discount applied) as the primary fundamentals source for the Path C compounder.** Use the SimFin bulk dataset's `PUBLISH_DATE` column (not `RESTATED_DATE`) to construct point-in-time panels in our own ingest layer — we get a defensible PIT approximation without paying institutional pricing. Keep the SEC EDGAR `companyfacts` JSON API as a free secondary source for the Russell 1000+ tail SimFin doesn't cover and as ground-truth audit. **Do not pursue Compustat** — institutional licensing is wildly out-of-budget for retail scale, and **do not build an EDGAR XBRL parser from scratch** — every alternative is more expensive in engineering time than it returns in differentiation.
+**Start with SimFin FREE ($0). Upgrade to SimFin BASIC ($420/yr) only if Path C compounder demonstrates real lift on the 5-year FREE-tier window — i.e., gate-conditional on the data layer paying for itself.** Director correction 2026-05-05: the original recommendation framed BASIC as primary, but the FREE tier covers exactly the 2021-2025 measurement window the Foundation Gate just validated, and the upgrade buys 10 additional pre-2021 years of history — important for statistical power but not blocking for a feasibility test. Use the SimFin bulk dataset's `PUBLISH_DATE` column (not `RESTATED_DATE`) to construct point-in-time panels in our own ingest layer — same approximation works on FREE and BASIC. Keep the SEC EDGAR `companyfacts` JSON API as a free secondary source for tail tickers SimFin doesn't cover and as ground-truth audit. **Do not pursue Compustat** — institutional licensing is wildly out-of-budget for retail scale, and **do not build an EDGAR XBRL parser from scratch** — every alternative is more expensive in engineering time than it returns in differentiation.
+
+**Spend gate:** Don't pay $420 until SimFin FREE has demonstrated real fundamentals fix Path C. If FREE shows no Path C lift, neither would BASIC — saves $420 and tells us fundamentals alone aren't the unblock.
 
 ---
 
@@ -104,20 +106,24 @@ This is a soft preference. If a reader pushes back hard for FMP we'd reconsider 
 
 ## Decision
 
-**Source:** SimFin BASIC, $420/yr (annual billing).
+**Source (now):** SimFin FREE, $0. Covers 5 years (2021-2025), ~5,000 US tickers, 500 high-speed credits/month, bulk download with limits.
+**Source (gated upgrade):** SimFin BASIC, $420/yr — only after FREE-tier Path C run shows real fundamentals fix the synthetic-compounder failure (`project_compounder_synthetic_failed_2026_05_02.md`).
 **Fallback:** SEC EDGAR `companyfacts` JSON API (free, no key) for ground-truth audit and tail-coverage.
 **Universe:** Defined in `path_c_unblock_plan.md` (S&P 500 PIT panel target).
 **Factor families enabled:** Value (Yes), Quality (Yes), Accruals (Yes — with PIT-approximation caveat).
 
-**Pre-purchase actions** (all under FREE tier, no commitment):
+**Sequenced actions (no $ commitment until step 5 says so):**
 
-1. Sign up for SimFin FREE.
+1. Sign up for SimFin FREE — no card required.
 2. Pull bulk income / balance / cashflow CSVs for current S&P 500.
 3. Validate 5 random tickers against EDGAR `companyfacts` — exact match expected on Revenue, Net Income, Total Assets, Cash; minor differences acceptable on derived ratios (different denominators).
 4. Spike a 50-LOC SimFin → `engines/data_manager/fundamentals/loader.py` adapter (column rename; do not refactor the existing loader).
-5. Decide go/no-go on BASIC upgrade. Expected outcome: go.
+5. Run Path C compounder with real fundamentals on 2021-2025 (the Foundation-Gate-validated window).
+6. **Decision point:**
+   - **Real fundamentals produce demonstrable Path C lift** (CAGR > SPY, MDD ≤ -15% target met, statistical-significance check vs synthetic baseline) → upgrade to BASIC for 15-year history.
+   - **No measurable lift** → fundamentals alone are not the Path C unblock; reassess whether the failure is data, universe, or factor design. $420 saved.
 
-**Time-to-first-real-fundamentals-backtest:** 1-2 working days after sign-up.
+**Time-to-first-real-fundamentals-backtest:** 1-2 working days after sign-up. Spend gate: end of step 5.
 
 ---
 

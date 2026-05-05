@@ -11,34 +11,47 @@
 
 The Path C compounder synthetic FAILED on a 51-name curated universe with price-derived proxies (`docs/Audit/path_c_compounder_synthetic_backtest_2026_05.md`). To get to a real-data feasibility test, we need three things, in order:
 
-1. **Fundamentals source** — SimFin BASIC ($420/yr). Decision memo at `docs/Audit/ws_f_fundamentals_data_scoping.md`. Choose source.
+1. **Fundamentals source** — **SimFin FREE ($0)** for the feasibility run; upgrade to SimFin BASIC ($420/yr) only if FREE-tier results justify it. Decision memo at `docs/Audit/ws_f_fundamentals_data_scoping.md`.
 2. **Universe** — S&P 500 historical PIT membership panel, ~500-name target. Build via Wikipedia historical S&P 500 lists + SimFin coverage check.
 3. **Factor definitions** — six explicit factor formulas across Value / Quality / Accruals, defined in this doc. Compute on the live panel.
 
 Everything else (engine wiring, sleeve aggregator, capital-pct ramp gates from D1.5) is already built or scaffolded. **The unlock is data + universe.**
 
-**"Do X next" recommendation:** Adopt **SimFin BASIC** as the fundamentals source. Build the **S&P 500 PIT membership panel** as the ticker universe. Compute the six **Value / Quality / Accruals factors** specified in §3 below. Validate on a 4-cell harness (compounder vs SPY vs 60/40 vs no-fundamentals proxy) before flipping the M2 enable. This is the first sequenced unit of work; it does not require any further research before kickoff.
+**"Do X next" recommendation:** Sign up for **SimFin FREE** (no card required). Build the **S&P 500 PIT membership panel** as the ticker universe (works on 2021-2025, the Foundation-Gate-validated window). Compute the six **Value / Quality / Accruals factors** specified in §3 below. Validate on a 4-cell harness (compounder vs SPY vs 60/40 vs no-fundamentals proxy). **If the harness shows real Path C lift, upgrade to BASIC for 10 additional years of pre-2021 history. If not, fundamentals alone aren't the unblock and the $420 wasn't the answer.**
+
+**Spend gate:** $0 until the FREE-tier 4-cell harness produces a verdict on whether real fundamentals fix Path C.
 
 ---
 
 ## 1 — Data Source Decision
 
-**Choice:** SimFin BASIC, $420/yr (40 % annual discount applied).
+**Now:** SimFin FREE, $0. **Gated upgrade:** SimFin BASIC, $420/yr — only after the 4-cell harness validates Path C lift on real fundamentals.
 
 Detailed comparison and risks: `docs/Audit/ws_f_fundamentals_data_scoping.md`. Summary:
 
-| Property | Value |
-|---|---|
-| Cost | $420/yr |
-| US ticker coverage | ~5,000 |
-| Historical depth | 15 years |
-| PIT discipline | Approximated via `PUBLISH_DATE` join; bias toward latest-restated values is documented and accepted for value/quality, flagged for accruals |
-| Update lag | 1-3 days post-filing |
-| Schema for V/Q/A factors | All six factors below are computable directly from SimFin's bulk income / balance-sheet / cashflow tables |
-| Integration cost | ~1 day (column-rename in existing `engines/data_manager/fundamentals/loader.py`) |
-| Fallback for tail / audit | SEC EDGAR `companyfacts` JSON (free, no key) |
+| Property | SimFin FREE (now) | SimFin BASIC (gated upgrade) |
+|---|---|---|
+| Cost | **$0** | $420/yr |
+| US ticker coverage | ~5,000 | ~5,000 |
+| Historical depth | **5 years (2021-2025)** | 15 years |
+| Bulk download | Limited but functional for ~500 names | Full bulk dataset |
+| Credits | 500 high-speed/month | 15,000 high-speed/month |
+| PIT discipline | Same as BASIC — `PUBLISH_DATE` join, same restatement bias | Same |
+| Schema for V/Q/A factors | Same as BASIC — all six factors computable | Same |
+| Integration cost | ~1 day (column-rename in existing `engines/data_manager/fundamentals/loader.py`) | Same |
+| Fallback for tail / audit | SEC EDGAR `companyfacts` JSON (free) | Same |
 
-**Pre-commit gate:** Validate the **FREE** SimFin tier against 5 random S&P 500 names matched to EDGAR `companyfacts`. Exact match expected on Revenue, Net Income, Total Assets, Cash. If validation passes, upgrade to BASIC.
+**The 5-year FREE-tier window covers 2021-2025 — exactly the Foundation Gate measurement period.** A feasibility run on FREE is statistically the same shape as the eventual BASIC run; BASIC just buys 10 additional years for out-of-sample validation.
+
+**Spend gate (decision flow):**
+
+1. Sign up for SimFin FREE.
+2. Validate 5 random S&P 500 names against EDGAR `companyfacts` — exact match expected on Revenue, Net Income, Total Assets, Cash.
+3. Wire FREE bulk download into `engines/data_manager/fundamentals/loader.py` adapter.
+4. Run the 4-cell harness (§4) on 2021-2025.
+5. **Verdict:**
+   - Path C compounder beats SPY on CAGR AND meets ≤-15% MDD target → **upgrade to BASIC** to expand window for confirmation
+   - Path C still loses to SPY → **fundamentals not the unblock** — investigate universe size, factor definition, or annual-cadence mismatch before spending
 
 ---
 
