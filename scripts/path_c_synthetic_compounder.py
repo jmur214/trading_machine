@@ -1,4 +1,4 @@
-"""Path C — synthetic compounder sleeve feasibility backtest.
+"""Path C — compounder sleeve feasibility backtest.
 
 DESIGN-PHASE FEASIBILITY TEST. Not production code.
 
@@ -7,35 +7,59 @@ docs/Audit/path_c_compounder_design_2026_05.md without committing to
 a particular Engine C implementation. Standalone — does NOT touch
 the production backtester.
 
-Approach
+History (2026-05-02 → 2026-05-05)
+---------------------------------
+The original synthetic version used 4 PRICE-DERIVED factor proxies
+(mom_12_1, inv_vol, rev_1m, inv_mdd) on a 51-name curated universe.
+That version FAILED (CAGR 12.03% vs SPY 13.69%, MDD -25.19%) — see
+``project_compounder_synthetic_failed_2026_05_02``. Hypothesis: (a) 51
+names too small for cross-sectional factor work, (b) price-derived
+proxies aren't orthogonal to SPY without real fundamentals.
+
+This version (2026-05-05) wires up the SimFin FREE adapter shipped
+today and replaces the synthetic factors with real V/Q/A fundamentals
+on a 350+ name S&P 500 ex-financials universe. Both code paths are
+preserved:
+
+    compute_composite_score_synthetic   — original 4 price-derived
+                                            factors (Cell C of harness)
+    compute_composite_score_real         — 6 V/Q/A fundamentals factors
+                                            (Cell D of harness)
+
+The script does NOT auto-run the harness. Pass ``--run`` to execute.
+
+Real-fundamentals factors (Cell D)
+----------------------------------
+Per ``docs/Core/Ideas_Pipeline/path_c_unblock_plan.md`` §3, six factors
+across three families:
+
+  Value (HIGH = cheaper):
+    1. earnings_yield_market = TTM_NetIncome / market_cap
+    2. book_to_market        = total_equity   / market_cap
+
+  Quality (HIGH = better):
+    3. roic_proxy            = TTM_OperatingIncome*(1-0.21) / (equity+LT_debt)
+                                (SimFin doesn't expose effective tax rate)
+    4. gross_profitability   = TTM_GrossProfit / total_assets   (Novy-Marx)
+
+  Accruals (HIGH = lower accruals = better quality earnings):
+    5. inv_sloan_accruals    = -sloan_accruals
+    6. inv_asset_growth      = -asset_growth
+
+Each ranked cross-sectionally, equal-weight composite percentile.
+
+Universe
 --------
-- Universe: liquid mega/large-caps that have continuous price data over
-  2010-01 → 2024-12, fetched via yfinance (~50 names, used as a proxy
-  for the eventual S&P 500 universe).
-- Quasi-quality + value composite from PRICE-DERIVED proxies:
-    * Quality proxy:    12-1 momentum percentile rank (return persistence)
-    * Defensive proxy:  inverse 252d vol percentile rank (low-vol = defensive)
-    * Mean-reversion guard: 1m reversal (avoid hot stocks at rebalance)
-    * Drawdown-control:  inverse 252d max-drawdown percentile rank
-  The four are equal-weight averaged to a composite percentile, top
-  quintile is held equal-weighted for one year.
+S&P 500 current-constituents ∩ NOT-financials ∩ SimFin coverage. The
+financials exclusion is REQUIRED on the SimFin FREE tier (most banks
+are missing). Approx 350-450 names depending on day's coverage.
 
-Why price-derived proxies, not fundamentals?
---------------------------------------------
-The repo's fundamentals_static.csv is a 7-row stub. yfinance's
-fundamentals are TTM-only (no historical quarterly). A fundamentals-
-backed compounder needs Compustat/FactSet/SimFin data. For a feasibility
-test, price-derived proxies are an honest stand-in: they preserve the
-key compounder properties (annual rebalance, equal-weight top quintile,
-long-only, broad universe) while not pretending to academic-grade
-factor exposure.
+Pass criterion (per task spec): compounder after-tax CAGR > SPY
+after-tax CAGR over the run window with MDD >= -15%. Tax assumption:
+15% LT cap gains on annual rebalance turnover.
 
-Pass criterion (per task): compounder after-tax CAGR > SPY after-tax
-CAGR over 2010-2024 with MDD ≤ -15%. Tax assumption: 15% LT cap gains
-on annual rebalance turnover.
-
-Outputs
--------
+Outputs (only when --run is passed)
+-----------------------------------
 - Console summary
 - JSON results to data/research/path_c_synthetic_backtest.json
 - Markdown summary to docs/Audit/path_c_compounder_synthetic_backtest_2026_05.md
@@ -49,18 +73,23 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
+# Repo-root on path so `engines.*` imports work when this script is
+# run directly (the cross-script convention used by fetch_universe.py).
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
 import numpy as np
 import pandas as pd
 
 
 # ----------------------------------------------------------------------
-# Universe — 50 liquid large-caps with continuous 2010-2024 history
+# Synthetic-baseline universe — 50 liquid large-caps used by the
+# original (failed) synthetic test. Preserved so Cell C of the eventual
+# harness remains reproducible.
 # ----------------------------------------------------------------------
 # Curated to be representative across sectors; NOT a survivor-bias-free
-# S&P 500 panel. Acceptable for design-phase feasibility test; flagged
-# as a limitation in the writeup.
+# S&P 500 panel.
 
-UNIVERSE: List[str] = [
+UNIVERSE_SYNTHETIC: List[str] = [
     # Tech
     "AAPL", "MSFT", "GOOGL", "META", "ORCL", "CSCO", "IBM", "ADBE", "INTC", "TXN",
     # Healthcare
@@ -78,6 +107,141 @@ UNIVERSE: List[str] = [
     # Telecom
     "VZ", "T",
 ]
+
+# Backwards-compatible alias for the synthetic harness path.
+UNIVERSE = UNIVERSE_SYNTHETIC
+
+# Hard exclude list of financial-sector tickers. SimFin FREE tier does
+# not cover most banks/insurers, and the compounder thesis (V/Q/A
+# factors) doesn't translate cleanly to financial-sector accounting
+# anyway (book-to-market on banks behaves differently from non-financials).
+# This is a belt-and-suspenders alongside the GICS-sector filter in
+# build_universe(): even if a financial leaks into the SimFin panel
+# (e.g. BLK, V, MA which ARE present), we keep them out of the candidate
+# universe.
+FINANCIALS_HARD_EXCLUDE = {
+    # Big banks
+    "JPM", "BAC", "C", "WFC", "USB", "PNC", "TFC", "BK",
+    # Investment banks / brokers
+    "GS", "MS", "SCHW", "RJF", "LPLA",
+    # Insurance
+    "BRK.B", "BRK.A", "AIG", "MET", "PRU", "TRV", "ALL", "HIG", "PFG",
+    "AFL", "AON", "MMC", "AJG", "WTW", "BRO", "CB", "CINF", "GL",
+    "L", "PGR", "RE", "RGA", "WRB", "AIZ",
+    # Asset managers
+    "BLK", "BX", "KKR", "APO", "ARES", "AMP", "BEN", "IVZ", "TROW",
+    "STT", "NTRS",
+    # Card networks / payments (debatable; card networks behave more
+    # like tech, but they're GICS Financials and we err conservative)
+    "V", "MA", "AXP", "FI", "FIS", "PYPL", "GPN", "DFS", "COF", "SYF",
+    # Exchanges / data
+    "ICE", "CME", "NDAQ", "MKTX", "CBOE", "MCO", "SPGI", "MSCI",
+    # Other financials
+    "ACGL", "EVRG", "FITB", "HBAN", "KEY", "MTB", "RF", "ZION",
+    "CFG", "FRC", "WAL", "PB", "WBS", "CMA",
+    "ARES", "OWL", "WAB",
+}
+
+
+# ----------------------------------------------------------------------
+# SimFin-aware universe construction (replaces the hardcoded list)
+# ----------------------------------------------------------------------
+
+def build_universe(
+    panel: Optional[pd.DataFrame] = None,
+    membership_cache_dir: Optional[Path] = None,
+) -> List[str]:
+    """S&P 500 current-constituents ∩ ex-financials ∩ SimFin coverage.
+
+    Why ex-financials: SimFin FREE tier excludes most banks (JPM, BAC,
+    C, WFC, GS, MS, USB, PNC, TFC, SCHW are confirmed missing as of
+    2026-05-05). Also, V/Q/A factor accounting on financials behaves
+    differently from non-financials (book-to-market on a bank is not
+    the same construct as on a manufacturer), so excluding the sector
+    is methodologically defensible regardless of data coverage.
+
+    Order of operations:
+      1. Pull current S&P 500 constituents from the cached membership
+         loader (Wikipedia-scraped, refreshed weekly).
+      2. Drop GICS Financials sector tickers.
+      3. Drop the hard-exclude list (FINANCIALS_HARD_EXCLUDE) for
+         belt-and-suspenders coverage of edge cases.
+      4. Intersect with SimFin panel ticker coverage.
+
+    Parameters
+    ----------
+    panel
+        Pre-loaded SimFin fundamentals panel (avoids re-loading in
+        tests). If None, loads via simfin_adapter.load_panel().
+    membership_cache_dir
+        Override for the SP500 membership parquet cache. Tests can
+        point this at a fixture directory.
+
+    Returns
+    -------
+    Sorted list of tickers, ~350-430 names depending on overlap.
+    """
+    # Lazy imports — keep the module importable when running the
+    # synthetic-only path without SimFin credentials configured.
+    from engines.data_manager.universe import SP500MembershipLoader
+
+    candidate_dirs: List[Path] = []
+    if membership_cache_dir is not None:
+        candidate_dirs.append(Path(membership_cache_dir))
+    else:
+        # First try the worktree-local cache, then fall back to the
+        # main repo's data/universe/ cache. Worktrees often share data
+        # caches with their parent repo.
+        candidate_dirs.append(
+            Path(__file__).resolve().parents[1] / "data" / "universe"
+        )
+        # Walk up to find a non-worktree repo root with a populated cache.
+        # Worktrees live under .claude/worktrees/<name>/; the parent repo
+        # is up two levels from the worktree root.
+        worktree_marker = Path(__file__).resolve().parents[1]
+        if ".claude" in worktree_marker.parts and "worktrees" in worktree_marker.parts:
+            idx = worktree_marker.parts.index(".claude")
+            parent_repo = Path(*worktree_marker.parts[:idx])
+            candidate_dirs.append(parent_repo / "data" / "universe")
+
+    membership = None
+    for cand in candidate_dirs:
+        if not cand.exists():
+            continue
+        loader = SP500MembershipLoader(cache_dir=cand)
+        df = loader.load_cached()
+        if not df.empty:
+            membership = df
+            break
+
+    if membership is None or membership.empty:
+        raise RuntimeError(
+            f"S&P 500 membership cache is empty at all of {candidate_dirs}. "
+            f"Run: python -c 'from engines.data_manager.universe import "
+            f"SP500MembershipLoader; SP500MembershipLoader().fetch_membership(force=True)'"
+        )
+
+    # Current constituents = rows with included_until NaT
+    current = membership[membership["included_until"].isna()]
+
+    # Drop financials by GICS sector
+    sector_mask = ~current["sector"].astype(str).str.contains(
+        "Financ", na=False, case=False
+    )
+    current_non_fin = current[sector_mask]
+    sp500_ex_fin = set(current_non_fin["ticker"].unique())
+
+    # Belt-and-suspenders hard exclude
+    sp500_ex_fin = sp500_ex_fin - FINANCIALS_HARD_EXCLUDE
+
+    # Intersect with SimFin coverage
+    if panel is None:
+        from engines.data_manager.fundamentals.simfin_adapter import load_panel
+        panel = load_panel()
+
+    simfin_tickers = set(panel.index.get_level_values("Ticker").unique())
+    final = sorted(sp500_ex_fin & simfin_tickers)
+    return final
 
 BENCHMARK_TICKER = "SPY"
 START_DATE = "2010-01-01"
@@ -144,15 +308,15 @@ def fetch_prices(tickers: List[str], start: str, end: str) -> pd.DataFrame:
 
 
 # ----------------------------------------------------------------------
-# Factor computation — price-derived quasi-quality + defensive composite
+# Factor computation — synthetic baseline (Cell C of harness)
 # ----------------------------------------------------------------------
 
-def compute_composite_score(
+def compute_composite_score_synthetic(
     prices: pd.DataFrame,
     as_of: pd.Timestamp,
     universe: List[str],
 ) -> pd.Series:
-    """Compute the compounder composite percentile score for each ticker.
+    """SYNTHETIC (price-derived) composite — preserved as Cell C baseline.
 
     Uses 4 price-derived signals, equal-weighted on percentile ranks:
       - mom_12_1: 12-month return excluding most-recent month (Jegadeesh-Titman)
@@ -163,6 +327,11 @@ def compute_composite_score(
     Each percentile is in [0, 1]; composite is mean of the four. Returns
     a Series indexed by ticker; tickers without sufficient history get NaN
     and are dropped from the universe at this rebalance.
+
+    This was the version that FAILED on the 51-name curated universe on
+    2026-05-02 (CAGR 12.03% vs SPY 13.69%). Retained for harness
+    reproducibility — the eventual 4-cell harness will compare this
+    against real-fundamentals (Cell D) on the same wider universe.
     """
     end = as_of
     start_lookback = end - pd.DateOffset(years=2)
@@ -221,6 +390,243 @@ def compute_composite_score(
     return composite.sort_values(ascending=False)
 
 
+# Backwards-compatible alias — preserves any external callers that
+# imported `compute_composite_score`. The synthetic path is the default
+# only because it has no external-data prerequisite; the real path
+# requires the SimFin panel.
+compute_composite_score = compute_composite_score_synthetic
+
+
+# ----------------------------------------------------------------------
+# Factor computation — REAL fundamentals composite (Cell D of harness)
+# ----------------------------------------------------------------------
+
+# Effective tax rate proxy used in ROIC. SimFin doesn't expose a clean
+# effective tax rate field; the federal statutory rate is a defensible
+# proxy. Using a constant (vs ticker-specific) means ROIC is a *quality
+# rank*, not an absolute return measure — which is fine for cross-sectional
+# percentile composition.
+_ROIC_TAX_RATE = 0.21
+
+
+def _ttm_sum(
+    panel: pd.DataFrame,
+    ticker: str,
+    asof_ts: pd.Timestamp,
+    column: str,
+    n_quarters: int = 4,
+) -> Optional[float]:
+    """Trailing-N-quarter sum of a flow item, PIT-correct via publish_date.
+
+    SimFin stores QUARTERLY flow values (net_income, gross_profit, etc.).
+    A TTM (trailing twelve months) figure requires summing the most
+    recent 4 quarterly publishes that are <= asof_ts.
+
+    Returns None if fewer than n_quarters of history are available.
+    """
+    try:
+        ticker_slice = panel.xs(ticker, level="Ticker")
+    except KeyError:
+        return None
+
+    eligible = ticker_slice[ticker_slice["publish_date"] <= asof_ts]
+    if len(eligible) < n_quarters:
+        return None
+
+    # Most-recent N quarterly publishes
+    recent = eligible.sort_values("publish_date").tail(n_quarters)
+    vals = recent[column]
+    if vals.isna().any():
+        return None
+    return float(vals.sum())
+
+
+def _latest_balance_sheet_value(
+    panel: pd.DataFrame,
+    ticker: str,
+    asof_ts: pd.Timestamp,
+    column: str,
+) -> Optional[float]:
+    """Most-recently-published balance-sheet item known as of asof_ts.
+
+    Balance sheet items are stocks (point-in-time), not flows — we want
+    the latest snapshot, not a TTM sum.
+    """
+    try:
+        ticker_slice = panel.xs(ticker, level="Ticker")
+    except KeyError:
+        return None
+    eligible = ticker_slice[ticker_slice["publish_date"] <= asof_ts]
+    if eligible.empty:
+        return None
+    latest = eligible.sort_values("publish_date").iloc[-1]
+    val = latest.get(column)
+    if val is None or pd.isna(val):
+        return None
+    return float(val)
+
+
+def _latest_panel_value(
+    panel: pd.DataFrame,
+    ticker: str,
+    asof_ts: pd.Timestamp,
+    column: str,
+) -> Optional[float]:
+    """Most-recently-published value of any column, including precomputed factors.
+
+    Used for sloan_accruals and asset_growth which the SimFin adapter
+    already computed at panel-build time.
+    """
+    return _latest_balance_sheet_value(panel, ticker, asof_ts, column)
+
+
+def compute_composite_score_real(
+    prices: pd.DataFrame,
+    as_of: pd.Timestamp,
+    universe: List[str],
+    panel: pd.DataFrame,
+) -> pd.Series:
+    """REAL-fundamentals composite — 6 V/Q/A factors via SimFin panel.
+
+    Per ``docs/Core/Ideas_Pipeline/path_c_unblock_plan.md`` §3:
+
+      Value (HIGH = cheaper):
+        1. earnings_yield_market = TTM_NetIncome / market_cap
+        2. book_to_market        = total_equity   / market_cap
+
+      Quality (HIGH = better):
+        3. roic_proxy            = TTM_OperatingIncome*(1-0.21) / (equity+LT_debt)
+        4. gross_profitability   = TTM_GrossProfit / total_assets   (Novy-Marx)
+
+      Accruals (HIGH = lower accruals = better quality earnings):
+        5. inv_sloan_accruals    = -sloan_accruals
+        6. inv_asset_growth      = -asset_growth
+
+    Each factor cross-sectionally rank-percentiled; equal-weight composite.
+    Tickers without sufficient PIT data (TTM requires ≥4 published quarters)
+    are dropped from this rebalance.
+
+    PIT discipline: all fundamentals are filtered on ``publish_date <=
+    as_of``. Market cap uses the ``as_of`` price × the most-recent
+    diluted-share-count published before as_of. No look-ahead.
+
+    Parameters
+    ----------
+    prices
+        Price panel (date × ticker), used only for market_cap on as_of.
+    as_of
+        Rebalance date.
+    universe
+        Candidate ticker list (already filtered to S&P 500 ex-financials
+        ∩ SimFin coverage by ``build_universe()``).
+    panel
+        SimFin fundamentals panel from ``simfin_adapter.load_panel()``.
+
+    Returns
+    -------
+    Composite percentile series indexed by ticker, sorted descending.
+    """
+    asof_ts = pd.Timestamp(as_of)
+
+    # Snap as_of to a price-panel-available date if needed
+    if asof_ts not in prices.index:
+        sub = prices.loc[:asof_ts]
+        if sub.empty:
+            return pd.Series(dtype=float)
+        asof_ts_price = sub.index[-1]
+    else:
+        asof_ts_price = asof_ts
+
+    rows = []
+    for ticker in universe:
+        # Need a tradeable price on as_of
+        if ticker not in prices.columns:
+            continue
+        px = prices.at[asof_ts_price, ticker]
+        if pd.isna(px) or px <= 0:
+            continue
+
+        # TTM flow items (require 4 published quarters of history)
+        ttm_ni = _ttm_sum(panel, ticker, asof_ts, "net_income")
+        ttm_oi = _ttm_sum(panel, ticker, asof_ts, "operating_income")
+        ttm_gp = _ttm_sum(panel, ticker, asof_ts, "gross_profit")
+
+        # Stock items (latest published snapshot)
+        equity = _latest_balance_sheet_value(panel, ticker, asof_ts, "total_equity")
+        assets = _latest_balance_sheet_value(panel, ticker, asof_ts, "total_assets")
+        lt_debt = _latest_balance_sheet_value(panel, ticker, asof_ts, "long_term_debt")
+        shares = _latest_balance_sheet_value(panel, ticker, asof_ts, "shares_diluted")
+
+        # Pre-computed factors from the adapter
+        sloan = _latest_panel_value(panel, ticker, asof_ts, "sloan_accruals")
+        ag = _latest_panel_value(panel, ticker, asof_ts, "asset_growth")
+
+        # Skip if any required input is missing — keeps the cross-section clean.
+        if any(x is None for x in (
+            ttm_ni, ttm_oi, ttm_gp, equity, assets, shares, sloan, ag
+        )):
+            continue
+        if shares <= 0 or assets <= 0:
+            continue
+
+        market_cap = px * shares
+        if market_cap <= 0:
+            continue
+
+        # Defensive denominators — equity can be negative for highly
+        # levered names; treat negative-equity book/market as missing
+        # rather than producing a misleading sign.
+        if equity is None or equity <= 0:
+            book_to_market = np.nan
+        else:
+            book_to_market = equity / market_cap
+
+        earnings_yield = ttm_ni / market_cap
+
+        # ROIC denominator: use total invested capital ≈ equity + LT debt
+        # (SimFin doesn't expose Cash-and-Equivalents-net cleanly across
+        # all tickers; equity + LT-debt is the academic-friendly proxy).
+        invested_capital = (equity if equity and equity > 0 else 0.0) + \
+                           (lt_debt if lt_debt and lt_debt > 0 else 0.0)
+        if invested_capital <= 0:
+            roic = np.nan
+        else:
+            roic = (ttm_oi * (1.0 - _ROIC_TAX_RATE)) / invested_capital
+
+        gross_profitability = ttm_gp / assets
+        inv_sloan_accruals = -sloan
+        inv_asset_growth = -ag
+
+        rows.append({
+            "ticker": ticker,
+            "earnings_yield_market": earnings_yield,
+            "book_to_market": book_to_market,
+            "roic_proxy": roic,
+            "gross_profitability": gross_profitability,
+            "inv_sloan_accruals": inv_sloan_accruals,
+            "inv_asset_growth": inv_asset_growth,
+        })
+
+    if not rows:
+        return pd.Series(dtype=float)
+
+    factors = pd.DataFrame(rows).set_index("ticker")
+
+    # Drop rows with all-NaN factor values; for partial-NaN, rank=pct
+    # naturally handles missing values (NaN excluded from rank).
+    factors = factors.dropna(how="all")
+    if factors.empty:
+        return pd.Series(dtype=float)
+
+    pct = factors.rank(pct=True)
+    # mean across factors, skipping NaN — a ticker with 5/6 factors
+    # available still gets a valid composite score, weighted by what
+    # it has.
+    composite = pct.mean(axis=1, skipna=True)
+    composite = composite.dropna()
+    return composite.sort_values(ascending=False)
+
+
 # ----------------------------------------------------------------------
 # Compounder backtest
 # ----------------------------------------------------------------------
@@ -260,6 +666,9 @@ def run_compounder_backtest(
     universe: List[str],
     initial_capital: float,
     lt_tax_rate: float,
+    panel: Optional[pd.DataFrame] = None,
+    use_real_fundamentals: bool = False,
+    label: str = "compounder_synthetic",
 ) -> Tuple[BacktestResult, pd.Series, List[RebalanceEvent]]:
     """Long-only annual-rebalance equal-weighted top-quintile compounder.
 
@@ -271,7 +680,22 @@ def run_compounder_backtest(
     but for the equity simulation we apply full carry-forward to keep math
     simple — the conservatism point is that our after-tax CAGR figure
     *under-reports* the after-tax benefit of LT vs ST).
+
+    Parameters
+    ----------
+    use_real_fundamentals
+        If True, dispatches to ``compute_composite_score_real`` (requires
+        ``panel``). If False (default), uses the legacy synthetic
+        price-derived composite — preserved for Cell C of the harness.
+    panel
+        SimFin fundamentals panel. Required when use_real_fundamentals=True.
+    label
+        Tag attached to the BacktestResult.
     """
+    if use_real_fundamentals and panel is None:
+        raise ValueError(
+            "panel must be provided when use_real_fundamentals=True"
+        )
     daily_index = prices.index
     cash = initial_capital
     holdings: Dict[str, float] = {}  # ticker -> shares
@@ -311,7 +735,14 @@ def run_compounder_backtest(
 
         # Rebalance check
         if dt in rebalance_dates:
-            composite = compute_composite_score(prices, dt, universe)
+            if use_real_fundamentals:
+                composite = compute_composite_score_real(
+                    prices, dt, universe, panel
+                )
+            else:
+                composite = compute_composite_score_synthetic(
+                    prices, dt, universe
+                )
             if composite.empty:
                 continue
 
@@ -442,7 +873,7 @@ def run_compounder_backtest(
     )
 
     result = BacktestResult(
-        label="compounder_synthetic",
+        label=label,
         cagr_pretax=float(cagr_pretax),
         cagr_aftertax=float(cagr_aftertax),
         sharpe_pretax=float(sharpe_pretax),
@@ -627,74 +1058,120 @@ def run_60_40_benchmark(
 
 
 # ----------------------------------------------------------------------
-# Main
+# Main — 4-cell harness (real-fundamentals, synthetic, SPY, 60/40)
 # ----------------------------------------------------------------------
 
 def main() -> int:
-    print(f"[run] Path C synthetic compounder backtest")
-    print(f"[run] Universe: {len(UNIVERSE)} tickers + SPY + IEF (for 60/40)")
+    """Run the 4-cell harness comparing real-fundamentals vs synthetic.
+
+    Cells:
+        D — compounder with REAL V/Q/A fundamentals composite
+        C — compounder with SYNTHETIC price-derived composite (negative control)
+        A — SPY buy-and-hold
+        B — 60/40 SPY/IEF
+    """
+    from engines.data_manager.fundamentals.simfin_adapter import load_panel
+
+    print(f"[run] Path C compounder — 4-cell harness")
     print(f"[run] Period: {START_DATE} → {END_DATE}")
     print(f"[run] Initial capital: ${INITIAL_CAPITAL:,.0f}")
     print(f"[run] LT cap gains rate: {LT_CAP_GAINS_RATE:.0%}")
 
-    tickers = UNIVERSE + ["IEF"]
-    prices = fetch_prices(tickers, START_DATE, END_DATE)
+    print("[run] loading SimFin fundamentals panel...")
+    panel = load_panel()
+    print(f"[run] panel: {panel.shape[0]} rows, "
+          f"{panel.index.get_level_values('Ticker').nunique()} tickers")
+
+    print("[run] building S&P 500 ex-financials universe...")
+    real_universe = build_universe(panel=panel)
+    print(f"[run] real-fundamentals universe: {len(real_universe)} tickers")
+
+    tickers_to_fetch = sorted(set(real_universe + UNIVERSE_SYNTHETIC + ["IEF"]))
+    prices = fetch_prices(tickers_to_fetch, START_DATE, END_DATE)
     print(f"[run] price panel shape: {prices.shape}")
 
-    universe_with_data = [t for t in UNIVERSE if t in prices.columns]
-    print(f"[run] universe with usable data: {len(universe_with_data)} / {len(UNIVERSE)}")
+    real_universe_with_data = [t for t in real_universe if t in prices.columns]
+    synthetic_universe_with_data = [t for t in UNIVERSE_SYNTHETIC if t in prices.columns]
 
-    print("\n[run] running compounder backtest...")
-    compounder_result, compounder_equity, rebal_events = run_compounder_backtest(
-        prices, universe_with_data, INITIAL_CAPITAL, LT_CAP_GAINS_RATE
+    print(f"[run] real universe with price data: {len(real_universe_with_data)}")
+    print(f"[run] synthetic universe with price data: {len(synthetic_universe_with_data)}")
+
+    print("\n[run] Cell D — REAL fundamentals compounder...")
+    real_result, _, real_events = run_compounder_backtest(
+        prices, real_universe_with_data, INITIAL_CAPITAL, LT_CAP_GAINS_RATE,
+        panel=panel, use_real_fundamentals=True,
+        label="compounder_real_fundamentals",
     )
 
-    print("[run] running SPY buy-and-hold benchmark...")
+    print("[run] Cell C — SYNTHETIC compounder (negative control)...")
+    synthetic_result, _, synthetic_events = run_compounder_backtest(
+        prices, synthetic_universe_with_data, INITIAL_CAPITAL, LT_CAP_GAINS_RATE,
+        use_real_fundamentals=False,
+        label="compounder_synthetic",
+    )
+
+    print("[run] Cell A — SPY buy-and-hold...")
     spy_result = run_spy_buy_and_hold(prices[BENCHMARK_TICKER], INITIAL_CAPITAL, LT_CAP_GAINS_RATE)
 
-    print("[run] running 60/40 benchmark...")
+    print("[run] Cell B — 60/40 SPY/IEF...")
     six_forty_result = run_60_40_benchmark(prices, INITIAL_CAPITAL, LT_CAP_GAINS_RATE)
 
-    # Pass criterion check
-    pass_after_tax = compounder_result.cagr_aftertax > spy_result.cagr_aftertax
-    pass_mdd = compounder_result.max_drawdown >= -0.15
+    # Pass criterion is keyed off REAL compounder
+    pass_after_tax = real_result.cagr_aftertax > spy_result.cagr_aftertax
+    pass_mdd = real_result.max_drawdown >= -0.15
     overall_pass = pass_after_tax and pass_mdd
 
     summary = {
         "metadata": {
             "run_at": datetime.now().isoformat(),
             "period": f"{START_DATE} to {END_DATE}",
-            "universe_size_attempted": len(UNIVERSE),
-            "universe_size_with_data": len(universe_with_data),
+            "real_universe_size": len(real_universe_with_data),
+            "synthetic_universe_size": len(synthetic_universe_with_data),
             "initial_capital": INITIAL_CAPITAL,
             "lt_cap_gains_rate": LT_CAP_GAINS_RATE,
             "rebalance_cadence": "annual (first trading day of January)",
             "top_quintile_frac": TOP_QUINTILE_FRAC,
-            "factor_proxies": [
+            "real_fundamentals_factors": [
+                "earnings_yield_market = TTM_NetIncome / market_cap",
+                "book_to_market = total_equity / market_cap",
+                "roic_proxy = TTM_OperatingIncome*(1-0.21) / (equity+LT_debt)",
+                "gross_profitability = TTM_GrossProfit / total_assets",
+                "inv_sloan_accruals = -sloan_accruals (precomputed by adapter)",
+                "inv_asset_growth = -asset_growth (precomputed by adapter)",
+            ],
+            "synthetic_factors": [
                 "12-1 momentum percentile",
                 "inverse 252d vol percentile",
                 "1-month reversal percentile",
                 "inverse 252d max-drawdown percentile",
             ],
-            "data_source": "yfinance auto-adjusted close",
+            "data_sources": [
+                "yfinance auto-adjusted close (prices)",
+                "SimFin FREE quarterly bulk (fundamentals, 2020-06-30 → 2025-04-30)",
+                "Wikipedia S&P 500 historical membership (universe)",
+            ],
             "limitations": [
-                "Universe is 50 curated mega/large-caps, NOT survivor-bias-free S&P 500",
-                "Factors are price-derived proxies, NOT fundamentals (no Compustat data)",
+                "Universe is current S&P 500 ex-financials (no PIT membership tracking)",
+                "Financials sector dropped — SimFin FREE doesn't cover most banks",
+                "SimFin restatement bias on accruals factors — see ws_f_fundamentals_data_scoping.md",
+                "ROIC tax rate is constant 21% (statutory federal) — not effective rate",
                 "Wash-sale rule structurally not in play (annual cadence) — modeled as zero violations",
                 "Loss carry-forward simplified vs IRS $3K/yr cap",
             ],
         },
         "results": {
-            "compounder": asdict(compounder_result),
+            "compounder_real": asdict(real_result),
+            "compounder_synthetic": asdict(synthetic_result),
             "spy_buyhold": asdict(spy_result),
             "60_40_buyhold": asdict(six_forty_result) if six_forty_result else None,
         },
         "pass_criterion": {
-            "compounder_aftertax_cagr_gt_spy_aftertax_cagr": pass_after_tax,
-            "compounder_mdd_ge_minus_15pct": pass_mdd,
+            "real_compounder_aftertax_cagr_gt_spy": pass_after_tax,
+            "real_compounder_mdd_ge_minus_15pct": pass_mdd,
             "overall": overall_pass,
         },
-        "rebalance_events": [asdict(r) for r in rebal_events],
+        "rebalance_events_real": [asdict(r) for r in real_events],
+        "rebalance_events_synthetic": [asdict(r) for r in synthetic_events],
     }
 
     out_path = Path(__file__).resolve().parents[1] / "data" / "research" / "path_c_synthetic_backtest.json"
@@ -702,31 +1179,61 @@ def main() -> int:
     with open(out_path, "w") as f:
         json.dump(summary, f, indent=2, default=str)
 
-    print(f"\n{'=' * 60}")
-    print("RESULTS")
-    print(f"{'=' * 60}")
-    print(f"{'Strategy':<25} {'CAGR pre':>10} {'CAGR after':>12} {'Sharpe':>8} {'MDD':>8}")
-    print("-" * 65)
-    for r in [compounder_result, spy_result, six_forty_result]:
+    print(f"\n{'=' * 65}")
+    print("RESULTS — 4-CELL HARNESS")
+    print(f"{'=' * 65}")
+    print(f"{'Strategy':<32} {'CAGR pre':>10} {'CAGR after':>12} {'Sharpe':>8} {'MDD':>8}")
+    print("-" * 75)
+    for r in [real_result, synthetic_result, spy_result, six_forty_result]:
         if r is None:
             continue
         print(
-            f"{r.label:<25} {r.cagr_pretax*100:>9.2f}% {r.cagr_aftertax*100:>11.2f}% "
+            f"{r.label:<32} {r.cagr_pretax*100:>9.2f}% {r.cagr_aftertax*100:>11.2f}% "
             f"{r.sharpe_pretax:>8.3f} {r.max_drawdown*100:>7.2f}%"
         )
 
-    print(f"\n{'=' * 60}")
-    print("PASS CRITERION")
-    print(f"{'=' * 60}")
-    print(f"Compounder after-tax CAGR > SPY after-tax CAGR: "
-          f"{compounder_result.cagr_aftertax*100:.2f}% vs {spy_result.cagr_aftertax*100:.2f}% "
+    print(f"\n{'=' * 65}")
+    print("PASS CRITERION (real-fundamentals compounder)")
+    print(f"{'=' * 65}")
+    print(f"After-tax CAGR > SPY: "
+          f"{real_result.cagr_aftertax*100:.2f}% vs {spy_result.cagr_aftertax*100:.2f}% "
           f"=> {'PASS' if pass_after_tax else 'FAIL'}")
-    print(f"Compounder MDD >= -15%: {compounder_result.max_drawdown*100:.2f}% "
+    print(f"MDD >= -15%: {real_result.max_drawdown*100:.2f}% "
           f"=> {'PASS' if pass_mdd else 'FAIL'}")
     print(f"\nOverall: {'PASS' if overall_pass else 'FAIL'}")
     print(f"\nResults JSON: {out_path}")
     return 0 if overall_pass else 1
 
 
+def _print_wired_summary() -> None:
+    """No-arg invocation: print wiring summary, do NOT run the harness."""
+    print("Path C compounder rewired with real SimFin fundamentals (2026-05-05).")
+    print()
+    try:
+        from engines.data_manager.fundamentals.simfin_adapter import load_panel
+        panel = load_panel()
+        universe = build_universe(panel=panel)
+        print(f"  Universe: {len(universe)} tickers (S&P 500 ex-financials ∩ SimFin)")
+        if universe:
+            print(f"  Sample: {', '.join(universe[:5])}, ..., {', '.join(universe[-3:])}")
+        print(f"  Panel: {panel.shape[0]} rows × {panel.shape[1]} cols, "
+              f"{panel.index.get_level_values('Ticker').nunique()} tickers")
+    except Exception as exc:
+        print(f"  [warn] could not preview universe ({exc!s}); the script is "
+              f"still importable but SimFin/Wikipedia caches may be missing.")
+    print()
+    print("Composite functions available:")
+    print("  compute_composite_score_synthetic — 4 price-derived factors (Cell C)")
+    print("  compute_composite_score_real      — 6 V/Q/A real fundamentals (Cell D)")
+    print()
+    print("To run the 4-cell harness:")
+    print("  python scripts/path_c_synthetic_compounder.py --run")
+    print()
+    print("(Director directive 2026-05-05: do NOT auto-run; stop here.)")
+
+
 if __name__ == "__main__":
-    sys.exit(main())
+    if "--run" in sys.argv:
+        sys.exit(main())
+    _print_wired_summary()
+    sys.exit(0)
