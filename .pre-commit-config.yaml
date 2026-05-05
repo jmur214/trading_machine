@@ -1,0 +1,41 @@
+# Pre-commit hooks for ArchonDEX.
+#
+# Currently only the Feature Foundry gate is wired here — see
+# `scripts/feature_foundry_gate.py` for what it does. The same gate
+# runs in CI via `.github/workflows/feature_ablation.yml`; the
+# pre-commit hook is the lighter-weight primary, the GitHub Actions
+# workflow is the unskippable backup.
+#
+# Install with:
+#     pip install pre-commit
+#     pre-commit install
+#
+# Run manually with:
+#     pre-commit run --all-files
+#
+# To bypass on a single commit (NEVER on shared branches):
+#     git commit --no-verify   # discouraged; CI will still gate the PR.
+
+repos:
+  - repo: local
+    hooks:
+      # Adversarial filter + model-card validation + Foundry pytest.
+      # Triggers ONLY when a feature file changes (fast no-op
+      # otherwise). The gate clears the Foundry registry first, so it
+      # cannot leak state from outer pytest runs.
+      - id: feature-foundry-gate
+        name: Feature Foundry gate (adversarial + model card + pytest)
+        entry: python -m scripts.feature_foundry_gate
+        language: system
+        # Pre-commit passes the changed files matching `files` as
+        # positional args; the gate filters them and runs against the
+        # subset under core/feature_foundry/features/.
+        files: ^core/feature_foundry/features/.*\.py$
+        # Don't run on `__init__.py` re-exports — they don't define
+        # features. The gate also filters internally as a safety net.
+        exclude: ^core/feature_foundry/features/__init__\.py$
+        pass_filenames: true
+        # Pytest is fast (~5s) but we still allow CI to skip it via
+        # the workflow's --skip-pytest flag if a separate test job
+        # already covered it. Locally we always run the full gate.
+        stages: [pre-commit]
