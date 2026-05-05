@@ -73,8 +73,15 @@ subagent_type: edge-analyst
 prompt:
 
 Add 5 more features to /Users/jacksonmurphy/Dev/trading_machine-2/core/feature_foundry/features/
-toward the 50-feature target. Cumulative current count is 9 across
-two batches (see existing `_batch1` and `_batch2` files for pattern).
+toward the 50-feature target. Cumulative current count is 11 (verified
+via `ls`): beta_252d, cot_commercial_net_long, dist_52w_high,
+drawdown_60d, ma_cross_50_200, mom_12_1, mom_6_1, realized_vol_60d,
+reversal_1m, skew_60d, vol_regime_5_60. Pattern: each feature lives
+in its own file named after what it computes; uses the @feature
+decorator from ../feature.py with feature_id, tier, horizon, license,
+source, description; pulls data via helpers in ../sources/ (local_ohlcv
+for OHLCV; cftc_cot for COT data). See dist_52w_high.py as a clean
+~30-LOC reference. Tests follow tests/test_feature_foundry.py.
 
 This batch's theme: calendar / event-driven / pairs primitives.
 Suggested set, but you can substitute equivalents if any of these are
@@ -101,7 +108,8 @@ Each feature MUST:
 - Be ≤ 50 LOC (the substrate is supposed to make this trivial)
 - Generate adversarial twin via the existing twin generator
 - Run through ablation runner with output captured
-- Have unit tests (existing tests directory, follow `_batch1` pattern)
+- Have unit tests in tests/test_feature_foundry.py (or a sibling file
+  if test count grows large)
 
 Deliverable: branch `ws-e-third-batch`, 5 commits OR one bundled
 commit, model card per feature in cockpit/dashboard_v2 if dashboard
@@ -132,8 +140,9 @@ subagent_type: regime-analyst
 prompt:
 
 Build the cross-asset confirmation layer for HMM regime transitions.
-Currently HMM is shipped at /Users/jacksonmurphy/Dev/trading_machine-2/engines/engine_e_regime/hmm.py
-but defaults off and has no cross-asset confirmation gate. This work
+Currently HMM is shipped at /Users/jacksonmurphy/Dev/trading_machine-2/engines/engine_e_regime/hmm_classifier.py
+(also see multires_hmm.py from the WS C continuation work) but defaults
+off and has no cross-asset confirmation gate. This work
 is a prerequisite for the regime-conditional wash-sale gate when
 tax-drag work unfreezes
 (see project_wash_sale_falsified_multiyear_2026_05_02.md).
@@ -202,11 +211,13 @@ The three remaining deliverables:
 
 1. AUTO-ABLATION CRON — when a PR / commit touches
    core/feature_foundry/features/*.py, automatically run the ablation
-   runner against the changed feature and write the model card. Two
-   reasonable implementations: (a) GitHub Actions workflow at
-   .github/workflows/feature_ablation.yml; (b) pre-commit hook at
-   .pre-commit-config.yaml. Pick whichever is consistent with the
-   existing CI setup — check what's already there.
+   runner against the changed feature and write the model card.
+   IMPORTANT CONTEXT: this repo currently has NO .github/workflows/
+   directory and NO .pre-commit-config.yaml. You are creating CI
+   infrastructure from scratch. Start with .pre-commit-config.yaml
+   (lighter weight, no GitHub Actions runner cost) and add a single
+   .github/workflows/feature_ablation.yml that runs the same hook on
+   PRs as a backup. Document the choice in the audit doc.
 
 2. ADVERSARIAL FILTER AS HARD CI GATE — the ablation runner already
    generates a permuted twin and computes feature-vs-twin lift. Wire
@@ -257,8 +268,9 @@ agent's reporting. All in one branch ws-j-cross-cutting-batch.
        timestamp, decision_type (flag_flip|merge|edge_status_change|...),
        what_changed, expected_impact, actual_impact (post-hoc fillable,
        can be null at write time), rationale_link (memory file or PR).
-   Add a helper in core/observability/decision_diary.py for callers
-   to append entries. Wire it into ModeController.run_backtest at
+   IMPORTANT CONTEXT: core/observability/ does NOT exist yet — you
+   are creating it as a new package. Add helper at
+   core/observability/decision_diary.py for callers to append entries. Wire it into ModeController.run_backtest at
    the post-run hook for "this run produced X Sharpe under Y config"
    (low-friction emit, not a big change).
 
