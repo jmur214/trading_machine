@@ -55,6 +55,27 @@ THIRD_BATCH_IDS = [
 ]
 
 
+@pytest.fixture(autouse=True)
+def _ensure_third_batch_registered():
+    import importlib
+    from core.feature_foundry.features import (
+        days_to_quarter_end, month_of_year_dummy, pair_zscore_60d,
+        earnings_proximity_5d, vix_change_5d,
+    )
+    reg = get_feature_registry()
+    registered_ids = {f.feature_id for f in reg.list_features()}
+    for mod, fid in (
+        (days_to_quarter_end, "days_to_quarter_end"),
+        (month_of_year_dummy, "month_of_year_dummy"),
+        (pair_zscore_60d, "pair_zscore_60d"),
+        (earnings_proximity_5d, "earnings_proximity_5d"),
+        (vix_change_5d, "vix_change_5d"),
+    ):
+        if fid not in registered_ids:
+            importlib.reload(mod)
+    yield
+
+
 def _write_synthetic_csv(path: Path, dates: pd.DatetimeIndex,
                         closes: np.ndarray, volume: float = 1e6) -> None:
     df = pd.DataFrame({
