@@ -126,7 +126,7 @@ then LOW. Within each severity, list newest at the top.
 - Description: `alpha_engine.py:251` listed `"rsi_mean_reversion"` in `default_edges`, and `alpha_engine.py:422` did `importlib.import_module("engines.engine_a_alpha.edges.rsi_mean_reversion")`. Module was deleted 2025-11-12. Both call sites were wrapped in `except Exception` blocks that only printed under `is_info_enabled()` — failure was invisible under standard logging. AlphaEngine ran with one fewer default edge for ~6 months.
 - Fix: Replaced both import sites with `rsi_bounce` (the only existing RSI edge); removed orphan `"rsi_mean_reversion": "mean_reversion"` from `signal_processor.EDGE_AFFINITY_MAP`; updated `config/alpha_settings.dev.json` orphan entry; replaced silent `except Exception` with `except ImportError` that raises with diagnostic context. Future default-edge rename will now fail loudly at startup.
 
-### [HIGH] Engine D WFO `_quick_backtest` keys edges dict by edge_id, but AlphaEngine looks up weights by edge_name — WFO runs all edges at default weight 1.0
+### [HIGH → CLOSED 2026-04-28] (misdiagnosed) Engine D WFO `_quick_backtest` keys edges dict by edge_id, but AlphaEngine looks up weights by edge_name — WFO runs all edges at default weight 1.0
 - Engine: D (with A as the receiver of the contract drift)
 - First flagged: 2026-04-28
 - Status: **misdiagnosed — closed 2026-04-28**
@@ -290,8 +290,9 @@ then LOW. Within each severity, list newest at the top.
 - Description: `CompositeEdge` now evaluates `"macro"` (10% probability — T10Y2Y yield curve, VIX level, UNRATE unemployment delta) and `"earnings"` (5% — EPS surprise % look-back) gene types. Both use lazy instance-level caching. Gene vocabulary weights: technical 40%→35%, regime 10%→5%, fundamental 15%→10%. GA now discovers macro-conditional and earnings-event combinations.
 - See: commit 45abf0e, `tests/test_composite_edge_macro_earnings.py`.
 
-### [HIGH] EdgeRegistry.ensure() silently overrode lifecycle status (2026-04-25)
+### [HIGH → RESOLVED 2026-04-25] EdgeRegistry.ensure() silently overrode lifecycle status (2026-04-25)
 - Engine: A (EdgeRegistry, used by F's lifecycle)
+- Status: **resolved 2026-04-25** — `ensure()` write-protects `status` per edges.yml Write Contract; `tests/test_edge_registry.py` is the regression check
 - Resolved: 2026-04-25
 - Description: Auto-register-on-import code (`momentum_edge.py:64`, `momentum_factor_edge.py:113`) called `EdgeRegistry().ensure(EdgeSpec(..., status="active"))`. Pre-fix `ensure()` had `if spec.status: s.status = spec.status` — the comment claimed "keep status as-is unless provided" but `EdgeSpec.status` defaults to `"active"` so callers always provided it. Effect: every backtest startup imported `momentum_edge.py` → reverted any lifecycle-applied pause/retire on `momentum_edge_v1` back to `active`. Visible only as repeated identical pause events in `lifecycle_history.csv` across runs. `atr_breakout_v1` escaped because `atr_breakout.py` has no auto-register block, which is why the "first autonomous pause" finding from 2026-04-24 felt real (it was — for atr_breakout). Discovered today via the methodology rule "bitwise-identical canon md5 when expecting change is diagnostic evidence."
 - Fix: `EdgeRegistry.ensure()` now write-protects `status` for existing specs, per the `edges.yml` Write Contract documented in `PROJECT_CONTEXT.md` ("F writes: status field changes — neither engine deletes the other's fields"). Added `tests/test_edge_registry.py` with 12 tests including `test_repro_momentum_edge_import_does_not_revive_paused` as a permanent regression check.
