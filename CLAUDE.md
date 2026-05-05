@@ -11,11 +11,20 @@ improve. Most sessions should leave the system tighter, not larger.
 
 1. This file (always loaded)
 2. `docs/Core/SESSION_PROCEDURES.md` — what to do when, in detail
-3. `docs/Core/README.md` — only if you need to navigate the broader 
-   doc system
+3. `docs/README.md` — canonical "where do I find X" navigation index 
+   (read this if you need to find any doc)
+4. `docs/Core/README.md` — Core-folder-specific reading order
 
-For architectural questions, follow the routing in `docs/Core/README.md`. 
-Don't read everything by default — context is finite.
+The `docs/` tree is organized by **lifecycle**, not by topic:
+- `docs/State/` — current truth (mutates in place: `health_check.md`, 
+  `forward_plan.md`, `ROADMAP.md`, `GOAL.md`, `lessons_learned.md`)
+- `docs/Core/` — stable design (rarely changes)
+- `docs/Measurements/<YYYY-MM>/` — point-in-time reports, frozen
+- `docs/Sessions/<YYYY-MM>/` — per-session summaries, frozen
+- `docs/Archive/` — explicitly retired
+
+Don't read everything by default — context is finite. Use the 
+`docs/README.md` index to jump to the right doc.
 
 ## Non-negotiable rules
 

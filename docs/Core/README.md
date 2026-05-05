@@ -1,5 +1,12 @@
-# docs/Core/ — AI Command Center
-> **Start here.** This folder is the central nervous system for any AI agent operating on this project. Read this file first, then follow the tiered reading order below.
+# docs/Core/ — Stable design docs (Core layer)
+
+> **For system-wide navigation, see [`docs/README.md`](../README.md).** 
+> This file documents the `docs/Core/` folder specifically.
+
+`docs/Core/` holds **stable design + procedure docs** that change rarely. 
+Mutating current truth (health_check, forward_plan, ROADMAP, GOAL) lives 
+in `docs/State/`. Point-in-time reports live in `docs/Measurements/<YYYY-MM>/`. 
+See the lifecycle rules in `SESSION_PROCEDURES.md` § "Documentation lifecycle".
 
 ---
 
@@ -11,9 +18,9 @@ Every file in `docs/Core/` has a specific role. They are not meant to be read al
 
 | File | Purpose | When to Read |
 |------|---------|-------------|
-| **`SESSION_PROCEDURES.md`** | Operational playbook — "what's next" decision tree (Paths 1–6), ideas-pipeline routing, session-end checklist. | Every session, after `CLAUDE.md`. Re-readable mid-session without re-loading anything else. |
+| **`SESSION_PROCEDURES.md`** | Operational playbook — "what's next" decision tree (Paths 1–6), ideas-pipeline routing, session-end checklist, **and the documentation lifecycle rules (§ "Documentation lifecycle")**. | Every session, after `CLAUDE.md`. Re-readable mid-session without re-loading anything else. |
 | **`MULTI_SESSION_ORCHESTRATION.md`** | Full pattern for running multiple parallel Claude Code sessions (one director + N workers). Worktree+data isolation setup, worker-prompt checklist, anti-patterns, synchronization patterns. | When the user puts you in director mode, or when you need to dispatch parallel work. Setup script: `scripts/setup_agent_worktree.sh`. |
-| **`GOAL.md`** | Your north star. Defines the AI's role, links to all reference docs. | First thing, every session. If you feel context drifting, re-read this. |
+| **`../State/GOAL.md`** | Your north star. Defines the AI's role, links to all reference docs. (Lives in State/, not Core/, because it can be reframed.) | First thing, every session. If you feel context drifting, re-read this. |
 | **`PROJECT_CONTEXT.md`** | The architecture bible. 6-Engine system, edge doctrine, current state table, design philosophy. | Once at the start. Re-read when touching engine-level logic. |
 
 ### Deep Onboarding (Optional — For Full Engine Understanding)
@@ -34,7 +41,7 @@ If you need to work on engine-level logic, are reviewing the architecture, or wa
 | **`execution_manual.md`** | Every CLI command in one place. Never guess a script path — look here. | Before running anything. |
 | **`files.md`** | Quick-reference directory map of the full codebase. | When navigating unfamiliar folders. |
 | **`roles.md`** | Cognitive lenses. Match the user's request to a trigger and adopt the corresponding mindset. | When starting a new type of task (risk work vs. UI work vs. architecture review). |
-| **`ROADMAP.md`** | Phased development plan with checkboxes. | Before proposing new work (check what's already planned). |
+| **`../State/ROADMAP.md`** | Phased development plan with checkboxes. (Lives in State/.) | Before proposing new work (check what's already planned). |
 | **`Human/human-system_explanation.md`** | Plain-English project descriptions at 3 audience levels. | When the user asks you to explain the project to someone. |
 
 ### Tier 3: Update (Write to These as You Work)
@@ -42,7 +49,10 @@ If you need to work on engine-level logic, are reviewing the architecture, or wa
 | File | Purpose | When to Update |
 |------|---------|---------------|
 | **`execution_manual.md`** | Add any new CLI commands you discover or create. | Immediately upon discovering/creating a command. |
-| **`ROADMAP.md`** | Mark items `[x]` as they're completed. | After completing a roadmap item. |
+| **`../State/ROADMAP.md`** | Mark items `[x]` as they're completed. (State/, not Core/.) | After completing a roadmap item. |
+| **`../State/health_check.md`** | Append findings or mark `[HIGH → RESOLVED]`. | When you find or fix a code-quality issue. |
+| **`../State/lessons_learned.md`** | Append non-obvious learnings. | When you learn something that surprised you. |
+| **`../State/forward_plan.md`** | Update in place when strategy changes; archive prior version to `Archive/forward_plans/` first. | When a substantive plan reframe happens. |
 | **`Ideas_Pipeline/human.md`** | Where the user dumps raw, unstructured ideas. | Never write here — only the human does. |
 | **`Ideas_Pipeline/ideas_backlog.md`** | Structured idea ledger. AI extracts from `human.md` and files here. | When the user asks you to process new ideas. |
 | **`Ideas_Pipeline/idea_evaluations.md`** | Deep-dive analysis of approved ideas. | When the user approves a backlog item with `[x]`. |
@@ -55,22 +65,25 @@ If you need to work on engine-level logic, are reviewing the architecture, or wa
 SESSION START
      │
      ▼
- GOAL.md ──────────── "What is this project? What are my rules?"
+ ../State/GOAL.md ──── "What is this project? What are my rules?"
      │
      ▼
  PROJECT_CONTEXT.md ── "How is the system architectured? What's built vs planned?"
      │
+     ├── Need to navigate docs? ──────► ../README.md (canonical nav index)
      ├── Need to run something? ──────► execution_manual.md
      ├── Need to find a file? ────────► files.md (or index.md in each engine dir)
      ├── Need to think differently? ──► roles.md (match trigger → adopt lens)
-     ├── Need to plan work? ──────────► ROADMAP.md
+     ├── Need to plan work? ──────────► ../State/ROADMAP.md
+     ├── Need to know what's broken? ─► ../State/health_check.md
+     ├── Need current strategy? ──────► ../State/forward_plan.md
      └── User has a new idea? ────────► Ideas_Pipeline/human.md → ideas_backlog.md
                                                                         │
                                                                         ▼
                                                               idea_evaluations.md
                                                                         │
                                                                         ▼
-                                                                  ROADMAP.md
+                                                              ../State/ROADMAP.md
 ```
 
 ---
