@@ -2,3 +2,4 @@
 - [Calibration trap on universe size](feedback_universe_calibration_trap.md) — thresholds calibrated on 39-mega-cap universe break on 109-ticker mixed-cap
 - [Full-history thresholds vs window data](feedback_macro_threshold_history_window_mismatch.md) — macro tilt edges that auto-threshold on full FRED history won't fire in the post-2010 low-volatility regime
 - [Wash-sale gate falsified across regimes 2026-05-02](project_wash_sale_regime_conditional_2026_05_02.md) — 2025 +0.670 Sharpe lift does NOT generalize; 2021 = -0.966; gate is regime-conditional not regime-invariant; do NOT flip default-on
+- [WS-E third batch data realities 2026-05-04](project_ws_e_third_batch_2026_05_04.md) — calendar/earnings/VIX feature batch substrate gotchas: VIX9D/VIX3M missing, pair_zscore 90% missing-value by design, ticker-independent features need interaction-aware meta-learner

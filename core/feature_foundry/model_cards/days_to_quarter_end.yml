@@ -1,0 +1,18 @@
+feature_id: days_to_quarter_end
+source_url: https://www.investopedia.com/terms/w/windowdressing.asp
+license: internal
+point_in_time_safe: true
+expected_behavior: |
+  Calendar days from `dt` to the next quarter-end (Mar 31, Jun 30, Sep 30,
+  Dec 31). Integer 0..92 returned as float for substrate uniformity. Zero
+  on quarter-end day, declines through the quarter, resets at start of
+  each quarter. Captures institutional rebalancing and window-dressing
+  pressure — the well-documented end-of-quarter turn-of-month effect.
+  Pure calendar primitive: ticker-independent.
+known_failure_modes:
+  - "Ticker-independent — value is identical across the universe on any given date. Meta-learner must interact with per-ticker features (size, sector, ownership) to get cross-sectional signal."
+  - "Mostly-noise feature: most weeks of the year carry no rebalancing flow. Real signal concentrates in the final 5-10 days of each quarter."
+  - "Calendar quarter-ends are not market quarter-ends; if quarter-end falls on a weekend or holiday, the actual rebalancing pressure shifts to the prior trading day. This feature does not perform that adjustment."
+  - "Adversarial twin will preserve the marginal distribution of integer values 0..92 but break the temporal cycle — meta-learner should reject the twin sharply if there's any seasonal effect."
+last_revalidation: never
+ablation_history: []

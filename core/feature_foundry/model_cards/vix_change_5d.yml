@@ -1,0 +1,20 @@
+feature_id: vix_change_5d
+source_url: https://fred.stlouisfed.org/series/VIXCLS
+license: public
+point_in_time_safe: true
+expected_behavior: |
+  5-business-day percent change in VIX (VIXCLS): vix_t / vix_{t-5} - 1.
+  Stress-velocity primitive — positive values flag fear regime onset,
+  negative values flag complacency / vol crush. Reads from
+  `data/macro/VIXCLS.parquet` via the FREDMacro source. Ticker-
+  independent: every name on a given date sees the same scalar — the
+  meta-learner is expected to interact with per-ticker beta to produce
+  cross-sectional sensitivity.
+known_failure_modes:
+  - "Substitute for spec'd `vix_term_structure_slope` (VIX9D / VIX or VIX / VIX3M). VIX9D and VIX3M are NOT in the project's macro cache — see batch report. If those become available, prefer the term-structure version (it's a richer stress signal) and retire this feature."
+  - "VIX is itself a derived measure of S&P 500 option-implied vol; rapid changes can reflect option-market technicals (dealer positioning, expiry weeks) more than realized stress. The 5-day window is an imperfect compromise — too short captures intraday option-flow noise, too long lags actual regime turns."
+  - "Asymmetric distribution — VIX rises faster than it falls. The feature's marginal distribution is right-skewed; adversarial twin permutation will preserve the skew but break temporal alignment with returns. Real should beat twin if any vol-velocity signal exists."
+  - "FRED publishes VIXCLS with same-day lag (end-of-day); this is the standard for the rest of the project's macro stack. Holiday gaps mean adjacent business-day calendar offsets occasionally span 3-4 calendar days."
+  - "Ticker-independent value reduces panel-information per row — the feature contributes a single scalar to every (ticker, date) cell. ablation contribution will scale with how heavily the meta-learner uses it as an interaction feature, NOT as a standalone."
+last_revalidation: never
+ablation_history: []

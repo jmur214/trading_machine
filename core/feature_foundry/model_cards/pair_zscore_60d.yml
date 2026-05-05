@@ -1,0 +1,20 @@
+feature_id: pair_zscore_60d
+source_url: https://en.wikipedia.org/wiki/Pairs_trade
+license: internal
+point_in_time_safe: true
+expected_behavior: |
+  60-day rolling z-score of log(self/partner) price ratio. Five hand-
+  picked sector pairs: JPM/BAC (mega-cap banks), XOM/CVX (integrated
+  oil), KO/PEP (beverages), HD/LOW (home improvement), V/MA (payment
+  rails). Each pair's two tickers cross-reference each other —
+  bidirectional map. Positive z = self expensive vs partner; negative z
+  = self cheap vs partner. Mean-reversion stat-arb primitive. Defined
+  only for the 10 mapped tickers; all others return None.
+known_failure_modes:
+  - "Hand-picked pairs are NOT cointegration-tested — they're chosen by sector intuition. Some may have structural divergence (KO vs PEP since 2020 due to Pringles divestiture timing) that breaks mean-reversion assumption."
+  - "60-day window is short for cointegration estimation. Z-scores are unstable when one leg has a regime shift (e.g. Aramco IPO impact on XOM/CVX spread, post-COVID home-improvement disparity in HD/LOW)."
+  - "Coverage gap: 99 of 109 universe tickers return None. The feature is effectively zero-information for >90% of the panel — this is by design (better None than noise) but inflates the missing-value rate which the meta-learner must handle."
+  - "Adversarial twin shuffles within ticker — if pair-z really mean-reverts, real should outperform twin on directional bets. If they tie, the hand-picked pairs aren't actually mean-reverting on this universe."
+  - "Discovery follow-up: replace hand-picked pair map with cointegration-discovered pairs from a rolling Engle-Granger search. Out of scope for substrate validation batch."
+last_revalidation: never
+ablation_history: []
