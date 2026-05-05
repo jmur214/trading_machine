@@ -21,7 +21,7 @@ What we're measuring:
   factor beta with extra steps.
 
 Read-only diagnostic. Does NOT modify any code. Output goes to
-``docs/Audit/factor_decomposition_baseline.md``.
+``docs/Measurements/2026-04/factor_decomposition_baseline.md``.
 
 Usage:
   PYTHONPATH=. python scripts/factor_decomposition_baseline.py
@@ -237,7 +237,7 @@ def main():
     parser.add_argument("--initial-capital", type=float, default=100_000.0,
                         help="Initial capital (used to scale per-edge PnL into returns)")
     parser.add_argument("--output", default=None,
-                        help="Output markdown path (default: docs/Audit/factor_decomposition_baseline.md)")
+                        help="Output markdown path (default: docs/Measurements/2026-04/factor_decomposition_baseline.md)")
     args = parser.parse_args()
 
     # 1) Load factor data (downloads on first run)

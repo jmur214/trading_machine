@@ -16,7 +16,7 @@ contract was documented but not enforced. The bug was invisible for
 weeks. This file is the executable enforcement.
 
 Methodology: documented contracts decay into folklore unless tests assert
-them. See `docs/Progress_Summaries/lessons_learned.md` 2026-04-25 entry.
+them. See `docs/State/lessons_learned.md` 2026-04-25 entry.
 """
 from __future__ import annotations
 
@@ -267,5 +267,5 @@ def test_repro_momentum_edge_import_does_not_revive_paused(tmp_registry):
     # 4. The lifecycle decision MUST have survived
     assert tmp_registry.get("momentum_edge_v1").status == "paused", (
         "Status was reverted by re-registration — the registry-stomp bug is back. "
-        "See docs/Progress_Summaries/lessons_learned.md 2026-04-25."
+        "See docs/State/lessons_learned.md 2026-04-25."
     )

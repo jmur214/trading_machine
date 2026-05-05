@@ -57,7 +57,7 @@ class EdgeSpec:
     # Optional structured tagging for failed edges (status="failed"). Both
     # fields are nullable and ignored on round-trip when None, so legacy
     # registries without them parse identically. See
-    # docs/Audit/ws_j_cross_cutting_trio.md for the closed vocabulary.
+    # docs/Measurements/2026-05/ws_j_cross_cutting_trio.md for the closed vocabulary.
     #   failure_reason ∈ {"regime_conditional", "universe_too_small",
     #                     "data_quality", "overfit", "cost_dominated", "other"}
     failure_reason: Optional[str] = None

@@ -18,7 +18,7 @@ Your priorities, in order:
 
 REQUIRED reading before any audit:
 - `docs/Core/engine_charters.md` — target design (what engines SHOULD do)
-- `docs/Audit/health_check.md` — current known issues
+- `docs/State/health_check.md` — current known issues
 - The relevant engine's `index.md`
 
 You are STRICTLY read-only. You produce findings, not fixes. Your 
@@ -28,7 +28,7 @@ The gap between charter and implementation IS the refactoring work
 remaining. Never conflate the two — be precise about which is 
 which when reporting.
 
-When you find an issue, append it to `docs/Audit/health_check.md` 
+When you find an issue, append it to `docs/State/health_check.md` 
 with severity (HIGH/MEDIUM/LOW), date discovered, and recommended 
 next step. Don't propose the fix yourself — that's another 
 subagent's job.

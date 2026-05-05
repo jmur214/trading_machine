@@ -254,4 +254,4 @@ After Phase α + ε:
 - `scripts/run_evolution_cycle.py` — Phase β (Gate 1 benchmark-relative)
 - `config/governor_settings.json` — Phase α config additions
 - `data/governor/edges.yml` — Phase ε (demote bases, then re-validate)
-- `docs/Core/ROADMAP.md` — link this plan as a new Phase 4.6 or Phase 5 work stream
+- `docs/State/ROADMAP.md` — link this plan as a new Phase 4.6 or Phase 5 work stream

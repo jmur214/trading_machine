@@ -23,8 +23,8 @@ Hard constraints (enforced):
 
 Usage:
   PYTHONHASHSEED=0 python -m scripts.run_ws_c_smoke --year 2024 --runs 3 \\
-      --output docs/Audit/ws_c_smoke.md \\
-      --json-output docs/Audit/ws_c_smoke.json
+      --output docs/Measurements/2026-05/ws_c_smoke.md \\
+      --json-output docs/Measurements/2026-05/ws_c_smoke.json
 """
 from __future__ import annotations
 
@@ -151,7 +151,7 @@ def _cell(label: str, year: int, runs: int,
 
 def _format_markdown(off: list[dict], on: list[dict],
                      output_path: Path) -> None:
-    """Produce the docs/Audit/ws_c_smoke.md summary."""
+    """Produce the docs/Measurements/2026-05/ws_c_smoke.md summary."""
     def _summarize(records: list[dict]) -> dict:
         ok = [r for r in records if r.get("ok")]
         sharpes = [r["sharpe"] for r in ok if r["sharpe"] is not None]
@@ -250,9 +250,9 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--year", type=int, default=2024)
     parser.add_argument("--runs", type=int, default=3)
-    parser.add_argument("--output", type=str, default="docs/Audit/ws_c_smoke.md")
+    parser.add_argument("--output", type=str, default="docs/Measurements/2026-05/ws_c_smoke.md")
     parser.add_argument("--json-output", type=str,
-                        default="docs/Audit/ws_c_smoke.json")
+                        default="docs/Measurements/2026-05/ws_c_smoke.json")
     args = parser.parse_args()
 
     if not ISOLATED_ANCHOR.exists():

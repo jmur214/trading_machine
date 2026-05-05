@@ -109,4 +109,4 @@ The project uses a **6-Pillar Documentation Architecture** (documented in depth 
 3. **Hybrid Indexes** (`index.md` in each engine dir) — Top half: human-written architecture notes. Bottom half: auto-generated code reference.
 4. **Workflows** (`.agent/workflows/`) — Slash-command automations for common tasks
 5. **Audit Layer** (`docs/Audit/`) — Technical deep-dives, engine charters, findings
-6. **Progress Layer** (`docs/Progress_Summaries/`) — Historical lessons learned, phase completion logs
+6. **Progress Layer** (`docs/Sessions/`) — Historical lessons learned, phase completion logs

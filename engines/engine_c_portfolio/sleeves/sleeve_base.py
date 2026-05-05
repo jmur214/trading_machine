@@ -7,7 +7,7 @@ is also NOT implemented here.
 
 This file ships on branch `path-c-compounder-sleeve-design` as a design
 artifact. Production wiring follows the migration plan in
-`docs/Audit/path_c_compounder_design_2026_05.md` Phases M0–M3.
+`docs/Measurements/2026-05/path_c_compounder_design_2026_05.md` Phases M0–M3.
 
 Why ship the interface alone: it pins the contract before the
 implementation, lets reviewers comment on the shape, and lets concrete

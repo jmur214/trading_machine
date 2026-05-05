@@ -237,10 +237,13 @@ This project uses a structured, AI-native documentation system designed to maint
 
 | Document | Purpose |
 |----------|---------|
-| [`GOAL.md`](docs/Core/GOAL.md) | AI entry point — north star orientation |
+| [`docs/README.md`](docs/README.md) | **Navigation index — start here for any docs question** |
+| [`GOAL.md`](docs/State/GOAL.md) | AI entry point — north star orientation |
+| [`forward_plan.md`](docs/State/forward_plan.md) | Current strategy & dispatch (live, supersedes prior dated plans) |
+| [`ROADMAP.md`](docs/State/ROADMAP.md) | Phased development plan |
+| [`health_check.md`](docs/State/health_check.md) | Living code-quality tracker |
 | [`PROJECT_CONTEXT.md`](docs/Core/PROJECT_CONTEXT.md) | Architecture brief & philosophy |
 | [`human-system_explanation.md`](docs/Core/Human/human-system_explanation.md) | Plain-English project overview (3 audience levels) |
-| [`ROADMAP.md`](docs/Core/ROADMAP.md) | Phased development plan |
 | [`execution_manual.md`](docs/Core/execution_manual.md) | Every CLI command in one place |
 | [`agent_instructions.md`](docs/Core/agent_instructions.md) | AI operating rules & coding standards |
 | [`Ideas_Pipeline/`](docs/Core/Ideas_Pipeline/) | 3-stage idea intake system |

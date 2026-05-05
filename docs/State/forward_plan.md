@@ -2,7 +2,7 @@
 
 > **Live plan.** Supersedes `forward_plan_2026_05_01.md` after the
 > two outside-reviewer docs landed
-> (`docs/Progress_Summaries/Other-dev-opinion/05-1-26_1-percent.md`
+> (`docs/Sessions/Other-dev-opinion/05-1-26_1-percent.md`
 > + `05-1-26_a-and-i_full.mf`). Both converge on the same architectural
 > picture and identify gaps the prior plans had underweighted.
 >

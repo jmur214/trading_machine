@@ -14,7 +14,7 @@ do candidates die?", template-mutation + GA-random candidates are
 representative of the gauntlet's typical input. Hunt-rule candidates
 share the same Gate 1 path; their expected outcome is documented as
 "all fail Gate 1 due to RuleBasedEdge feature-engineering bug" in
-docs/Audit/health_check.md. We capture the rest.
+docs/State/health_check.md. We capture the rest.
 
 Usage:
     PYTHONHASHSEED=0 python scripts/run_discovery_diagnostic_standalone.py \\

@@ -72,18 +72,18 @@ Full plan: [docs/Core/Ideas_Pipeline/autonomous_lifecycle_plan.md](docs/Core/Ide
 
 ### What needs adding (currently blocking forward progress)
 
-Maintained as a focused checklist in `docs/Progress_Summaries/2026-04-25_session.md` "What needs adding" section. Two-sentence summary here:
+Maintained as a focused checklist in `docs/Sessions/2026-04-25_session.md` "What needs adding" section. Two-sentence summary here:
 
 - **One user-side action remains for alpha-measurement unblocks**: `scripts/fetch_universe.py` for the survivorship-aware S&P 500 universe → retest `momentum_factor_v1` with proper top-quintile breadth. (`FRED_API_KEY` + bootstrap is done — `macro_yield_curve_v1` is live. Earnings is done — backend swapped Finnhub→yfinance on 2026-04-25 after Finnhub free tier was confirmed paywalled on history; `pead_v1` is reading from a 109-ticker / 2698-event cache.)
 - **Three architectural items need design** (not autonomous-loop-sized): conditional-weight composition primitive in signal_processor (the architectural answer to today's `low_vol_factor_v1` regime-conditional failure), Engine D rework to search factor/macro/earnings space instead of technical-only genes, and macro-aware Engine E regime classifier (replaces price-only labels with FRED-driven; requires FRED cache populated first).
 
 ## Phase 2.10: Alpha-First Roadmap (ACTIVE — 2026-04-27)
 
-> Driven by user-shared audit doc `docs/Progress_Summaries/2026-04-26_audit-and-improvements.md` (16 non-LLM autonomous discovery methods) plus user feedback: defer AI-heavy methods, prioritize code-level improvements, **prioritize items that actually generate new alpha** rather than items that only harden existing search.
+> Driven by user-shared audit doc `docs/Sessions/2026-04-26_audit-and-improvements.md` (16 non-LLM autonomous discovery methods) plus user feedback: defer AI-heavy methods, prioritize code-level improvements, **prioritize items that actually generate new alpha** rather than items that only harden existing search.
 
 ### Sequence (alpha generation first, hardening after)
 
-The HIGH severity finding `[HIGH] System Sharpe 0.4 on 109-ticker universe vs SPY 0.88` (`docs/Audit/health_check.md`) is the load-bearing problem. New alpha sources move that number; hardening doesn't. Steps 1-5 below ship new edges; Step 6+ harden the gauntlet around them.
+The HIGH severity finding `[HIGH] System Sharpe 0.4 on 109-ticker universe vs SPY 0.88` (`docs/State/health_check.md`) is the load-bearing problem. New alpha sources move that number; hardening doesn't. Steps 1-5 below ship new edges; Step 6+ harden the gauntlet around them.
 
 - [x] **Step 1: `momentum_factor_v1` walk-forward retest on S&P 500 universe** (2026-04-27). CONFIRMED FALSIFIED on 666-ticker universe: FACTOR ON 0.193 vs FACTOR OFF 0.684, delta -0.491. Not a universe-size artifact — 133-name quintile, proper factor breadth. Vanilla 12m-1m momentum without sector neutralization underperforms 2024-2025. Weight stays 0.0. Code retained for future sector-neutral v2.
 - [x] **Step 2: `insider_cluster_v1` edge** (2026-04-27). Shipped: cluster Form-4 buying (≥3 distinct insiders within 60 days, 90-day linear-decay hold). 15/15 tests. Registered at weight 0.5. Bootstrap complete on 109-ticker universe.
@@ -116,7 +116,7 @@ Full plan: `~/.claude/plans/foamy-foraging-horizon.md` (mirror, not authoritativ
 
 ## Phase 2.10b: OOS Validation Gate — ❌ FAILED (2026-04-29)
 
-> Driven by `docs/Progress_Summaries/Other-dev-opinion/04-29-26_a-and-i.md`.
+> Driven by `docs/Sessions/Other-dev-opinion/04-29-26_a-and-i.md`.
 > The realistic-cost in-sample Sharpe **1.063** was a hypothesis until
 > OOS confirmed it. **All three questions failed by wide margins.**
 > Full results in `docs/Audit/oos_validation_2026_04.md` (Q1+Q2,
@@ -411,7 +411,7 @@ with a credible "beat the market" claim, but doesn't block 2.10d/e.
 > ML-on, prod-109 2025 OOS) and walk-forward mean Sharpe +0.873
 > across 2022/2023/2024 holdouts. Universe-B test FAILED (Sharpe 0.273)
 > — the lift is concentrated on prod-109. **The deployment boundary
-> at `docs/Core/deployment_boundary_2026_05.md` documents this.**
+> at `docs/State/deployment_boundary.md` documents this.**
 >
 > Path 1 ship-state validation in agentA worktree under cap=0.20 +
 > ML-on produced Sharpe **-0.378** — the stacking with cap=0.20 did
@@ -516,7 +516,7 @@ not SPY.
 > Suggested allocation for a 20-something:
 > Core (70–75%) + Moonshot (15–20%) + Cash (5–10%).
 >
-> Full design in `docs/Core/forward_plan_2026_04_29.md`.
+> Full design in `docs/Archive/forward_plans/forward_plan_2026_04_29.md`.
 
 ### Phase 2.5 deliverables (parallel to 2.11/2.12, not blocking)
 

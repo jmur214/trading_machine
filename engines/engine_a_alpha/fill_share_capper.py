@@ -3,7 +3,7 @@ engines/engine_a_alpha/fill_share_capper.py
 ===========================================
 Phase 2.10d Primitive 1 — per-edge fill-share ceiling.
 
-Problem (from docs/Audit/oos_2025_decomposition_2026_04.md):
+Problem (from docs/Measurements/2026-04/oos_2025_decomposition_2026_04.md):
     The bottom-three edges in 2025 (momentum_edge_v1, low_vol_factor_v1,
     atr_breakout_v1) consumed 83% of fill share while producing -$5,645
     of realized losses. The two edges with consistent positive contribution

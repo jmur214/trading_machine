@@ -2,10 +2,10 @@
 scripts/analyze_discovery_diagnostic.py
 =======================================
 Reads the per-candidate jsonl from a discovery diagnostic run and produces
-the histogram audit doc summary lines for docs/Audit/discovery_diagnostic_2026_05.md.
+the histogram audit doc summary lines for docs/Measurements/2026-05/discovery_diagnostic_2026_05.md.
 
 Usage:
-    python scripts/analyze_discovery_diagnostic.py docs/Audit/discovery_diagnostic_run_2026_05_<ts>.jsonl
+    python scripts/analyze_discovery_diagnostic.py docs/Measurements/<year-month>/discovery_diagnostic_run_2026_05_<ts>.jsonl
 """
 from __future__ import annotations
 

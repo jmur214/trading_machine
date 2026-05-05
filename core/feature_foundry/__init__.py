@@ -10,7 +10,7 @@ cost the same as adding the 5th. Six components:
   F5. model_card     — YAML lineage + validator (license/PIT/failure modes)
   F6. dashboard tab  — single audit view (importance, contribution, drift)
 
-Built per the reviewer rule (`docs/Progress_Summaries/Other-dev-opinion/
+Built per the reviewer rule (`docs/Sessions/Other-dev-opinion/
 05-1-26_1-percent.md` Workstream D): "marginal cost of feature N is constant
 once the substrate exists."
 

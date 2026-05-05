@@ -8,7 +8,7 @@ Implements López de Prado's HRP algorithm (2016) with three steps:
 HRP avoids the matrix-inversion instability of mean-variance under
 near-singular covariance, which is the dominant failure mode at the
 3-active-edge / ~100-ticker scale this codebase runs at. See
-docs/Audit/engine_c_hrp_first_slice_2026_05.md for design notes.
+docs/Measurements/2026-05/engine_c_hrp_first_slice_2026_05.md for design notes.
 
 Covariance estimation defaults to Ledoit-Wolf shrinkage (sklearn).
 A sample covariance fallback is used if sklearn isn't available so the

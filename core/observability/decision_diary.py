@@ -30,7 +30,7 @@ Example:
         decision_type=DecisionType.MEASUREMENT_RUN,
         what_changed="2021-2025 multi-year run, mean Sharpe 1.296",
         expected_impact=None,
-        rationale_link="docs/Audit/multi_year_foundation_measurement.md",
+        rationale_link="docs/Measurements/2026-05/multi_year_foundation_measurement.md",
     )
 """
 from __future__ import annotations

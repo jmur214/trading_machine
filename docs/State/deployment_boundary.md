@@ -153,7 +153,7 @@ pass.
   not covered here.
 - This is **not** a long-term strategic plan. It's the snapshot of
   what shipped on 2026-04-30. The forward plan
-  (`docs/Core/forward_plan_2026_04_30.md`) is the right place to look
+  (`docs/Archive/forward_plans/forward_plan_2026_04_30.md`) is the right place to look
   for what comes next (Phase 3 paper trading, Path 2 universe
   portability, Phase 2.5 moonshot sleeve).
 

@@ -10,7 +10,7 @@ is to show, on data of the right shape, that:
     3. There is meaningful tail past 1.0 (i.e. the slice-2 clamp is gone).
 
 Output: a markdown-formatted histogram block plus a JSON payload at
-``docs/Audit/hrp_slice_3_histogram.json``. Both are referenced from the
+``docs/Measurements/<year-month>/hrp_slice_3_histogram.json``. Both are referenced from the
 slice-3 audit doc.
 
 This is *not* a backtest — it's a structural sanity check on the

@@ -63,13 +63,19 @@ This is a high-level, quick-reference guide to the primary directories of the Tr
 
 ## Documentation
 
+The `docs/` tree is organized by **lifecycle**, not by topic. See `docs/README.md` for the canonical navigation index, and `docs/Core/SESSION_PROCEDURES.md` § "Documentation lifecycle" for the rules.
+
 | Directory | Purpose |
 |-----------|---------|
-| `docs/Core/` | AI command center — `CLAUDE.md` reading order entry, `SESSION_PROCEDURES.md`, `GOAL.md`, `PROJECT_CONTEXT.md`, `ROADMAP.md`, `engine_charters.md`, `simple_engine_roles.md`, `execution_manual.md`, `roles.md`, `agent_instructions.md`, `files.md` |
+| `docs/README.md` | Canonical navigation index — "where do I find X" map across the whole `docs/` tree |
+| `docs/Core/` | **Stable design** (rarely changes) — `SESSION_PROCEDURES.md`, `PROJECT_CONTEXT.md`, `engine_charters.md`, `simple_engine_roles.md`, `high_level_engine_function.md`, `execution_manual.md`, `roles.md`, `agent_instructions.md`, `files.md`, `MULTI_SESSION_ORCHESTRATION.md` |
 | `docs/Core/Ideas_Pipeline/` | 3-stage idea promotion workflow (human → backlog → evaluations → ROADMAP) |
-| `docs/Audit/` | Living code-health tracking — `health_check.md` (current findings, maintained by subagents) and `high_level-engine_function.md` (what each engine does today; compare against `docs/Core/engine_charters.md`) |
-| `docs/Progress_Summaries/` | Per-session summaries (`YYYY-MM-DD_session.md`), `lessons_learned.md`, `_template.md` |
-| `docs/Archive/` | Gitignored historical content — old audits, retired specs, prior roadmaps |
+| `docs/Core/Human/` | Plain-English project explanations (3 audience levels) |
+| `docs/State/` | **Current truth** (mutates in place, no date suffixes) — `health_check.md` (code-quality tracker), `forward_plan.md` (current strategy), `ROADMAP.md`, `GOAL.md`, `lessons_learned.md`, `deployment_boundary.md` |
+| `docs/Measurements/<YYYY-MM>/` | **Point-in-time reports** (frozen, append-only) — backtests, ablations, audits, workstream close-outs. Bucketed by month. |
+| `docs/Sessions/<YYYY-MM>/` | Per-session summaries (frozen). `_template.md` for new ones. `Other-dev-opinion/` (flat, not month-bucketed) for outside-reviewer pastes. |
+| `docs/Archive/` | Explicitly retired — superseded forward plans, deprecated design docs, legacy meta-docs. Read for "what did we believe at time X", not for current truth. |
+| `docs/Sources/` | External reference material (paper reviews, third-party analysis) |
 
 ## AI Configuration
 
@@ -79,4 +85,4 @@ This is a high-level, quick-reference guide to the primary directories of the Tr
 | `.claude/skills/` | Reusable skills (e.g. `commit/SKILL.md` — commit-message format) |
 | `.claude/settings.json` | Project hooks: SessionStart banner, Stop reminder, PostToolUse(Edit\|Write) → `sync_docs.py` for `engines/**/*.py`; permission boundaries |
 | `CLAUDE.md` (repo root) | Operating constitution — non-negotiable rules, autonomy boundaries, git discipline |
-| `DOCUMENTATION_SYSTEM.md` (repo root) | Universal guide describing the documentation system's design philosophy |
+| `docs/README.md` (canonical nav) | "Where do I find X" index — read this if you need to navigate any doc. The legacy `DOCUMENTATION_SYSTEM.md` describing the prior structure is at `docs/Archive/DOCUMENTATION_SYSTEM_legacy.md`. |

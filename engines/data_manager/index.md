@@ -21,7 +21,7 @@
 Self-contained FRED ingestion layer. **Not yet wired into any engine** —
 this is plumbing for upcoming work on macro features, regime
 classification, and yield-curve / credit-spread edges (see
-`docs/Progress_Summaries/2026-04-24_strategic_pivot.md` item #4).
+`docs/Sessions/2026-04-24_strategic_pivot.md` item #4).
 
 **Public API:**
 - `MacroDataManager(api_key=None, cache_dir="data/macro")` — pulls
@@ -53,7 +53,7 @@ mocked) plus one live integration test gated behind `FRED_API_KEY`.
 Self-contained Finnhub ingestion layer for earnings calendar +
 surprise data. **Not yet wired into any engine** — this is plumbing
 for the upcoming PEAD (post-earnings announcement drift) edge work
-called out in `docs/Progress_Summaries/2026-04-24_strategic_pivot.md`
+called out in `docs/Sessions/2026-04-24_strategic_pivot.md`
 as the strongest single-factor alpha in the academic literature.
 
 **Public API:**

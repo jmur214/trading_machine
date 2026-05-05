@@ -17,7 +17,7 @@ Approach
        per-day sum of attributed exits for that edge)
      - fill_count_entries (number of entry events that year)
 4. Pivot into the headline tables and write to
-   docs/Audit/per_edge_per_year_attribution_2026_04.md.
+   docs/Measurements/2026-04/per_edge_per_year_attribution_2026_04.md.
 
 Run:
     python scripts/per_edge_per_year_attribution.py [--out PATH]
@@ -251,7 +251,7 @@ def _md_table_int(df: pd.DataFrame) -> str:
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--out", default="docs/Audit/per_edge_per_year_attribution_2026_04.md")
+    ap.add_argument("--out", default="docs/Measurements/2026-04/per_edge_per_year_attribution_2026_04.md")
     ap.add_argument("--csv-out", default="data/research/per_edge_per_year_2026_04.csv")
     args = ap.parse_args()
 

@@ -5,7 +5,7 @@ Fama-French 5 + Momentum factor decomposition utilities.
 
 Used by:
 - ``scripts/factor_decomposition_baseline.py`` (one-shot diagnostic over
-  every active edge, output to docs/Audit/...)
+  every active edge, output to docs/Measurements/<year-month>/...)
 - ``engines/engine_d_discovery/discovery.py::validate_candidate`` Gate 6
   (per-candidate factor-significance gate)
 
