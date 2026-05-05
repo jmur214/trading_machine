@@ -84,6 +84,33 @@ def feature_foundry_layout():
                 ],
             ),
 
+            # Review Pending panel — surfaces features the 90-day archive
+            # auditor has flagged. Empty under healthy conditions; populated
+            # rows demand human triage. Per CLAUDE.md, the auditor never
+            # deletes — it just surfaces here.
+            html.Div(
+                style={**CARD_STYLE, "marginBottom": "24px"},
+                children=[
+                    html.Div(style=SECTION_HEADER, children=[
+                        html.H4("Review Pending", style={
+                            "margin": "0", "color": COLORS["text_primary"],
+                            "fontSize": "14px",
+                        }),
+                        html.Span(
+                            "90-day archive auditor flags. Human-triage required: "
+                            "archive (status='archived'), un-flag, or investigate.",
+                            style={
+                                "color": COLORS["text_muted"], "fontSize": "11px",
+                                "marginLeft": "12px",
+                            },
+                        ),
+                    ]),
+                    html.Div(id="foundry_review_pending", style={
+                        "color": COLORS["text_secondary"], "fontSize": "12px",
+                    }),
+                ],
+            ),
+
             # Per-feature audit table
             html.Div(
                 style={**CARD_STYLE, "marginBottom": "24px"},

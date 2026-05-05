@@ -53,6 +53,14 @@ REQUIRED_KEYS = {
     "last_revalidation",
 }
 
+# Closed vocabulary for the additive `status` field. Default `active`;
+# `review_pending` set by `scripts/audit_feature_archive.py` when a
+# feature's 90-day ablation lift trends negative; `archived` set by
+# human-triage decision (the audit script never sets this — see
+# CLAUDE.md "archive don't delete" rule). Lives here so the schema is
+# enforced at the parse boundary, not just by convention.
+VALID_STATUSES = {"active", "review_pending", "archived"}
+
 
 @dataclass
 class ModelCard:
@@ -64,9 +72,25 @@ class ModelCard:
     known_failure_modes: List[str]
     last_revalidation: str                # ISO date or 'never'
     ablation_history: List[Dict] = field(default_factory=list)
+    # Additive WS-D close-out schema (back-compat: defaults preserve
+    # behaviour for cards written before the additions).
+    last_ablation_date: Optional[str] = None      # ISO 8601 date
+    last_ablation_lift: Optional[float] = None    # contribution_sharpe
+    status: str = "active"                        # closed vocab — see VALID_STATUSES
+    flagged_reason: Optional[str] = None          # set when status != active
+
+    def __post_init__(self) -> None:
+        if self.status not in VALID_STATUSES:
+            raise ValueError(
+                f"Model card {self.feature_id!r} has invalid status "
+                f"{self.status!r}; must be one of {sorted(VALID_STATUSES)}"
+            )
 
     def to_dict(self) -> dict:
-        return {
+        # Order is intentional: required schema first, then additive
+        # observability fields, then ablation history. Keeps git diffs
+        # readable when audit scripts mutate the additive fields.
+        out: dict = {
             "feature_id": self.feature_id,
             "source_url": self.source_url,
             "license": self.license,
@@ -74,8 +98,16 @@ class ModelCard:
             "expected_behavior": self.expected_behavior,
             "known_failure_modes": list(self.known_failure_modes),
             "last_revalidation": self.last_revalidation,
-            "ablation_history": list(self.ablation_history),
+            "status": self.status,
         }
+        if self.last_ablation_date is not None:
+            out["last_ablation_date"] = self.last_ablation_date
+        if self.last_ablation_lift is not None:
+            out["last_ablation_lift"] = float(self.last_ablation_lift)
+        if self.flagged_reason is not None:
+            out["flagged_reason"] = self.flagged_reason
+        out["ablation_history"] = list(self.ablation_history)
+        return out
 
     @classmethod
     def from_dict(cls, data: dict) -> "ModelCard":
@@ -93,6 +125,19 @@ class ModelCard:
             known_failure_modes=list(data["known_failure_modes"]),
             last_revalidation=str(data["last_revalidation"]),
             ablation_history=list(data.get("ablation_history") or []),
+            last_ablation_date=(
+                str(data["last_ablation_date"])
+                if data.get("last_ablation_date") is not None else None
+            ),
+            last_ablation_lift=(
+                float(data["last_ablation_lift"])
+                if data.get("last_ablation_lift") is not None else None
+            ),
+            status=str(data.get("status", "active")),
+            flagged_reason=(
+                str(data["flagged_reason"])
+                if data.get("flagged_reason") is not None else None
+            ),
         )
 
     def write(self, root: Path = CARD_ROOT) -> Path:

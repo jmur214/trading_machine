@@ -1,0 +1,31 @@
+# Feature Foundry CI gate configuration.
+#
+# Consumed by `scripts/feature_foundry_gate.py` and the auto-archive
+# audit (`scripts/audit_feature_archive.py`). Override at runtime via
+# environment variables — see each entry's comment.
+
+# Adversarial margin: real feature's correlation-magnitude lift must be
+# at least (1 + adversarial_margin) × twin's lift on the same synthetic
+# panel, or the gate rejects the commit.
+#
+# Default 0.30 chosen per Lopez de Prado, "Advances in Financial Machine
+# Learning" Ch.7 — a permuted control captures 50-70% of an over-fit
+# signal; a real signal that's not curve-fit dominates by a wide margin.
+# 30% margin ⇒ twin captures at most ~77% of real (the spec's 70% cap is
+# the complement of this margin).
+#
+# Override with FOUNDRY_ADVERSARIAL_MARGIN env var.
+adversarial_margin: 0.30
+
+# 90-day archive enforcement: features whose ablation lift trends
+# negative over this window are flagged `review_pending` in their model
+# card frontmatter. Not auto-deleted (CLAUDE.md "archive don't delete"
+# rule); a human triages flagged features.
+#
+# Override with FOUNDRY_ARCHIVE_WINDOW_DAYS env var.
+archive_window_days: 90
+
+# Minimum number of ablation observations within the archive window
+# required before we'll flag a feature. Below this we're flagging on
+# noise, not trend.
+archive_min_observations: 3

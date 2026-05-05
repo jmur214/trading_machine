@@ -29,6 +29,10 @@ class FoundryRow:
     twin_id: Optional[str]
     health: str                # "ok" | "warn" | "fail"
     health_reason: str
+    # Additive WS-D close-out fields — surface the 90-day archive
+    # auditor's verdict on the Foundry tab.
+    status: str = "active"             # active | review_pending | archived
+    flagged_reason: Optional[str] = None
 
     def to_record(self) -> dict:
         contrib = (
@@ -48,6 +52,8 @@ class FoundryRow:
             "twin_id": self.twin_id or "—",
             "health": self.health,
             "health_reason": self.health_reason,
+            "status": self.status,
+            "flagged_reason": self.flagged_reason or "—",
         }
 
 
@@ -102,6 +108,15 @@ def load_foundry_rows() -> List[dict]:
         health, reason = _classify_health(
             has_card, last_reval, contribution, twin_present,
         )
+        status = card.status if card else "active"
+        flagged_reason = card.flagged_reason if card else None
+        # If the auditor has flagged this feature, that's a stronger
+        # signal than the heuristic health-classifier — escalate.
+        if status == "review_pending":
+            health = "warn"
+            reason = (
+                f"review_pending: {flagged_reason or 'see audit log'}"
+            )
         rows.append(FoundryRow(
             feature_id=feat.feature_id,
             tier=feat.tier,
@@ -115,8 +130,23 @@ def load_foundry_rows() -> List[dict]:
             twin_id=twin_fid if twin_present else None,
             health=health,
             health_reason=reason,
+            status=status,
+            flagged_reason=flagged_reason,
         ))
     return [r.to_record() for r in rows]
+
+
+def load_review_pending_rows() -> List[dict]:
+    """Subset of `load_foundry_rows` filtered to status == review_pending.
+
+    Powers the dashboard's "Review Pending" section. Surfacing
+    flagged features here is the human-triage handoff: the audit
+    script flips the status, the dashboard makes it visible, a person
+    decides whether to archive (status='archived'), un-flag (return
+    to active), or investigate further. Per CLAUDE.md "archive don't
+    delete" — the audit script never deletes.
+    """
+    return [r for r in load_foundry_rows() if r.get("status") == "review_pending"]
 
 
 def load_source_rows() -> List[dict]:
