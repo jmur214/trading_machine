@@ -182,6 +182,35 @@ class TransitionWarningConfig:
 
 
 @dataclass
+class CrossAssetConfirmConfig:
+    """Cross-asset confirmation gate (Workstream C — 2026-05).
+
+    Confirms HMM transitions INTO stress regimes by requiring at least
+    `min_confirmations` of three independent cross-asset signals also
+    flag stress:
+      - hyg_lqd_z         > hyg_lqd_z_threshold
+      - dxy_change_20d    > dxy_change_20d_threshold
+      - vvix_proxy        > vvix_proxy_threshold
+
+    When `cross_asset_confirm_enabled` is True the gate runs and surfaces
+    its output read-only at advisory.cross_asset_confirm. Engine B does
+    NOT consume by default — diagnostic-only this round. Director will
+    promote to risk-policy effect after the smoke and multi-year
+    measurement.
+
+    Default disabled. When enabled and HMM is also enabled, adds 3
+    foundry-feature lookups per detect_regime call.
+    """
+    cross_asset_confirm_enabled: bool = False
+    hyg_lqd_z_threshold: float = 1.0
+    dxy_change_20d_threshold: float = 0.02
+    vvix_proxy_threshold: float = 1.0
+    # Comma-joined list of HMM state labels that count as "stress".
+    stress_states: List[str] = field(default_factory=lambda: ["crisis"])
+    min_confirmations: int = 2
+
+
+@dataclass
 class RegimeConfig:
     trend: TrendConfig = field(default_factory=TrendConfig)
     volatility: VolatilityConfig = field(default_factory=VolatilityConfig)
@@ -193,6 +222,9 @@ class RegimeConfig:
     multires: MultiResHMMConfig = field(default_factory=MultiResHMMConfig)
     transition_warning: TransitionWarningConfig = field(
         default_factory=TransitionWarningConfig
+    )
+    cross_asset_confirm: CrossAssetConfirmConfig = field(
+        default_factory=CrossAssetConfirmConfig
     )
     benchmarks: List[str] = field(default_factory=lambda: ["SPY"])
     cross_asset: List[str] = field(default_factory=lambda: ["TLT", "GLD"])
@@ -222,6 +254,9 @@ class RegimeConfig:
             multires=MultiResHMMConfig(**raw.get("multires", {})),
             transition_warning=TransitionWarningConfig(
                 **raw.get("transition_warning", {})
+            ),
+            cross_asset_confirm=CrossAssetConfirmConfig(
+                **raw.get("cross_asset_confirm", {})
             ),
             benchmarks=raw.get("benchmarks", ["SPY"]),
             cross_asset=raw.get("cross_asset", ["TLT", "GLD"]),

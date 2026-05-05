@@ -17,6 +17,10 @@ from . import month_of_year_dummy  # noqa: F401
 from . import pair_zscore_60d  # noqa: F401
 from . import earnings_proximity_5d  # noqa: F401
 from . import vix_change_5d  # noqa: F401
+# Workstream C cross-asset confirmation primitives
+from . import hyg_lqd_spread  # noqa: F401
+from . import dxy_change_20d  # noqa: F401
+from . import vvix_or_proxy  # noqa: F401
 
 __all__ = [
     "cot_commercial_net_long",
@@ -35,4 +39,7 @@ __all__ = [
     "pair_zscore_60d",
     "earnings_proximity_5d",
     "vix_change_5d",
+    "hyg_lqd_spread",
+    "dxy_change_20d",
+    "vvix_or_proxy",
 ]

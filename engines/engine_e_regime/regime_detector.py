@@ -143,6 +143,13 @@ class RegimeDetector:
         ):
             self._init_transition_warning()
 
+        # Cross-asset confirmation (Workstream C — 2026-05).
+        # Default disabled; when enabled, surfaces a read-only output dict
+        # at advisory.cross_asset_confirm. Engine B does NOT consume by
+        # default; this round is observability-only. Tracks prior HMM
+        # argmax state so the gate can detect transitions.
+        self._prev_hmm_state: Optional[str] = None
+
     def detect_regime(
         self,
         benchmark_df: pd.DataFrame,
@@ -245,6 +252,24 @@ class RegimeDetector:
         if transition_warning_read is not None:
             advisory["regime_transition_warning"] = transition_warning_read
 
+        # Cross-asset confirmation gate (WS-C — 2026-05). Read-only field
+        # in advisory; default disabled. Runs only if the flag is set
+        # AND we have a non-None HMM posterior to test against.
+        cross_confirm_cfg = getattr(self.cfg, "cross_asset_confirm", None)
+        if (
+            cross_confirm_cfg is not None
+            and cross_confirm_cfg.cross_asset_confirm_enabled
+            and hmm_proba is not None
+        ):
+            confirm_read = self._evaluate_cross_asset_confirm(
+                hmm_proba, now, cross_confirm_cfg,
+            )
+            if confirm_read is not None:
+                advisory["cross_asset_confirm"] = confirm_read
+            # Update prev-state tracker AFTER computing the gate so
+            # next bar sees this bar's argmax as 'prev'.
+            self._prev_hmm_state = max(hmm_proba, key=hmm_proba.get)
+
         # --- Step 6: Empirical transition matrix ---
         transition_probs = self._history.get_transition_matrix()
 
@@ -342,6 +367,8 @@ class RegimeDetector:
         # Drain transition-warning posterior buffer so a fresh run starts
         # from cold state (no carryover from prior run).
         self._tw_buffer.clear()
+        # Cross-asset confirmation prev-state tracker — clear between runs.
+        self._prev_hmm_state = None
 
     # ------------------------------------------------------------------
     # HMM augmentation (Engine E confidence-aware first slice — 2026-05)
@@ -514,3 +541,84 @@ class RegimeDetector:
         except Exception as exc:
             _log.debug(f"TransitionWarning update failed at {now}: {exc}")
             return None
+
+    # ------------------------------------------------------------------
+    # Cross-asset confirmation gate (Workstream C — 2026-05)
+    # ------------------------------------------------------------------
+    def _evaluate_cross_asset_confirm(
+        self,
+        hmm_proba: Dict[str, float],
+        now: Optional[str],
+        cfg,
+    ) -> Optional[Dict[str, object]]:
+        """Compute cross-asset confirmation read for the current HMM
+        posterior. Pulls hyg_lqd_z, dxy_change_20d, vvix_proxy from the
+        Foundry feature registry and applies the gate.
+
+        Returns the gate output dict (with raw cross-asset readings) for
+        observability, or None on internal error. Diagnostic-only this
+        round — Engine B does NOT consume.
+        """
+        try:
+            from datetime import date
+            from core.feature_foundry import get_feature_registry
+            from engines.engine_e_regime.cross_asset_confirm import (
+                confirm_regime_transition,
+            )
+        except Exception as exc:
+            _log.debug(f"cross-asset confirm import failed: {exc}")
+            return None
+
+        if not now:
+            return None
+        try:
+            dt = pd.Timestamp(now).date()
+        except Exception:
+            return None
+
+        reg = get_feature_registry()
+        # Ticker-independent features — pass any string; SPY is the
+        # natural placeholder. Foundry's local_ohlcv source isn't queried
+        # for these three (they're macro-only).
+        hyg_feat = reg.get("hyg_lqd_spread")
+        dxy_feat = reg.get("dxy_change_20d")
+        vvix_feat = reg.get("vvix_or_proxy")
+        try:
+            hyg_z = hyg_feat("SPY", dt) if hyg_feat is not None else None
+            dxy = dxy_feat("SPY", dt) if dxy_feat is not None else None
+            vvix = vvix_feat("SPY", dt) if vvix_feat is not None else None
+        except Exception as exc:
+            _log.debug(f"cross-asset feature fetch failed at {now}: {exc}")
+            return None
+
+        argmax_state = max(hmm_proba, key=hmm_proba.get)
+        hmm_signal = {
+            "state": argmax_state,
+            "prev_state": self._prev_hmm_state,
+            "transition_probs": dict(hmm_proba),
+            "confidence": _hmm_confidence(hmm_proba),
+        }
+        cross_asset_state = {
+            "hyg_lqd_z": hyg_z,
+            "dxy_change_20d": dxy,
+            "vvix_proxy": vvix,
+        }
+        gate_cfg = {
+            "hyg_lqd_z_threshold": cfg.hyg_lqd_z_threshold,
+            "dxy_change_20d_threshold": cfg.dxy_change_20d_threshold,
+            "vvix_proxy_threshold": cfg.vvix_proxy_threshold,
+            "stress_states": tuple(cfg.stress_states),
+            "min_confirmations": cfg.min_confirmations,
+        }
+        gate = confirm_regime_transition(
+            hmm_signal, cross_asset_state, gate_cfg,
+        )
+        # Surface the raw signals alongside the gate verdict for downstream
+        # diagnostics. Read-only.
+        gate_out = dict(gate)
+        gate_out["argmax_state"] = argmax_state
+        gate_out["prev_state"] = self._prev_hmm_state
+        gate_out["hyg_lqd_z"] = hyg_z
+        gate_out["dxy_change_20d"] = dxy
+        gate_out["vvix_proxy"] = vvix
+        return gate_out

@@ -1,0 +1,21 @@
+feature_id: vvix_or_proxy
+source_url: https://fred.stlouisfed.org/series/VIXCLS
+license: public
+point_in_time_safe: true
+expected_behavior: |
+  30-business-day annualized realized volatility of VIX log returns,
+  computed from FRED VIXCLS. Substitute for CBOE's VVIX (vol-of-vol),
+  which is NOT in the project's macro cache. Captures market
+  uncertainty about the level of fear itself — when VIX whipsaws, even
+  if its level isn't extreme, downstream consumers should treat the
+  regime as fragile. Ticker-independent — every name on a given dt
+  sees the same scalar. Used as the vol-of-vol leg in the cross-asset
+  confirmation gate at `engines/engine_e_regime/cross_asset_confirm.py`.
+known_failure_modes:
+  - "DATA GAP — substitute for unavailable CBOE VVIX. Real VVIX is implied (option-derived, forward-looking ~30d); ours is realized (backward-looking 30d). Empirical correlation is ~0.7 in published studies, but our version lags VVIX during fast regime turns. If VVIX is added to the data layer, prefer it (richer signal) and retire this proxy."
+  - "Annualized via sqrt(252) on a 30-bar window. The realized-vol estimate has high estimation variance at this window length — ~25% relative std-error for a true vol of 0.50. Useful for regime classification (high vs low) but not for precise level comparison."
+  - "VIX itself can be stale on US holidays where equities are closed but options-implied vol nominally still exists; FRED's series uses the official CBOE close. Holiday gaps mean adjacent business-day calendar offsets occasionally span 3-4 calendar days."
+  - "The 90th-percentile threshold used in the cross-asset confirmation gate is computed against historical realized vol-of-vol; calibration drift (e.g., post-COVID steady-state vol-of-vol regime change) means the threshold may need periodic recalibration."
+  - "Ticker-independent value reduces panel-information per row — contributes a single scalar to every (ticker, date) cell. The meta-learner should interact this with per-ticker beta or vega-equivalent exposure for cross-sectional use."
+last_revalidation: never
+ablation_history: []
