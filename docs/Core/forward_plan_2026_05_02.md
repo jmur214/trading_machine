@@ -132,6 +132,64 @@ Conditional on Foundation Gate passing:
 - **Track G setup:** Bayesian optimization replacing GA for hyperparameter search
 - **Track I start:** Real OMS scaffolding + shadow-live mode
 
+## Round-N+1 dispatch (5 context-agnostic agents) — 2026-05-04 update
+
+The first round shipped (5 agents, May 1-2). The next-round dispatch
+focuses on **context-agnostic improvements** that help in both Roth and
+taxable, with tax-drag engineering deferred per the deployment-context
+update above. **All 5 agents are GATE-CONDITIONAL — fire only after the
+multi-year Foundation Gate measurement (driver: `scripts/run_multi_year.py`,
+artifact: `docs/Audit/multi_year_foundation_measurement.md`) reports
+`Gate status: PASS` (mean Sharpe across 2021-2025 ≥ 0.5).** If
+status is AMBIGUOUS or FAIL, the dispatch table below is suppressed
+and the kill-thesis review path takes over instead.
+
+| Agent | Workstream | Read/write surface | Backtest? | Time budget | Branch |
+|---|---|---|---|---|---|
+| 1 | F — Fundamentals data scoping (Compustat / SimFin / EDGAR / `noterminusgit/statarb`) | `docs/Core/Ideas_Pipeline/`, `docs/Audit/` (research notes only) | No | 1-2 hrs research + report | `ws-f-fundamentals-data-scoping` |
+| 2 | E — Foundry batch 3 (5 more features toward 50-feature target) | `core/feature_foundry/features/`, tests | No | 2-3 hrs | `ws-e-third-batch` |
+| 3 | C — Cross-asset confirmation layer + HMM smoke | `engines/engine_e_regime/`, `core/feature_foundry/features/` (HYG/LQD spread, DXY, vol-of-vol) | Yes (1 smoke) | 2-3 hrs | `ws-c-cross-asset-confirm` |
+| 4 | D — Foundry close-out (auto-ablation cron + adversarial filter as CI gate + 90-day archive) | `core/feature_foundry/`, `.github/workflows/` (or pre-commit), CI scripts | Yes (ablation) | 3-4 hrs | `ws-d-closeout` |
+| 5 | J — Cross-cutting trio (decision diary + edge graveyard structured tagging + info-leakage detector skeleton) | `core/observability/` (new), `data/governor/` schema only, `cockpit/dashboard_v2/` | No | 2-3 hrs | `ws-j-cross-cutting-batch` |
+
+### Per-agent acceptance criteria
+
+**Agent 1 — WS F fundamentals data scoping** (research only, no merged code expected this round):
+- Comparison matrix of Compustat / SimFin / EDGAR (license cost, point-in-time history available, update lag, schema completeness for value + quality + accruals factors)
+- Audit of `noterminusgit/statarb` repo (alpha strategies that depend on fundamentals + portfolio optimizer specifics + which can drop into our Foundry without rewrite)
+- Recommendation memo: which data source for what factor family, which `statarb` modules to lift, what's the prerequisite to enable Path C compounder (currently blocked per `project_compounder_synthetic_failed_2026_05_02`)
+- Deliverable: `docs/Audit/ws_f_fundamentals_data_scoping.md` plus optional `docs/Core/Ideas_Pipeline/path_c_unblock_plan.md`. No code merged.
+
+**Agent 2 — WS E batch 3 (5 features)**:
+- 5 new features in `core/feature_foundry/features/` covering calendar / event-driven / pairs primitives (e.g. `days_to_quarter_end`, `earnings_proximity_5d`, `pair_zscore_60d` for sector pairs, `month_of_year_dummy`, `vix_term_structure_slope`)
+- Each ≤ 50 LOC, with adversarial twin generated, ablation-runner output captured
+- Tests pass; full Foundry test regression passes
+- Cumulative target: 14/10 features (50% past the 10-feature pre-batch goal — substrate validates)
+- Deliverable: 5 commits or one bundled commit on `ws-e-third-batch`, model card per feature
+
+**Agent 3 — WS C cross-asset confirmation + HMM smoke**:
+- HYG/LQD credit spread, DXY (USD index), VVIX (vol-of-vol) added as Foundry features
+- Cross-asset confirmation gate function in `engines/engine_e_regime/` that takes HMM transition signal + cross-asset evidence and returns confirm/veto
+- Default OFF (no behavior change on main without flag flip)
+- Smoke run with `hmm_enabled: true` AND cross-asset confirmation ON, single year (2024) under harness, captured in audit doc
+- Acceptance: smoke run completes deterministically (3 reps bitwise-identical canon md5), report shows Sharpe-impact estimate
+- Pre-req for the regime-conditional wash-sale gate when tax-drag work unfreezes
+- Deliverable: code + `docs/Audit/ws_c_cross_asset_confirmation.md`
+
+**Agent 4 — WS D close-out**:
+- Auto-ablation runner triggered on every PR that touches `core/feature_foundry/features/*.py` (CI workflow OR pre-commit hook)
+- Adversarial-twin filter integrated as a hard CI gate: feature must outperform its permuted twin by ≥X% margin (X to be specified by agent; conservative default suggested 30%)
+- 90-day archive enforcement: features whose last-90d performance trends negative get auto-tagged for review (not auto-deleted — flag and queue for human triage)
+- Deliverable: code + workflow files + `docs/Audit/ws_d_foundry_closeout.md` listing what is now AUTO vs. what still requires human in the loop
+- Closes WS D from ~60% to "complete per the doc's named deliverables"
+
+**Agent 5 — WS J cross-cutting trio**:
+- Decision diary scaffold: structured log entries for each significant config flip / merge to main with rationale + expected impact + actual impact (post-hoc fillable)
+- Edge graveyard structured tagging: edges with `status: failed` get a structured `failure_reason` + `superseded_by` field in `data/governor/edges.yml` (schema change only; backward-compatible)
+- Info-leakage detector skeleton: function that, given a feature definition, can identify whether it uses lookahead (close vs. next-bar-close, future-window stats) and emits a diagnostic. Wired in as ADVISORY (not enforcing) to start
+- Deliverable: code + tests + `docs/Audit/ws_j_cross_cutting_trio.md`
+- Each of the three is high-leverage, compounds on every future agent's reporting
+
 ## Repo audit findings (from reviewer's review)
 
 Three external repos worth real time investigation:
