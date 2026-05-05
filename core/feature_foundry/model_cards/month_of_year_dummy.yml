@@ -1,0 +1,19 @@
+feature_id: month_of_year_dummy
+source_url: https://en.wikipedia.org/wiki/Stock_market_cycles
+license: internal
+point_in_time_safe: true
+expected_behavior: |
+  Calendar month encoded as float 1.0..12.0. Captures multi-decade
+  seasonality: Sell-in-May (May=5 followed by weak summer), Santa Rally
+  (Dec=12), September weakness (the only historically negative-mean
+  S&P month), January effect (small-cap excess in Jan=1). Ordering is
+  not monotonically informative — value is fundamentally categorical;
+  the meta-learner is expected to non-linearly decode month identity
+  rather than treat the value as continuous.
+known_failure_modes:
+  - "Returned as float for substrate uniformity but semantically categorical. Linear models will infer a spurious monotonic trend; tree-based learners (GBMs, random forests) handle it natively."
+  - "Ticker-independent — same value across the universe on any given date. Adversarial twin preserves the [1, 12] distribution but breaks temporal cycle. Real should beat twin if any seasonal effect persists post-2008."
+  - "Most seasonal anomalies have decayed since their original publication date (Lo's Adaptive Markets argument). Expect contribution Sharpe to be small-positive at best, possibly noise."
+  - "Adjacent-month boundaries (March 31 vs April 1) produce a 1→2 jump rather than smooth transition. Calendar-effects literature suggests the discontinuity IS meaningful (turn-of-month effect) but tests should be aware."
+last_revalidation: never
+ablation_history: []

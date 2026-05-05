@@ -1,0 +1,20 @@
+feature_id: earnings_proximity_5d
+source_url: https://en.wikipedia.org/wiki/Post-earnings-announcement_drift
+license: internal
+point_in_time_safe: true
+expected_behavior: |
+  Graded score 0..1 = max(0, 1 - business_days_to_next_earnings/5).
+  1.0 on announcement day, 0.8 one trading day prior, 0.0 once the
+  announcement is more than 5 trading days away. Captures pre-
+  announcement run-up and Post-Earnings Announcement Drift (PEAD)
+  windows. Reads ONLY scheduled announcement DATES, never the
+  actual EPS / surprise — the date is publicly known days in advance,
+  preserving point-in-time safety.
+known_failure_modes:
+  - "Scheduled dates can shift; the cached parquet may be stale by 1-3 days near announcement. Risk: feature reports proximity=0.6 when company actually moved announcement to next day. Mitigated by EarningsCalendar.freshness_check (14-day latency) but not eliminated."
+  - "yfinance backend (project memory `project_finnhub_free_tier_no_historical_2026_04_25`) caches ~25 quarters per ticker. For tickers cached early in the project, the cache may not include announcements beyond their last refresh date — feature returns None instead of valid score for distant-future dates."
+  - "Pre-announcement implied vol rises but realized return is direction-ambiguous. Score bundles 'before' and 'after' announcement into one numeric — meta-learner needs at least one orthogonal feature (signed surprise pct, IV change) to separate them. This feature alone is unlikely to ablate positively."
+  - "Tickers with NO earnings (ETFs, ADRs without yfinance cache) return None. Coverage: ~109 universe tickers have caches per the project memory; non-equity instruments return None throughout."
+  - "Ticker-level seasonality: tech mega-caps cluster on the same 4 weeks/year. Quarter-end rebalancing flow + earnings clustering = potentially-spurious correlation with `days_to_quarter_end` for some tickers; ablation should look at joint contribution."
+last_revalidation: never
+ablation_history: []
