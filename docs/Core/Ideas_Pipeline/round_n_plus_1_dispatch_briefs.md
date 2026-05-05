@@ -117,7 +117,8 @@ auto-discovers them.
 
 Acceptance:
 - 5/5 features under 50 LOC
-- Full Foundry test regression passes (existing 41 tests + your new ones)
+- Full Foundry test regression passes (existing test_feature_foundry.py
+  + test_discovery_regime_features.py + your new ones)
 - Twin generation succeeds for all 5
 - Cumulative 14/10 — substrate is validated past the original goal
 
