@@ -972,6 +972,46 @@ class ModeController:
         except Exception:
             pass
 
+        # --- Decision Diary: structured measurement_run record ---
+        # Append-only JSONL audit of every backtest. Wrapped in try/except
+        # because a diary failure must NEVER fail a backtest.
+        try:
+            from core.observability import append_entry, DecisionType
+            sharpe_val = summary.get("sharpe") or summary.get("sharpe_ratio")
+            cagr_val = summary.get("cagr") or summary.get("CAGR")
+            mdd_val = summary.get("max_drawdown") or summary.get("MDD")
+            what = (
+                f"backtest mode={mode} {start}..{end} "
+                f"tickers={len(tickers)} edges={len(loaded_edges)}"
+            )
+            # Truncate defensively to fit the ≤200-char rule.
+            what = what[:200]
+            extra: Dict[str, Any] = {
+                "sharpe": sharpe_val,
+                "cagr": cagr_val,
+                "max_drawdown": mdd_val,
+                "n_tickers": len(tickers),
+                "n_edges_loaded": len(loaded_edges),
+                "mode": mode,
+                "start": start,
+                "end": end,
+                "no_governor": bool(no_governor),
+                "discover": bool(discover),
+            }
+            append_entry(
+                decision_type=DecisionType.MEASUREMENT_RUN,
+                what_changed=what,
+                expected_impact=None,
+                actual_impact=None,
+                rationale_link=None,
+                extra=extra,
+                diary_path=self.root / "data" / "governor" / "decision_diary.jsonl",
+            )
+        except Exception as e:
+            # WARN-level only — never crash a backtest because the diary
+            # could not be written.
+            print(f"[DECISION_DIARY][WARN] Could not append measurement_run: {e}")
+
         return summary
 
     def _run_discovery_cycle(self, data_map: Dict[str, pd.DataFrame], regime_detector: RegimeDetector) -> None:

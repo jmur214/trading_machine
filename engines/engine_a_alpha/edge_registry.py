@@ -7,6 +7,19 @@ from typing import Any, Dict, List, Optional
 import yaml
 
 
+# Closed vocabulary for `EdgeSpec.failure_reason`. Keep narrow on purpose;
+# adding members is a deliberate decision (downstream tooling switches on
+# this set). New reasons should be added with a memory-link rationale.
+VALID_FAILURE_REASONS: frozenset = frozenset({
+    "regime_conditional",   # signal real but only fires in some regimes
+    "universe_too_small",   # cross-sectional work below stat threshold
+    "data_quality",         # source-side issue (stale, sparse, biased)
+    "overfit",              # in-sample win, OOS collapse
+    "cost_dominated",       # alpha exists pre-cost, gone post-cost
+    "other",                # explicit unknown — better than null
+})
+
+
 @dataclass
 class EdgeSpec:
     edge_id: str
@@ -40,6 +53,18 @@ class EdgeSpec:
     #   "gate"       → tier=context edges modify other edges' weights
     # Default "input" matches default tier="feature".
     combination_role: str = "input"  # "standalone" | "input" | "gate"
+    # ----------------------- Edge graveyard tags ----------------------- #
+    # Optional structured tagging for failed edges (status="failed"). Both
+    # fields are nullable and ignored on round-trip when None, so legacy
+    # registries without them parse identically. See
+    # docs/Audit/ws_j_cross_cutting_trio.md for the closed vocabulary.
+    #   failure_reason ∈ {"regime_conditional", "universe_too_small",
+    #                     "data_quality", "overfit", "cost_dominated", "other"}
+    failure_reason: Optional[str] = None
+    # edge_id of a replacement edge, or None if no replacement exists.
+    # Tooling later traces `superseded_by` chains to surface "what should I
+    # use instead?" without requiring readers to grep memory files.
+    superseded_by: Optional[str] = None
     # Catch-all for fields the registry doesn't model first-class (e.g.,
     # `reclassified_to`, `reclassified_on`, `reclassification_note` added
     # 2026-05-02 for the macro→regime-input reclassification audit). Loaded
@@ -79,7 +104,7 @@ class EdgeRegistry:
             known_keys = {
                 "edge_id", "category", "module", "version", "params",
                 "status", "regime_gate", "tier", "tier_last_updated",
-                "combination_role",
+                "combination_role", "failure_reason", "superseded_by",
             }
             for row in data.get("edges", []):
                 extra = {k: v for k, v in row.items() if k not in known_keys}
@@ -94,6 +119,8 @@ class EdgeRegistry:
                     tier=row.get("tier", "feature"),
                     tier_last_updated=row.get("tier_last_updated"),
                     combination_role=row.get("combination_role", "input"),
+                    failure_reason=row.get("failure_reason"),
+                    superseded_by=row.get("superseded_by"),
                     extra=extra or None,
                 )
                 specs[spec.edge_id] = spec
@@ -124,6 +151,12 @@ class EdgeRegistry:
             if s.combination_role and s.combination_role != "input":
                 # Only emit when non-default to keep the YAML clean.
                 row["combination_role"] = s.combination_role
+            # Edge-graveyard tags: only emit when non-None so legacy
+            # entries without these fields don't gain spurious nulls.
+            if s.failure_reason is not None:
+                row["failure_reason"] = s.failure_reason
+            if s.superseded_by is not None:
+                row["superseded_by"] = s.superseded_by
             # Round-trip any non-modeled fields verbatim (e.g. audit tags).
             if s.extra:
                 for k, v in s.extra.items():
@@ -141,6 +174,53 @@ class EdgeRegistry:
         if edge_id in self._specs:
             self._specs[edge_id].status = status
             self._save()
+
+    def set_failure_metadata(
+        self,
+        edge_id: str,
+        failure_reason: Optional[str] = None,
+        superseded_by: Optional[str] = None,
+    ) -> None:
+        """Tag a failed edge with structured graveyard metadata.
+
+        Validates ``failure_reason`` against ``VALID_FAILURE_REASONS``.
+        ``superseded_by`` is a free-form edge_id reference; if provided
+        and non-empty, it must match a known edge to catch typos. Pass
+        ``None`` for either field to leave it unchanged on the existing
+        spec, or pass an explicit empty-string sentinel via ``""`` to
+        clear it (rare — typically only when re-tagging).
+
+        Does not mutate ``status``: callers should use the existing
+        ``set_status(edge_id, "failed")`` first if needed.
+        """
+        if edge_id not in self._specs:
+            raise KeyError(f"unknown edge_id: {edge_id!r}")
+        spec = self._specs[edge_id]
+        if failure_reason is not None:
+            if failure_reason == "":
+                spec.failure_reason = None
+            else:
+                if failure_reason not in VALID_FAILURE_REASONS:
+                    raise ValueError(
+                        f"failure_reason {failure_reason!r} not in "
+                        f"{sorted(VALID_FAILURE_REASONS)}"
+                    )
+                spec.failure_reason = failure_reason
+        if superseded_by is not None:
+            if superseded_by == "":
+                spec.superseded_by = None
+            else:
+                if superseded_by not in self._specs:
+                    raise ValueError(
+                        f"superseded_by {superseded_by!r} is not a "
+                        f"registered edge_id"
+                    )
+                if superseded_by == edge_id:
+                    raise ValueError(
+                        f"edge cannot supersede itself: {edge_id!r}"
+                    )
+                spec.superseded_by = superseded_by
+        self._save()
 
     def list(self, status: Optional[str] = None,
              statuses: Optional[List[str]] = None) -> List[EdgeSpec]:

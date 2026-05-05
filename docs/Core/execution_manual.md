@@ -407,6 +407,22 @@ rm -rf data/research/*
 rm -rf data/governor/*
 ```
 
+### OBSERVABILITY (WS-J cross-cutting)
+```bash
+# One-time edge-graveyard tagging migration. Idempotent — running
+# twice produces the same on-disk state. Tags failed/marked-failed
+# canonical edges with structured `failure_reason` per project memory.
+python -m scripts.migrate_edge_graveyard_tags
+python -m scripts.migrate_edge_graveyard_tags --dry-run
+python -m scripts.migrate_edge_graveyard_tags \
+    --registry-path data/governor/edges.yml
+
+# Read decision diary entries (from a quick Python snippet — no
+# dedicated CLI yet because the diary is small enough to grep):
+python -c "from core.observability import read_entries; \
+    [print(e) for e in read_entries()]"
+```
+
 ---
 
 ### DEPRECATED COMMANDS
