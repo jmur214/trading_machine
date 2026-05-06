@@ -22,12 +22,23 @@
 >
 > **REVISED unblock criteria** (much higher bar — multi-month, not
 > weeks):
-> 1. **HMM input panel rebuild** with leading features. First
->    candidates: VIX term structure (VIX9D / VIX / VIX3M slope —
->    already specced in `forward_stress_detector.py` but not in HMM
->    panel), IV skew (25Δ put / 25Δ call), put/call ratio, earnings-
->    revision dispersion. Validate AUC > 0.55 on 20d-fwd drawdowns
->    via `scripts/validate_regime_signals.py` (reusable).
+> 1. **HMM input panel rebuild** with leading features. ~~First
+>    candidates: VIX term structure~~ — VIX term structure FALSIFIED
+>    on 2026-05-06 (3 independent measurements agree it's coincident
+>    across the entire 9d-to-6M curve; anti-predictive at canonical
+>    -5% threshold). CBOE P/C historical UNOBTAINABLE in 2026 (every
+>    free endpoint blocked). Remaining candidates:
+>    (a) **Minimal-HMM on existing FRED features only**
+>        (yield_curve_spread, credit_spread_baa_aaa, dollar_ret_63d,
+>        spy_vol_20d — those carry slice-1's 78-day OOS lead).
+>        Highest-ROI next step, no new data integration needed.
+>    (b) IV skew (25Δ put / 25Δ call) via Schwab API — GATED on
+>        historical-options-chain verification per the dev review
+>        (`docs/Sessions/Other-dev-opinion/5-5-26_schwab-plan-reflection.md`).
+>        If Schwab doesn't expose historical chains, IV skew is
+>        forward-collection-deferred 6-12 months OR a paid-provider
+>        decision.
+>    (c) Earnings-revision dispersion via existing fundamentals data.
 > 2. **THEN scope Engine B integration** after the input panel is
 >    empirically predictive — propose-first per CLAUDE.md.
 > 3. **THEN Path C overlay** at `scripts/path_c_overlays.py` becomes
@@ -237,3 +248,22 @@ These are **investigation tasks, not dispatched tasks** for this round. The user
 ## Single-paragraph TL;DR
 
 **5 agents in parallel this round: gauntlet architectural fix, Feature Foundry skeleton, Engine C HRP slice, Engine E HMM slice, cost completeness. After this round, re-run 2025 OOS under harness to test the Foundation Gate. If pass → unlock the rest of the 10-workstream plan in tiered parallel waves. If fail → pre-committed kill thesis kicks in, structural review. The reviewer's most emphatic point — "build infrastructure first, then features" — is captured by putting Foundry in this round; the engine-gap finding (C and E are biggest) is captured by putting both engines' first slices in this round. After Foundation, the path is parallel-track aggressive but discipline-gated. Real-money deployment no earlier than ~12 months out, probably mid-late Year 2.**
+
+## V/Q/A FUNDAMENTALS EDGES STATUS — 2026-05-07
+
+The 6 V/Q/A edges (`value_earnings_yield_v1`, `value_book_to_market_v1`, `quality_roic_v1`, `quality_gross_profitability_v1`, `accruals_inv_sloan_v1`, `accruals_inv_asset_growth_v1`) shipped 2026-05-06. Three sequential fixes:
+
+1. **2026-05-06 morning** — V/Q/A merged with default config. 2021 single-rep Sharpe 1.155 vs baseline 1.666 = **-0.51 drag**. Code-health agent surfaced 3 HIGH bugs (ROIC distressed-firm inflation, helper bare-except, auto-register exception swallowing).
+
+2. **2026-05-06 PM** — bug fixes shipped + state-transition pattern (no daily over-trading). Trades 7057 → 538 (-92%). But Sharpe dropped to **0.592** = -1.07 drag. The over-trading was masking integration mismatch.
+
+3. **2026-05-07** — sustained-score fix shipped. Edges emit `sustained_score=0.3` on held positions instead of 0.0, keeping their position-defending vote alive. **2021 Sharpe 1.607 vs baseline 1.666 = -0.06 drag** (within noise band). Integration-mismatch hypothesis confirmed.
+
+**Current status:** active in `data/governor/edges.yml` with sustained-score logic. Smoke verified on 2021 only.
+
+**Required before promoting default-on for production / multi-year measurement:**
+- 2022 bear-regime smoke as the diagnostic test (single-year fail/pass)
+- If 2022 passes: full 2021-2025 multi-year × 3 reps
+- Grid-search on `sustained_score` parameter (0.0 / 0.2 / 0.3 / 0.5) — current 0.3 is a starting heuristic, not validated
+
+**Honest note:** 16 names per top quintile is above the 8-name disaster threshold (see `project_factor_edge_first_alpha_2026_04_24`) but below the ≥200 academic convention. Per-edge OOS walk-forward required before promotion past `feature` tier.
