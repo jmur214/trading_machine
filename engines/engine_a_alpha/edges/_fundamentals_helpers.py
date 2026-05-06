@@ -29,10 +29,37 @@ PIT discipline:
 """
 from __future__ import annotations
 
-from typing import Callable, Dict, Optional
+import logging
+from typing import Any, Callable, Dict, Optional, Set
 
 import numpy as np
 import pandas as pd
+
+_LOG = logging.getLogger(__name__)
+
+
+# Programmer-error exceptions that MUST propagate from inside score functions.
+# Per memory `project_gauntlet_consolidated_fix_2026_05_01`, swallowing these
+# behind a bare-except masks bugs as "missing data". The score_fn callable's
+# legitimate "data missing" channel is `return None`, not raising.
+_PROGRAMMER_ERRORS: tuple = (
+    AttributeError,   # method on None, missing attr
+    NameError,        # missing import
+    ImportError,      # broken import
+    SyntaxError,      # build-time programmer error reaching runtime
+    AssertionError,   # explicit guard rail violation
+)
+
+# Legitimate runtime exceptions that score_fn might raise on a sparse SimFin
+# slice or odd panel shape. These are still suppressed (treated as
+# "ticker has no signal") but logged at DEBUG so they surface during audits.
+_DATA_MISSING_ERRORS: tuple = (
+    KeyError,
+    IndexError,
+    ValueError,
+    ZeroDivisionError,
+    TypeError,        # e.g. None * float in arithmetic on missing columns
+)
 
 
 # ---------------------------------------------------------------------------
@@ -167,8 +194,10 @@ def top_quintile_long_signals(
     top_quantile: float,
     long_score: float,
     min_universe: int,
+    state: Optional[Dict[str, Any]] = None,
+    edge_id: str = "",
 ) -> Dict[str, float]:
-    """Generic top-quintile cross-sectional long-only edge.
+    """Generic top-quintile cross-sectional long-only edge with state-transition emission.
 
     Parameters
     ----------
@@ -180,17 +209,49 @@ def top_quintile_long_signals(
         Callable ``(panel, ticker, asof_ts, ticker_df) -> Optional[float]``.
         Returns the per-ticker raw factor score, or None if data is missing.
         Higher score = more attractive (top of distribution gets the long).
+        ``return None`` is the contract for missing data; raising
+        AttributeError / NameError / ImportError will propagate (programmer
+        errors must surface, not silently degrade).
     top_quantile
         Fraction of present-data names that get the long signal (e.g. 0.20).
     long_score
-        Magnitude emitted for selected names.
+        Magnitude emitted for selected names ON ENTRY.
     min_universe
         If fewer than this many tickers have a usable score, abstain entirely.
+    state
+        Optional mutable dict for caching the prior basket across calls.
+        If provided, the helper emits ``long_score`` ONLY for tickers that
+        CROSSED INTO the top quintile since the last call (state-transition
+        pattern). Sustained members are not re-signaled, eliminating the
+        daily over-trading produced when long_score=1.0 fires every bar
+        against quarterly-cadence fundamentals data. ``None`` reverts to
+        legacy steady-state emission (every basket member gets long_score
+        every call) — kept as a fallback for tests that don't want
+        to thread state through.
+    edge_id
+        Optional label used in DEBUG logs identifying which edge swallowed
+        a data-missing exception or applied a state transition.
 
     Returns
     -------
-    ``{ticker: score}`` for every ticker in ``data_map``. Selected names get
-    ``long_score``; everyone else (including missing-data names) gets 0.0.
+    ``{ticker: score}`` for every ticker in ``data_map``.
+
+    State-transition semantics (when ``state`` is provided):
+      - Tickers crossing INTO the top quintile this call: ``long_score``
+      - Tickers crossing OUT of the top quintile this call: 0.0
+      - Sustained members AND non-members: 0.0
+      The state dict is mutated in place: ``state["last_basket"]`` is
+      replaced with the new basket frozenset.
+
+    Legacy semantics (when ``state`` is None):
+      - Every member of the current top quintile: ``long_score``
+      - Everyone else: 0.0
+
+    Exception handling (per Bug #2 fix 2026-05-06):
+      - Programmer errors (AttributeError, NameError, ImportError, etc.)
+        from inside score_fn propagate.
+      - Data-missing errors (KeyError, ValueError, TypeError, etc.) are
+        suppressed and logged at DEBUG so future bugs surface.
     """
     panel = get_panel()
     asof_ts = pd.Timestamp(now)
@@ -204,7 +265,22 @@ def top_quintile_long_signals(
     for ticker, df in data_map.items():
         try:
             raw = score_fn(panel, ticker, asof_ts, df)
-        except Exception:
+        except _PROGRAMMER_ERRORS:
+            # Programmer error — let it propagate so the bug surfaces.
+            # Same lesson as the gauntlet-consolidated-fix 2026-05-02
+            # (memory project_gauntlet_consolidated_fix_2026_05_01).
+            raise
+        except _DATA_MISSING_ERRORS as exc:
+            # Legitimate runtime data-shape exception — log so audits can
+            # surface unexpected swallowing, then treat as missing data.
+            _LOG.debug(
+                "[%s] score_fn dropped %s @ %s: %s: %s",
+                edge_id or "fundamentals_helpers",
+                ticker,
+                asof_ts.date() if hasattr(asof_ts, "date") else asof_ts,
+                type(exc).__name__,
+                exc,
+            )
             raw = None
         if raw is None:
             continue
@@ -213,11 +289,60 @@ def top_quintile_long_signals(
         raw_scores[ticker] = float(raw)
 
     if len(raw_scores) < min_universe:
+        # Below abstention floor — also clear the state cache so a recovery
+        # of coverage doesn't immediately re-emit the entire basket as
+        # "transitions". Without this, a temporary panel-coverage gap would
+        # produce a spurious entry burst on the recovery bar.
+        if state is not None:
+            state["last_basket"] = frozenset()
         return {t: 0.0 for t in data_map}
 
     # Sort descending — highest score = top of distribution
     sorted_tickers = sorted(raw_scores.keys(), key=lambda t: raw_scores[t], reverse=True)
     n_long = max(1, int(round(len(sorted_tickers) * top_quantile)))
-    selected = set(sorted_tickers[:n_long])
+    new_basket: Set[str] = set(sorted_tickers[:n_long])
 
-    return {t: (long_score if t in selected else 0.0) for t in data_map}
+    if state is None:
+        # Legacy steady-state emission. Reserved for tests / callers that
+        # don't thread state. Reproduces the pre-fix daily over-trading
+        # behavior — do not use in production edges.
+        return {t: (long_score if t in new_basket else 0.0) for t in data_map}
+
+    # State-transition pattern (Bug #4 fix 2026-05-06).
+    # Quarterly-cadence fundamentals data with daily-cadence bar invocation
+    # would emit long_score=1.0 on the same 16 names every day under the
+    # legacy semantics, and the per-ticker aggregator + Engine B
+    # rebalance_within_tolerance check do not fully suppress the resulting
+    # daily entry-rebalances (847 trades/yr observed on 16-name baskets in
+    # 2021 single-year smoke). Emit signals only on basket transitions.
+    prev_basket: Set[str] = set(state.get("last_basket", frozenset()))
+    state["last_basket"] = frozenset(new_basket)
+
+    entries = new_basket - prev_basket
+    exits = prev_basket - new_basket
+
+    out: Dict[str, float] = {}
+    for ticker in data_map:
+        if ticker in entries:
+            out[ticker] = long_score
+        elif ticker in exits:
+            # Explicit exit signal — fade to zero so the per-ticker
+            # aggregator stops boosting a no-longer-quintile ticker.
+            out[ticker] = 0.0
+        else:
+            # Sustained members and non-members alike get 0.0. Sustained
+            # members rely on the per-ticker aggregator's other edges +
+            # Engine B's existing-position machinery to remain held.
+            out[ticker] = 0.0
+
+    if entries or exits:
+        _LOG.debug(
+            "[%s] basket transition @ %s: +%d entries, -%d exits, %d sustained",
+            edge_id or "fundamentals_helpers",
+            asof_ts.date() if hasattr(asof_ts, "date") else asof_ts,
+            len(entries),
+            len(exits),
+            len(new_basket & prev_basket),
+        )
+
+    return out

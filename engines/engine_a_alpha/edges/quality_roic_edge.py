@@ -67,6 +67,8 @@ class QualityROICEdge(EdgeBase):
         self.params = dict(self.DEFAULT_PARAMS)
         if params:
             self.params.update(params)
+        # Per-instance basket-transition cache (Bug #4 fix 2026-05-06).
+        self._basket_state: dict = {}
 
     @classmethod
     def sample_params(cls) -> dict:
@@ -81,10 +83,18 @@ class QualityROICEdge(EdgeBase):
             equity = latest_value(panel, ticker, asof_ts, "total_equity")
             lt_debt = latest_value(panel, ticker, asof_ts, "long_term_debt")
             if ttm_oi is None or equity is None:
-                # equity is the denominator's required component; ltd may be missing
                 return None
 
-            invested_capital = (equity if equity > 0 else 0.0) + \
+            # Drop distressed firms (non-positive equity). Without this guard,
+            # the silent zero-equity fallback would compute ROIC = NOPAT /
+            # lt_debt — which can score a bankrupt-leverage firm into the top
+            # quintile, the OPPOSITE of the academic Quality factor
+            # (Asness-Frazzini-Pedersen "Quality Minus Junk" 2019). Mirrors
+            # the explicit drop in value_book_to_market_edge.py:76-78.
+            if equity <= 0:
+                return None
+
+            invested_capital = equity + \
                                (lt_debt if (lt_debt is not None and lt_debt > 0) else 0.0)
             if invested_capital <= 0:
                 return None
@@ -97,10 +107,18 @@ class QualityROICEdge(EdgeBase):
             top_quantile=float(self.params.get("top_quantile", 0.20)),
             long_score=float(self.params.get("long_score", 1.0)),
             min_universe=int(self.params.get("min_universe", 30)),
+            state=self._basket_state,
+            edge_id=self.EDGE_ID,
         )
 
 
+# Bug #3 fix 2026-05-06: narrow auto-register exception handling. See
+# value_earnings_yield_edge.py for full rationale.
+import logging  # noqa: E402
+
 from engines.engine_a_alpha.edge_registry import EdgeRegistry, EdgeSpec  # noqa: E402
+
+_REG_LOG = logging.getLogger(__name__)
 
 try:
     _reg = EdgeRegistry()
@@ -112,5 +130,8 @@ try:
         params=dict(QualityROICEdge.DEFAULT_PARAMS),
         status="active",
     ))
-except Exception:
-    pass
+except (FileNotFoundError, PermissionError, OSError) as _exc:
+    _REG_LOG.warning(
+        "%s auto-register skipped: %s: %s",
+        QualityROICEdge.EDGE_ID, type(_exc).__name__, _exc,
+    )

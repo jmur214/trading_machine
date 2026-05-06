@@ -657,15 +657,19 @@ def compute_composite_score_real(
 
         earnings_yield = ttm_ni / market_cap
 
-        # ROIC denominator: use total invested capital ≈ equity + LT debt
-        # (SimFin doesn't expose Cash-and-Equivalents-net cleanly across
-        # all tickers; equity + LT-debt is the academic-friendly proxy).
-        invested_capital = (equity if equity and equity > 0 else 0.0) + \
-                           (lt_debt if lt_debt and lt_debt > 0 else 0.0)
-        if invested_capital <= 0:
+        # ROIC denominator: use total invested capital ≈ equity + LT debt.
+        # Mirror the negative-equity drop applied at lines 653-656 for B/M:
+        # silently treating equity as 0 lets a distressed firm compute
+        # ROIC = NOPAT / lt_debt — small denominator, inflated rank, top
+        # quintile attribution to the OPPOSITE of the academic Quality factor.
+        if equity is None or equity <= 0:
             roic = np.nan
         else:
-            roic = (ttm_oi * (1.0 - _ROIC_TAX_RATE)) / invested_capital
+            invested_capital = equity + (lt_debt if lt_debt and lt_debt > 0 else 0.0)
+            if invested_capital <= 0:
+                roic = np.nan
+            else:
+                roic = (ttm_oi * (1.0 - _ROIC_TAX_RATE)) / invested_capital
 
         gross_profitability = ttm_gp / assets
         inv_sloan_accruals = -sloan
