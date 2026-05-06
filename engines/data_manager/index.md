@@ -14,6 +14,7 @@
 | `macro_data.py` | FRED macro series fetch/cache. Cache at `data/macro/<SERIES_ID>.parquet`. Env: `FRED_API_KEY`. See "Macro data pipeline" below. |
 | `earnings_data.py` | Finnhub earnings calendar + EPS/revenue surprise fetch/cache. Cache at `data/earnings/<SYMBOL>_calendar.parquet`. Env: `FINNHUB_API_KEY`. See "Earnings data pipeline" below. |
 | `universe.py` | Survivorship-bias-aware S&P 500 historical membership loader (Wikipedia scrape). Cache at `data/universe/sp500_membership.parquet`. No API key required. See "Universe membership pipeline" below. |
+| `universe_resolver.py` | Backtest-time universe resolution. Bridges the membership loader and the orchestration layer's static-list contract via `resolve_universe(...)`. Cache-only, never hits the network. |
 | `fundamentals/loader.py` | Fundamentals loader helpers. |
 
 ## Macro data pipeline (`macro_data.py`)
@@ -95,11 +96,13 @@ layer mocked) plus one live integration test gated behind
 ## Universe membership pipeline (`universe.py`)
 
 Self-contained Wikipedia scraper for S&P 500 historical membership.
-**Not yet wired into any engine** — this is the survivorship-bias-aware
-data layer the strategic pivot doc lists as a hard prerequisite for any
-further factor-edge work (`momentum_factor_v1` failed in part because
-the 39-name universe wasn't broad enough to support cross-sectional
-selection). No API key required.
+**Wired into ModeController via `universe_resolver.resolve_universe`
+(2026-05-09).** The wiring is opt-in: default behavior remains the
+legacy static ticker list in `config/backtest_settings.json`. Setting
+`use_historical_universe: true` in that config (or passing
+`--use-historical-universe` to `scripts/run_multi_year`) swaps in the
+survivorship-aware annual-anchor union of constituents over the backtest
+window. No API key required.
 
 **Public API:**
 - `SP500MembershipLoader(cache_dir="data/universe")` — fetch + cache

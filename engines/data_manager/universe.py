@@ -526,6 +526,50 @@ def active_at(df: pd.DataFrame, as_of: str | pd.Timestamp) -> list[str]:
     return sorted(df.loc[mask, "ticker"].unique().tolist())
 
 
+def annual_anchor_dates(start: str | pd.Timestamp, end: str | pd.Timestamp) -> list[pd.Timestamp]:
+    """Return one anchor per calendar year in ``[start, end]``, on Jan 1.
+
+    Used by consumers that want a survivorship-aware union of constituents
+    across a multi-year window without hammering ``active_at`` on every
+    trading day.
+    """
+    start_ts = pd.Timestamp(start)
+    end_ts = pd.Timestamp(end)
+    if end_ts < start_ts:
+        return []
+    anchors = [pd.Timestamp(year=y, month=1, day=1)
+               for y in range(start_ts.year, end_ts.year + 1)]
+    return anchors
+
+
+def union_active_over_window(
+    df: pd.DataFrame,
+    start: str | pd.Timestamp,
+    end: str | pd.Timestamp,
+    anchor_dates: Optional[list[str | pd.Timestamp]] = None,
+) -> list[str]:
+    """Union of ``active_at`` results over a list of anchor dates.
+
+    The default ``anchor_dates`` is annual (one per calendar year in
+    ``[start, end]``) which matches the expected backtest cadence for
+    survivorship-aware factor work. Callers wanting finer granularity
+    (e.g. quarterly rebalance) can pass an explicit list.
+
+    Output is sorted for determinism — caller can rely on stable order
+    across runs and across machines.
+    """
+    if df.empty:
+        return []
+    if anchor_dates is None:
+        anchors = annual_anchor_dates(start, end)
+    else:
+        anchors = [pd.Timestamp(d) for d in anchor_dates]
+    union: set[str] = set()
+    for a in anchors:
+        union.update(active_at(df, a))
+    return sorted(union)
+
+
 def normalize_ticker(t: Optional[str]) -> str:
     """Trim, uppercase, and strip Wikipedia footnote markers like '[1]'.
 

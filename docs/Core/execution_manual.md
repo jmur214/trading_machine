@@ -90,6 +90,28 @@ PYTHONHASHSEED=0 python -m scripts.walk_forward_phase210 --years 2022 2023 2024
 
 ---
 
+### MULTI-YEAR FOUNDATION MEASUREMENT
+
+```bash
+# Default (legacy static-list universe):
+PYTHONHASHSEED=0 python -m scripts.run_multi_year \
+    --years 2021,2022,2023,2024,2025 --runs 3 \
+    --output docs/Measurements/<year-month>/multi_year_foundation_measurement.md
+
+# Survivorship-bias-aware universe (F6 wire, 2026-05-09):
+# Resolves S&P 500 historical membership union over the backtest window
+# instead of the 109-ticker static list in config/backtest_settings.json.
+# Requires data/universe/sp500_membership.parquet (run
+# `python -m scripts.fetch_universe --membership-only` first if absent).
+PYTHONHASHSEED=0 python -m scripts.run_multi_year \
+    --years 2021,2022,2023,2024,2025 --runs 3 \
+    --use-historical-universe \
+    --output docs/Measurements/<year-month>/multi_year_universe_aware.md \
+    --json-output docs/Measurements/<year-month>/multi_year_universe_aware.json
+```
+
+The `--use-historical-universe` flag wires `engines/data_manager/universe_resolver.py::resolve_universe` into `ModeController.run_backtest`. Behavior is opt-in (default false) — the static path is preserved for backward-compat with prior measurement campaigns.
+
 ### AUTONOMOUS MODE (THE "ONE BUTTON")
 Runs the full cycle: Data -> Hunt -> Navigate -> Trade
 ```bash

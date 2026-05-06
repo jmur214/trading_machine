@@ -722,6 +722,7 @@ class ModeController:
         discover: bool = False,
         override_capital: Optional[float] = None,
         log_per_ticker_scores: bool = False,
+        use_historical_universe: Optional[bool] = None,
     ) -> dict:
         """
         Full backtest orchestration with all features previously in run_backtest_logic().
@@ -770,6 +771,53 @@ class ModeController:
         tickers = self.cfg_bt.get("tickers", ["AAPL"])
         timeframe = self.cfg_bt["timeframe"]
         init_cap = float(self.cfg_bt.get("initial_capital", 100000.0))
+
+        # --- F6 universe-loader wire: optionally swap the static ticker
+        # list for the survivorship-bias-aware S&P 500 union over the
+        # backtest window. Default behavior is preserved (no flag, no
+        # config key, or flag=False → static list verbatim) so existing
+        # measurements remain reproducible. See
+        # `engines/data_manager/universe_resolver.py` for the resolver
+        # contract.
+        if use_historical_universe is None:
+            use_historical_universe = bool(
+                self.cfg_bt.get("use_historical_universe", False)
+            )
+        if use_historical_universe:
+            from engines.data_manager.universe_resolver import (
+                resolve_universe,
+                discover_cached_tickers,
+            )
+            cache_root = self.root / "data"
+            cached = discover_cached_tickers(cache_root, timeframe=timeframe)
+            essentials = self.cfg_bt.get(
+                "essential_tickers",
+                ["SPY", "QQQ", "IWM", "TLT", "GLD"],
+            )
+            anchor_override = self.cfg_bt.get("historical_universe_anchor_dates")
+            tickers, uni_info = resolve_universe(
+                static_tickers=tickers,
+                start=start,
+                end=end,
+                use_historical=True,
+                cache_dir=cache_root,
+                anchor_dates=anchor_override,
+                essential_tickers=essentials,
+                available_filter=cached or None,
+            )
+            print(
+                f"[RUN_BACKTEST] Universe resolver: mode={uni_info['mode']} "
+                f"static={uni_info['n_static']} → "
+                f"historical_union={uni_info['n_historical_union']} → "
+                f"after_essentials={uni_info['n_after_essentials']} → "
+                f"after_available_filter={uni_info['n_after_available_filter']} "
+                f"(anchors={len(uni_info['anchor_dates'])}, "
+                f"missing_from_cache={len(uni_info['missing_from_cache'])})"
+            )
+            if uni_info["fallback_reason"]:
+                print(
+                    f"[RUN_BACKTEST][WARN] Universe fallback: {uni_info['fallback_reason']}"
+                )
 
         # Update instance state so other helpers stay consistent
         self.start = start

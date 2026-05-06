@@ -153,5 +153,8 @@
     "long_term_min_days": 365,
     "wash_sale_window_days": 30,
     "carry_forward_losses": true
-  }
+  },
+  "use_historical_universe": false,
+  "historical_universe_anchor_dates": null,
+  "essential_tickers": ["SPY", "QQQ", "IWM", "TLT", "GLD"]
 }
