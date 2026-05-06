@@ -366,13 +366,13 @@ because the past week surfaced 2 Path C bugs in those families.
 
 Severity counts: HIGH 3 | MEDIUM 6 | LOW 4. Top-3 highest-impact below.
 
-### [HIGH] Negative-equity ROIC silently zeros the denominator — distressed firms inflate to top-quintile rank
+### [HIGH → RESOLVED 2026-05-06] Negative-equity ROIC silently zeros the denominator — distressed firms inflate to top-quintile rank
 - Category: silent-correctness / signal-quality bug
 - Files:
   - `engines/engine_a_alpha/edges/quality_roic_edge.py:87-88` (NEW edge, just shipped)
   - `scripts/path_c_synthetic_compounder.py:663-664` (Path C real-fundamentals composite)
 - First flagged: 2026-05-06
-- Status: not started
+- **Status: RESOLVED 2026-05-06.** Branch `vqa-edges-bugfixes` commit `6c9b4af`. Fix mirrors `value_book_to_market_edge`'s explicit `equity <= 0 → return None` in both `quality_roic_edge.compute_signals` and `path_c_synthetic_compounder.compute_composite_score_real`. Regression test `test_quality_roic_drops_negative_equity_ticker` synthesizes a negative-equity firm and asserts it is dropped from the cross-section before quintile selection. See audit `docs/Measurements/2026-05/vqa_edges_bugfix_2026_05_06.md`.
 - Description: ROIC denominator is computed as
   `invested_capital = (equity if equity > 0 else 0.0) + (lt_debt if lt_debt > 0 else 0.0)`.
   A firm with negative equity (deeply distressed) thus has its equity component
@@ -396,11 +396,11 @@ Severity counts: HIGH 3 | MEDIUM 6 | LOW 4. Top-3 highest-impact below.
   `tests/test_fundamentals_edges.py` with a synthetic negative-equity ticker
   asserting it is dropped from `quality_roic_v1`'s top-quintile.
 
-### [HIGH] `top_quintile_long_signals` swallows ALL exceptions inside the score function — every new V/Q/A edge inherits the silent-bug pattern
+### [HIGH → RESOLVED 2026-05-06] `top_quintile_long_signals` swallows ALL exceptions inside the score function — every new V/Q/A edge inherits the silent-bug pattern
 - Category: bare-except / silent failure
 - Files: `engines/engine_a_alpha/edges/_fundamentals_helpers.py:205-208`
 - First flagged: 2026-05-06
-- Status: not started
+- **Status: RESOLVED 2026-05-06.** Branch `vqa-edges-bugfixes` commit `6c9b4af`. The bare `except Exception` is replaced with two narrowed tuples — `_PROGRAMMER_ERRORS = (AttributeError, NameError, ImportError, SyntaxError, AssertionError)` re-raises so bugs surface, `_DATA_MISSING_ERRORS = (KeyError, IndexError, ValueError, ZeroDivisionError, TypeError)` is suppressed and DEBUG-logged with ticker + edge_id + exception type. Tests `test_helper_reraises_attribute_error_from_score_fn` and `test_helper_suppresses_value_error_from_score_fn` lock the contract. See audit `docs/Measurements/2026-05/vqa_edges_bugfix_2026_05_06.md`.
 - Description: The shared helper that all 6 new SimFin V/Q/A edges use has a
   bare `except Exception: raw = None` around the per-ticker score callable.
   Programmer errors in any score function — `TypeError` from a bad pandas
@@ -423,7 +423,7 @@ Severity counts: HIGH 3 | MEDIUM 6 | LOW 4. Top-3 highest-impact below.
   single change that has the largest downside-prevention surface across
   the 6 new edges.
 
-### [HIGH] All 6 new V/Q/A edge auto-register blocks swallow EdgeRegistry errors silently
+### [HIGH → RESOLVED 2026-05-06] All 6 new V/Q/A edge auto-register blocks swallow EdgeRegistry errors silently
 - Category: bare-except / silent-state / status-stomp risk
 - Files:
   - `engines/engine_a_alpha/edges/value_earnings_yield_edge.py:101-112`
@@ -433,7 +433,7 @@ Severity counts: HIGH 3 | MEDIUM 6 | LOW 4. Top-3 highest-impact below.
   - `engines/engine_a_alpha/edges/accruals_inv_sloan_edge.py:100-111`
   - `engines/engine_a_alpha/edges/accruals_inv_asset_growth_edge.py:93-104`
 - First flagged: 2026-05-06
-- Status: not started
+- **Status: RESOLVED 2026-05-06.** Branch `vqa-edges-bugfixes` commit `6c9b4af`. All 6 auto-register blocks narrowed to `except (FileNotFoundError, PermissionError, OSError) as exc` with WARNING-level log. A future `EdgeSpec` schema-drift `TypeError` or registry-write `RuntimeError` now propagates so the AlphaEngine never loads an edge whose spec failed to install. Tests `test_auto_register_propagates_programmer_errors` (TypeError raised by mocked `ensure()` propagates on importlib.reload) and `test_auto_register_swallows_io_error` (FileNotFoundError degrades gracefully + WARNING log captured) lock the contract. See audit `docs/Measurements/2026-05/vqa_edges_bugfix_2026_05_06.md`.
 - Description: Every new edge ends with the same pattern:
   ```python
   try:
