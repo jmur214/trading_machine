@@ -290,6 +290,21 @@ class RobustnessTester:
 
         sharpes = np.array(sharpes)
 
+        # Real-data Sharpe — needed to locate the actual result inside the
+        # synthetic null distribution. If strategy_func chokes on the real
+        # data we fall back to the median of the null (50th percentile).
+        try:
+            actual_res = strategy_func({"SYTH": df})
+            actual_sharpe = float(actual_res.get("sharpe", 0.0))
+            if len(sharpes) > 0:
+                original_sharpe_percentile = float(
+                    (sharpes < actual_sharpe).mean() * 100.0
+                )
+            else:
+                original_sharpe_percentile = 50.0
+        except Exception:
+            original_sharpe_percentile = 50.0
+
         # PBO Logic (Simplified variant)
         # Probability that the strategy fails in random market variants
         # Survival Rate
@@ -298,9 +313,9 @@ class RobustnessTester:
 
         return {
             "n_paths": n_paths,
-            "survival_rate": float(survival_rate), # Target > 0.9
+            "survival_rate": float(survival_rate),  # Target > 0.9
             "avg_synthetic_sharpe": float(avg_sharpe),
-            "original_sharpe_percentile": 0.0 # TODO: Compare real result to these distribution
+            "original_sharpe_percentile": original_sharpe_percentile,
         }
 
     def calculate_pbo_returns_stream(
