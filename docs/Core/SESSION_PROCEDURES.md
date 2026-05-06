@@ -382,3 +382,87 @@ move stale measurement folders to `Archive/measurements/<YYYY-MM>/`.
 If you can't decide where something goes, ask: **"will this still be 
 true in 90 days?"** If yes → State or Core. If no → Measurements 
 (dated, frozen).
+
+---
+
+## Trade-log cleanup procedure
+
+`data/trade_logs/<uuid>/` accumulates fast — every backtest writes a 
+new dir (8 KB to 140+ MB depending on universe + horizon). Several 
+hundred can pile up in 1-2 weeks of intensive development. They are 
+gitignored and CLAUDE.md describes them as "regenerable output," 
+**but this is only true in spirit** — old runs can't be reproduced 
+under current code, only re-derived as fresh runs with current code.
+
+### Why naïve mass-delete is unsafe
+
+Some scripts and audit docs **hardcode specific run UUIDs** as their 
+input or as cited reference data:
+
+- `scripts/per_edge_per_year_attribution.py` hardcodes `ANCHOR_UUID` 
+  and `OOS_UUID` as input data sources
+- `scripts/analyze_oos_2025.py` hardcodes 3 UUIDs in its module 
+  docstring + uses them as input
+- `docs/Measurements/<YYYY-MM>/multi_year_foundation_measurement.json` 
+  cites 15 specific run_ids as the canonical Foundation Gate baseline
+- Many audit docs cite run_ids in their "reproduce" sections
+
+Deleting any of these breaks the script or makes the audit 
+non-reproducible. A blanket "delete everything older than N days" is 
+NOT safe.
+
+### The safe procedure
+
+Run a reference scan first, then delete only the unreferenced.
+
+```bash
+# 1. Find every UUID hardcoded in code/docs
+grep -rEn "[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}" \
+  --include="*.py" --include="*.md" --include="*.json" --include="*.yml" \
+  scripts/ engines/ orchestration/ core/ docs/ \
+  | grep -vE "\.venv|worktrees|/Archive/" \
+  | grep -oE "[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}" \
+  | sort -u > /tmp/referenced_uuids.txt
+
+# 2. List every UUID-named dir on disk
+ls -1 data/trade_logs/ \
+  | grep -E "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$" \
+  > /tmp/all_dirs.txt
+
+# 3. Diff: dirs on disk that are NOT referenced anywhere
+comm -23 <(sort /tmp/all_dirs.txt) <(sort /tmp/referenced_uuids.txt) \
+  > /tmp/unreferenced_dirs.txt
+
+# 4. (Always confirm with user before deleting — `rm` is on the deny list)
+while IFS= read -r uuid; do
+  rm -rf "data/trade_logs/$uuid"
+done < /tmp/unreferenced_dirs.txt
+```
+
+### When to run cleanup
+
+- Before a long-running measurement when `df -h` shows under 2 GB free
+- As an end-of-session sweep if disk has crossed 90% capacity
+- After a major refactor where many old runs are no longer relevant
+- **Never as a routine cron** — too risky without a human eye on what's about to go
+
+### Memory-of-cleanup discipline
+
+Before cleanup, snapshot the deletion list to `/tmp/cleanup_<YYYY_MM_DD>.txt` 
+so the post-cleanup state is auditable for at least the current session. 
+Verify after running:
+- All referenced UUIDs still on disk
+- Number of dead refs (referenced UUIDs missing) — pre-existing dead 
+  refs are fine; new ones mean the cleanup script malfunctioned
+
+### Why "the system might lose context" is real
+
+The system's "memory of what worked / what didn't" lives in:
+1. `data/governor/` files (mutated end-of-run, NOT in trade_logs)
+2. Audit docs in `docs/Measurements/` and `docs/State/`
+3. Memory files in `.claude/projects/.../memory/`
+4. Hardcoded run_ids in scripts that consume specific runs as input
+
+Categories 1-3 are independent of trade_logs cleanup. Category 4 IS 
+the load-bearing constraint — that's why the reference-scan procedure 
+above exists.

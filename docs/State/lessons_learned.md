@@ -532,3 +532,25 @@ Whenever a significant bug is fixed, a new operational paradigm is adopted, or a
 
   **Files:** `engines/engine_a_alpha/edge_registry.py` (fix in `ensure()`), memory `project_registry_status_stomp_bug_2026_04_25.md`. The 2 auto-register sites (`momentum_edge.py:61`, `momentum_factor_edge.py:113`) are now harmless — they register-if-new, no-op for existing.
 
+
+---
+
+## 2026-05-06 — Trade-log "regenerable" claim is true in spirit, false in practice
+
+**Context:** Disk filled to 100% during active development; needed to clean up `data/trade_logs/` before a 70-min multi-year measurement could run.
+
+**The trap:** CLAUDE.md describes trade_logs as "regenerable output, not source." A naïve reading is "delete freely." A sample test run with `find -mtime +2 | xargs rm -rf` would have deleted **22 dirs that scripts and audit docs explicitly reference by hardcoded UUID** — silently breaking `per_edge_per_year_attribution.py`, `analyze_oos_2025.py`, the multi-year foundation measurement audit, and several Path C audit docs.
+
+**The actual rule:** trade_logs are regenerable IN SPIRIT (you can re-run a backtest and get fresh logs) but NOT regenerable AS HISTORICAL ARTIFACTS (the run that produced specific trades.csv on April 24 used April-era code; today's code can't recreate it). And several scripts/docs **hardcode specific run UUIDs** as their input or cited reference data — those refs go dead silently if the UUID dir is deleted.
+
+**The procedure (now codified in `docs/Core/SESSION_PROCEDURES.md` § "Trade-log cleanup"):**
+1. Grep for every UUID-format string across `scripts/ engines/ orchestration/ core/ docs/`
+2. Subtract that referenced set from the on-disk set
+3. Delete only the unreferenced
+4. Verify all referenced UUIDs still on disk after cleanup
+
+**Today's cleanup result:** 364 total → 76 referenced (kept) + 288 unreferenced (deleted) = 3 GB freed.
+
+**Why the user's instinct mattered:** when I proposed mass-deleting old runs, the user asked "would the system lose context for what worked vs didn't work?" The answer turned out to be partially yes — not because the system "learns from old trade_logs" (it doesn't, governor state mutates separately), but because **scripts and docs treat specific runs as data sources by UUID**. That category-4 dependency is invisible to size/age heuristics; only a reference scan finds it.
+
+**Files:** `docs/Core/SESSION_PROCEDURES.md` § "Trade-log cleanup procedure" has the full grep + diff + delete workflow.
