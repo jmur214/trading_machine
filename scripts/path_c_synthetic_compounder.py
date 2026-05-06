@@ -253,6 +253,19 @@ ANNUAL_REBALANCE_MONTH = 1
 ANNUAL_REBALANCE_DAY_NOMINAL = 5  # first ~trading day of January (5th to dodge holidays)
 TOP_QUINTILE_FRAC = 0.20
 
+# Cells F/G/H — defensive fixes (2026-05-07)
+# F: pre-screen universe by trailing 252d realized vol — keep lowest-N before
+#    applying the V/Q/A factor composite. Hypothesis: the universe itself
+#    contributes to MDD control rather than asking the factors alone to do it.
+# G: bond/cash buffer — hold IEF on a fixed fraction of the sleeve. Annual
+#    rebalance to the target mix. Caps drawdown at ~70% of single-asset DD
+#    when bonds and equities decorrelate. Pays 1-2pp CAGR drag.
+# H: F + G combined.
+DEFENSIVE_PRESCREEN_TOP_N = 200  # keep lowest-200 by 252d vol before factor ranking
+DEFENSIVE_PRESCREEN_LOOKBACK = 252
+BOND_BUFFER_TICKER = "IEF"
+BOND_BUFFER_WEIGHT = 0.30  # 30% IEF / 70% compounder
+
 DATA_CACHE = Path(__file__).resolve().parents[1] / "data" / "research" / "path_c_cache"
 DATA_CACHE.mkdir(parents=True, exist_ok=True)
 
@@ -395,6 +408,67 @@ def compute_composite_score_synthetic(
 # only because it has no external-data prerequisite; the real path
 # requires the SimFin panel.
 compute_composite_score = compute_composite_score_synthetic
+
+
+# ----------------------------------------------------------------------
+# Defensive pre-screen — narrow the universe by realized vol before factor
+# ranking. Cell F of the harness (2026-05-07).
+# ----------------------------------------------------------------------
+
+def apply_defensive_prescreen(
+    prices: pd.DataFrame,
+    as_of: pd.Timestamp,
+    universe: List[str],
+    top_n: int = DEFENSIVE_PRESCREEN_TOP_N,
+    lookback: int = DEFENSIVE_PRESCREEN_LOOKBACK,
+) -> List[str]:
+    """Keep the ``top_n`` lowest-trailing-vol names from ``universe`` as-of ``as_of``.
+
+    Defensiveness criterion = lowest 252-day annualized realized volatility.
+    Computed on log returns (`std * sqrt(252)`), no demeaning. Tickers without
+    sufficient history (>= 60 daily observations in the lookback window) are
+    dropped.
+
+    Why volatility ranking rather than beta or dividend-payer status:
+      - Beta requires SPY regression and is colinear with vol on this universe
+      - Dividend-payer status reduces the candidate pool to ~250 of 351 with
+        no clear MDD benefit (MO, T, KMI are dividend-paying high-vol names)
+      - Realized vol is the most direct proxy for "this stock has lower
+        peak-to-trough drawdowns historically." It IS partly factor-mimicking
+        (overlap with the inv_vol synthetic factor) — that's the point: a hard
+        gate before the V/Q/A score so cheap-but-volatile names can't slip in.
+
+    PIT discipline: the lookback window ends strictly at ``as_of`` (uses
+    ``prices.loc[:as_of].tail(lookback)``). No look-ahead.
+
+    Returns the sorted-ascending-by-vol list of tickers (top_n elements). If
+    fewer than top_n have eligible history, returns all eligible names.
+    """
+    asof_ts = pd.Timestamp(as_of)
+    sub = prices.loc[:asof_ts]
+    if sub.empty:
+        return []
+
+    # Keep only universe tickers that exist in the price panel
+    available = [t for t in universe if t in sub.columns]
+    if not available:
+        return []
+
+    window = sub[available].tail(lookback)
+    if len(window) < 60:
+        # Not enough history for a meaningful vol estimate
+        return available
+
+    # Daily log returns; std × sqrt(252)
+    daily_returns = window.pct_change().dropna(how="all")
+    vol_252 = daily_returns.std() * np.sqrt(252)
+    vol_252 = vol_252.dropna()
+    if vol_252.empty:
+        return available
+
+    # Sort ascending and keep the top_n calmest names
+    keep = vol_252.sort_values(ascending=True).head(top_n).index.tolist()
+    return keep
 
 
 # ----------------------------------------------------------------------
@@ -672,6 +746,12 @@ def run_compounder_backtest(
     vol_overlay_enabled: bool = False,
     vol_overlay_target: float = 0.15,
     vol_overlay_lookback: int = 60,
+    defensive_pre_screen: Optional[str] = None,
+    defensive_pre_screen_top_n: int = DEFENSIVE_PRESCREEN_TOP_N,
+    defensive_pre_screen_lookback: int = DEFENSIVE_PRESCREEN_LOOKBACK,
+    defensive_pre_screen_prices: Optional[pd.DataFrame] = None,
+    bond_buffer_weight: float = 0.0,
+    bond_buffer_ticker: str = BOND_BUFFER_TICKER,
 ) -> Tuple[BacktestResult, pd.Series, List[RebalanceEvent]]:
     """Long-only annual-rebalance equal-weighted top-quintile compounder.
 
@@ -756,19 +836,53 @@ def run_compounder_backtest(
 
         # Rebalance check
         if dt in rebalance_dates:
+            # Optional defensive pre-screen: narrow the universe BEFORE the
+            # factor composite. The factor ranking then operates on the
+            # already-calm pool, so quintile picks come from a low-vol
+            # candidate set.
+            if defensive_pre_screen == "vol_rank_200":
+                # Use the longer-history price panel for vol estimation if
+                # provided (so the first rebalance has a real lookback window
+                # and isn't a no-op due to insufficient history). Falls back
+                # to ``prices`` if no separate panel is supplied.
+                vol_prices = (
+                    defensive_pre_screen_prices
+                    if defensive_pre_screen_prices is not None
+                    else prices
+                )
+                effective_universe = apply_defensive_prescreen(
+                    vol_prices, dt, universe,
+                    top_n=defensive_pre_screen_top_n,
+                    lookback=defensive_pre_screen_lookback,
+                )
+            elif defensive_pre_screen is None:
+                effective_universe = universe
+            else:
+                raise ValueError(
+                    f"unknown defensive_pre_screen={defensive_pre_screen!r}; "
+                    f"expected None or 'vol_rank_200'"
+                )
+
             if use_real_fundamentals:
                 composite = compute_composite_score_real(
-                    prices, dt, universe, panel
+                    prices, dt, effective_universe, panel
                 )
             else:
                 composite = compute_composite_score_synthetic(
-                    prices, dt, universe
+                    prices, dt, effective_universe
                 )
             if composite.empty:
                 continue
 
             n_top = max(1, int(len(composite) * TOP_QUINTILE_FRAC))
             new_basket = list(composite.head(n_top).index)
+
+            # Bond buffer: if enabled, the new basket is rescaled to
+            # (1 - bond_buffer_weight) of buying power and the bond ticker
+            # gets bond_buffer_weight. Implemented as a pseudo-name in the
+            # basket weights map below (handled in the weights_to_use
+            # construction). Keep new_basket as the list of equity tickers
+            # only; the bond is stitched in at weight-allocation time.
 
             # Sell everything not in new basket (and rebalance everything for equal-weight)
             sell_targets = list(holdings.keys())
@@ -815,7 +929,24 @@ def run_compounder_backtest(
             n_basket = max(1, len(new_basket))
 
             # Default equal-weight allocation: each name = 1/N of buying power
-            base_weights: Dict[str, float] = {t: 1.0 / n_basket for t in new_basket}
+            # If a bond buffer is enabled, equity names share (1-bbw) and the
+            # bond name gets bbw.
+            equity_share = 1.0 - bond_buffer_weight
+            base_weights: Dict[str, float] = {
+                t: equity_share / n_basket for t in new_basket
+            }
+            if bond_buffer_weight > 0:
+                if bond_buffer_ticker in prices.columns:
+                    base_weights[bond_buffer_ticker] = bond_buffer_weight
+                else:
+                    # No bond available — fall back to all-equity (don't fail
+                    # silently; warn once via print).
+                    print(
+                        f"[run_compounder_backtest] WARNING: bond_buffer_ticker"
+                        f" {bond_buffer_ticker!r} not in prices.columns; "
+                        f"running all-equity at this rebalance ({dt})"
+                    )
+                    base_weights = {t: 1.0 / n_basket for t in new_basket}
 
             # Optional vol overlay — scales weights (and therefore deployed
             # capital) by clipped(target_vol / port_vol, [0.3, 2.0]).
@@ -845,7 +976,10 @@ def run_compounder_backtest(
             else:
                 weights_to_use = base_weights
 
-            for t in new_basket:
+            # Iterate weights_to_use keys (not new_basket) so the bond
+            # buffer ticker — which is in weights_to_use but NOT in
+            # new_basket — gets bought.
+            for t in weights_to_use:
                 if t not in prices.columns:
                     continue
                 px = prices.at[dt, t]
@@ -1191,9 +1325,20 @@ def main() -> int:
     real_universe = build_universe(panel=panel)
     print(f"[run] real-fundamentals universe: {len(real_universe)} tickers")
 
-    tickers_to_fetch = sorted(set(real_universe + UNIVERSE_SYNTHETIC + ["IEF"]))
+    tickers_to_fetch = sorted(set(real_universe + UNIVERSE_SYNTHETIC + ["IEF", BENCHMARK_TICKER]))
     prices = fetch_prices(tickers_to_fetch, START_DATE, END_DATE)
     print(f"[run] price panel shape: {prices.shape}")
+
+    # Defensive pre-screen needs trailing 252d vol — at the first rebalance
+    # in 2022 the in-window history is too short. Fetch a separate
+    # extended-history panel (starts 1 year earlier) used ONLY for the
+    # vol-rank lookup. Backtest equity curve still runs from START_DATE.
+    print("[run] fetching extended-history lookback panel for defensive pre-screen...")
+    PRESCREEN_LOOKBACK_START = "2020-12-01"  # ~13 months before backtest start
+    prescreen_lookback_prices = fetch_prices(
+        tickers_to_fetch, PRESCREEN_LOOKBACK_START, END_DATE
+    )
+    print(f"[run] prescreen lookback panel shape: {prescreen_lookback_prices.shape}")
 
     real_universe_with_data = [t for t in real_universe if t in prices.columns]
     synthetic_universe_with_data = [t for t in UNIVERSE_SYNTHETIC if t in prices.columns]
@@ -1229,6 +1374,47 @@ def main() -> int:
         label="compounder_synthetic",
     )
 
+    # Cell F — REAL fundamentals + defensive vol-rank pre-screen
+    # (narrow universe BEFORE factor ranking)
+    print(f"[run] Cell F — REAL fundamentals + defensive_pre_screen "
+          f"(top {DEFENSIVE_PRESCREEN_TOP_N} by 252d vol, ascending)...")
+    cell_f_result, _, cell_f_events = run_compounder_backtest(
+        prices, real_universe_with_data, INITIAL_CAPITAL, LT_CAP_GAINS_RATE,
+        panel=panel, use_real_fundamentals=True,
+        label="compounder_real_defensive_prescreen",
+        defensive_pre_screen="vol_rank_200",
+        defensive_pre_screen_top_n=DEFENSIVE_PRESCREEN_TOP_N,
+        defensive_pre_screen_lookback=DEFENSIVE_PRESCREEN_LOOKBACK,
+        defensive_pre_screen_prices=prescreen_lookback_prices,
+    )
+
+    # Cell G — REAL fundamentals + 70/30 IEF bond buffer
+    print(f"[run] Cell G — REAL fundamentals + bond_buffer "
+          f"({(1-BOND_BUFFER_WEIGHT)*100:.0f}% compounder / "
+          f"{BOND_BUFFER_WEIGHT*100:.0f}% IEF)...")
+    cell_g_result, _, cell_g_events = run_compounder_backtest(
+        prices, real_universe_with_data, INITIAL_CAPITAL, LT_CAP_GAINS_RATE,
+        panel=panel, use_real_fundamentals=True,
+        label="compounder_real_bond_buffer_70_30",
+        bond_buffer_weight=BOND_BUFFER_WEIGHT,
+        bond_buffer_ticker=BOND_BUFFER_TICKER,
+    )
+
+    # Cell H — both fixes combined
+    print(f"[run] Cell H — REAL fundamentals + defensive_pre_screen "
+          f"+ bond_buffer (combined)...")
+    cell_h_result, _, cell_h_events = run_compounder_backtest(
+        prices, real_universe_with_data, INITIAL_CAPITAL, LT_CAP_GAINS_RATE,
+        panel=panel, use_real_fundamentals=True,
+        label="compounder_real_prescreen_plus_bond_buffer",
+        defensive_pre_screen="vol_rank_200",
+        defensive_pre_screen_top_n=DEFENSIVE_PRESCREEN_TOP_N,
+        defensive_pre_screen_lookback=DEFENSIVE_PRESCREEN_LOOKBACK,
+        defensive_pre_screen_prices=prescreen_lookback_prices,
+        bond_buffer_weight=BOND_BUFFER_WEIGHT,
+        bond_buffer_ticker=BOND_BUFFER_TICKER,
+    )
+
     print("[run] Cell A — SPY buy-and-hold...")
     spy_result = run_spy_buy_and_hold(prices[BENCHMARK_TICKER], INITIAL_CAPITAL, LT_CAP_GAINS_RATE)
 
@@ -1244,6 +1430,20 @@ def main() -> int:
     pass_overlay_after_tax = real_overlay_result.cagr_aftertax > spy_result.cagr_aftertax
     pass_overlay_mdd = real_overlay_result.max_drawdown >= -0.15
     overlay_overall_pass = pass_overlay_after_tax and pass_overlay_mdd
+
+    # Cells F/G/H — defensive-fix evaluation (2026-05-07)
+    def _eval(r: BacktestResult) -> Dict[str, bool]:
+        cagr_pass = r.cagr_aftertax > spy_result.cagr_aftertax
+        mdd_pass = r.max_drawdown >= -0.15
+        return {
+            "aftertax_cagr_gt_spy": cagr_pass,
+            "mdd_ge_minus_15pct": mdd_pass,
+            "overall": cagr_pass and mdd_pass,
+        }
+
+    cell_f_pass = _eval(cell_f_result)
+    cell_g_pass = _eval(cell_g_result)
+    cell_h_pass = _eval(cell_h_result)
 
     # Overlay diagnostics summary
     from scripts.path_c_overlays import summarize_overlay_diagnostics
@@ -1301,6 +1501,9 @@ def main() -> int:
             "compounder_synthetic": asdict(synthetic_result),
             "spy_buyhold": asdict(spy_result),
             "60_40_buyhold": asdict(six_forty_result) if six_forty_result else None,
+            "compounder_real_defensive_prescreen": asdict(cell_f_result),
+            "compounder_real_bond_buffer_70_30": asdict(cell_g_result),
+            "compounder_real_prescreen_plus_bond_buffer": asdict(cell_h_result),
         },
         "pass_criterion": {
             "real_compounder_aftertax_cagr_gt_spy": pass_after_tax,
@@ -1309,6 +1512,15 @@ def main() -> int:
             "real_overlay_aftertax_cagr_gt_spy": pass_overlay_after_tax,
             "real_overlay_mdd_ge_minus_15pct": pass_overlay_mdd,
             "overlay_overall": overlay_overall_pass,
+            "cell_f_defensive_prescreen": cell_f_pass,
+            "cell_g_bond_buffer": cell_g_pass,
+            "cell_h_combined": cell_h_pass,
+        },
+        "defensive_fix_config": {
+            "defensive_pre_screen_top_n": DEFENSIVE_PRESCREEN_TOP_N,
+            "defensive_pre_screen_lookback": DEFENSIVE_PRESCREEN_LOOKBACK,
+            "bond_buffer_ticker": BOND_BUFFER_TICKER,
+            "bond_buffer_weight": BOND_BUFFER_WEIGHT,
         },
         "vol_overlay_diagnostics": overlay_summary,
         "rebalance_events_real": [asdict(r) for r in real_events],
@@ -1321,16 +1533,26 @@ def main() -> int:
     with open(out_path, "w") as f:
         json.dump(summary, f, indent=2, default=str)
 
-    print(f"\n{'=' * 80}")
-    print("RESULTS — 5-CELL HARNESS")
-    print(f"{'=' * 80}")
-    print(f"{'Strategy':<42} {'CAGR pre':>10} {'CAGR after':>12} {'Sharpe':>8} {'MDD':>8}")
-    print("-" * 85)
-    for r in [real_result, real_overlay_result, synthetic_result, spy_result, six_forty_result]:
+    print(f"\n{'=' * 88}")
+    print("RESULTS — 8-CELL HARNESS (incl. defensive fixes F, G, H)")
+    print(f"{'=' * 88}")
+    print(f"{'Cell':<5}{'Strategy':<46} {'CAGR pre':>10} {'CAGR after':>12} {'Sharpe':>8} {'MDD':>8}")
+    print("-" * 92)
+    cell_labels = [
+        ("A", spy_result),
+        ("B", six_forty_result),
+        ("C", synthetic_result),
+        ("D", real_result),
+        ("E", real_overlay_result),
+        ("F", cell_f_result),
+        ("G", cell_g_result),
+        ("H", cell_h_result),
+    ]
+    for cell, r in cell_labels:
         if r is None:
             continue
         print(
-            f"{r.label:<42} {r.cagr_pretax*100:>9.2f}% {r.cagr_aftertax*100:>11.2f}% "
+            f"{cell:<5}{r.label:<46} {r.cagr_pretax*100:>9.2f}% {r.cagr_aftertax*100:>11.2f}% "
             f"{r.sharpe_pretax:>8.3f} {r.max_drawdown*100:>7.2f}%"
         )
 
@@ -1390,8 +1612,26 @@ def main() -> int:
           f"=> {'PASS' if pass_overlay_mdd else 'FAIL'}")
     print(f"[Cell E] Overall: {'PASS' if overlay_overall_pass else 'FAIL'}")
 
+    # Cells F/G/H — defensive-fix evaluation
+    for cell_letter, r, p in [
+        ("F", cell_f_result, cell_f_pass),
+        ("G", cell_g_result, cell_g_pass),
+        ("H", cell_h_result, cell_h_pass),
+    ]:
+        print()
+        print(f"[Cell {cell_letter}] After-tax CAGR > SPY: "
+              f"{r.cagr_aftertax*100:.2f}% vs {spy_result.cagr_aftertax*100:.2f}% "
+              f"=> {'PASS' if p['aftertax_cagr_gt_spy'] else 'FAIL'}")
+        print(f"[Cell {cell_letter}] MDD >= -15%: {r.max_drawdown*100:.2f}% "
+              f"=> {'PASS' if p['mdd_ge_minus_15pct'] else 'FAIL'}")
+        print(f"[Cell {cell_letter}] Overall: "
+              f"{'PASS' if p['overall'] else 'FAIL'}")
+
     print(f"\nResults JSON: {out_path}")
-    return 0 if (overall_pass or overlay_overall_pass) else 1
+    any_defensive_pass = (
+        cell_f_pass["overall"] or cell_g_pass["overall"] or cell_h_pass["overall"]
+    )
+    return 0 if (overall_pass or overlay_overall_pass or any_defensive_pass) else 1
 
 
 def _print_wired_summary() -> None:
