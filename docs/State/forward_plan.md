@@ -6,18 +6,40 @@
 > + `05-1-26_a-and-i_full.mf`). Both converge on the same architectural
 > picture and identify gaps the prior plans had underweighted.
 >
-> **PATH C DEFERRED — 2026-05-06:** 3-day Path C arc complete. Cells
-> E/F/G/H all falsified (vol overlay, defensive vol-rank pre-screen,
-> 70/30 IEF buffer, combined). Cell F closest miss at -16.09% MDD /
-> 4.74% CAGR; do NOT iterate further on 4-event sample. Path C is
-> paused (not abandoned). **Unblock criteria** (all three required):
-> (1) Engine E HMM in production decision path, (2) Engine B reads
-> regime signals + de-grosses on regime change events, (3) vol overlay
-> infrastructure at `scripts/path_c_overlays.py` becomes load-bearing
-> via regime-conditional trigger. See memory
-> `project_path_c_deferred_2026_05_06.md` for full results table +
-> mechanism diagnosis. DO NOT reset -15% MDD target — load-bearing
-> per design, not arbitrary.
+> **PATH C DEFERRED — 2026-05-06:** 3-day Path C arc + regime-signal
+> validation complete. Cells E/F/G/H all falsified. Cell F closest
+> miss at -16.09% MDD / 4.74% CAGR; do NOT iterate further on 4-event
+> sample.
+>
+> **Original unblock criteria from earlier today are now KNOWN-BROKEN
+> per `project_regime_signal_falsified_2026_05_06.md`:** HMM is
+> empirically a coincident vol detector, not forward-looking.
+> AUC 0.49 on 20d-fwd drawdowns (coin flip). 2-of-3 cross-asset gate
+> had **0% TPR** on -5% drawdowns over 1086 days. DXY change AUC 0.24
+> (inverted from docstring's "rally = stress" theory). HMM input
+> features (`spy_ret_5d`, `spy_vol_20d`) are coincident by
+> construction; the architecture cannot lead.
+>
+> **REVISED unblock criteria** (much higher bar — multi-month, not
+> weeks):
+> 1. **HMM input panel rebuild** with leading features. First
+>    candidates: VIX term structure (VIX9D / VIX / VIX3M slope —
+>    already specced in `forward_stress_detector.py` but not in HMM
+>    panel), IV skew (25Δ put / 25Δ call), put/call ratio, earnings-
+>    revision dispersion. Validate AUC > 0.55 on 20d-fwd drawdowns
+>    via `scripts/validate_regime_signals.py` (reusable).
+> 2. **THEN scope Engine B integration** after the input panel is
+>    empirically predictive — propose-first per CLAUDE.md.
+> 3. **THEN Path C overlay** at `scripts/path_c_overlays.py` becomes
+>    load-bearing via regime-conditional trigger.
+>
+> VVIX-proxy is the lone salvageable signal from the existing
+> WS-C work (AUC 0.64 in its valid window). The 2-of-3 confirmation
+> architecture (`engines/engine_e_regime/cross_asset_confirm.py`) is
+> a misleading standing reference, archive-pending.
+>
+> DO NOT reset -15% MDD target — load-bearing per design, not arbitrary.
+> DO NOT scope Engine B integration until input-panel rebuild ships.
 >
 > **HONEST RE-ACCOUNTING — 2026-05-02 evening:**
 >
