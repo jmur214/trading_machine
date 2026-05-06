@@ -196,6 +196,7 @@ def top_quintile_long_signals(
     min_universe: int,
     state: Optional[Dict[str, Any]] = None,
     edge_id: str = "",
+    sustained_score: float = 0.3,
 ) -> Dict[str, float]:
     """Generic top-quintile cross-sectional long-only edge with state-transition emission.
 
@@ -222,7 +223,9 @@ def top_quintile_long_signals(
         Optional mutable dict for caching the prior basket across calls.
         If provided, the helper emits ``long_score`` ONLY for tickers that
         CROSSED INTO the top quintile since the last call (state-transition
-        pattern). Sustained members are not re-signaled, eliminating the
+        pattern). Sustained members emit ``sustained_score`` (the
+        position-defending vote) so other edges' transient negative signals
+        don't silently exit fundamentals-driven positions. Eliminates the
         daily over-trading produced when long_score=1.0 fires every bar
         against quarterly-cadence fundamentals data. ``None`` reverts to
         legacy steady-state emission (every basket member gets long_score
@@ -231,6 +234,15 @@ def top_quintile_long_signals(
     edge_id
         Optional label used in DEBUG logs identifying which edge swallowed
         a data-missing exception or applied a state transition.
+    sustained_score
+        Magnitude emitted for tickers that REMAIN in the top quintile across
+        consecutive calls. Default 0.3 — a position-defending vote: strong
+        enough to counter mildly negative signals from other edges (so a
+        slow-moving factor edge doesn't silently consent to a quarterly-
+        held position being exited on a daily reversal blip), weak enough
+        not to block exits when other edges fire strongly negative.
+        Set to 0.0 to recover the prior pure entry-only / exit-only
+        emission shape.
 
     Returns
     -------
@@ -239,7 +251,8 @@ def top_quintile_long_signals(
     State-transition semantics (when ``state`` is provided):
       - Tickers crossing INTO the top quintile this call: ``long_score``
       - Tickers crossing OUT of the top quintile this call: 0.0
-      - Sustained members AND non-members: 0.0
+      - Sustained members (in basket this call AND last call): ``sustained_score``
+      - Non-members (never in basket): 0.0
       The state dict is mutated in place: ``state["last_basket"]`` is
       replaced with the new basket frozenset.
 
@@ -321,6 +334,8 @@ def top_quintile_long_signals(
     entries = new_basket - prev_basket
     exits = prev_basket - new_basket
 
+    sustained = new_basket & prev_basket
+
     out: Dict[str, float] = {}
     for ticker in data_map:
         if ticker in entries:
@@ -329,10 +344,17 @@ def top_quintile_long_signals(
             # Explicit exit signal — fade to zero so the per-ticker
             # aggregator stops boosting a no-longer-quintile ticker.
             out[ticker] = 0.0
+        elif ticker in sustained:
+            # Position-defending vote on held basket members. Slow-moving
+            # factor edges should keep saying "I still want this position"
+            # while a ticker is in the basket, otherwise transient daily
+            # negative signals from faster edges (e.g. momentum reversal)
+            # silently exit fundamentals-driven holds. ``sustained_score``
+            # is calibrated weak enough not to block strongly-negative
+            # exits but strong enough to defend mildly-negative ones.
+            out[ticker] = sustained_score
         else:
-            # Sustained members and non-members alike get 0.0. Sustained
-            # members rely on the per-ticker aggregator's other edges +
-            # Engine B's existing-position machinery to remain held.
+            # Non-members — never in basket — emit 0.0.
             out[ticker] = 0.0
 
     if entries or exits:
@@ -342,7 +364,7 @@ def top_quintile_long_signals(
             asof_ts.date() if hasattr(asof_ts, "date") else asof_ts,
             len(entries),
             len(exits),
-            len(new_basket & prev_basket),
+            len(sustained),
         )
 
     return out
