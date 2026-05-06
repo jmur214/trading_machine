@@ -47,6 +47,31 @@ FEATURE_COLUMNS = [
     "dollar_ret_63d",
 ]
 
+# VIX term-structure features (slice 1 of the regime-engine input panel
+# rebuild — added 2026-05-06). These are forward-looking by construction:
+# market-implied vol expectations across short/medium/long horizons are
+# leading signals of realized drawdowns (Lai 2022; CBOE term-structure
+# backwardation is the canonical "fear is concentrated NOW" signature).
+#
+# Slope construction notes:
+#   - vix_term_spread (vix3m − vix): positive in contango (normal), negative
+#     in backwardation (fear is concentrated near-term). Matches the
+#     economic interpretation already used in forward_stress_detector.py.
+#   - vix9d_over_vix_ratio_minus1 (vix9d/vix − 1): >0 when 9-day implied
+#     vol exceeds 30-day, sharper near-term backwardation signal. Centered
+#     at zero so HMM Gaussian emissions stay well-conditioned.
+#   - vix_zscore_60d: level-normalized VIX over trailing 60 trading days.
+#     Decouples regime-current stress from absolute VIX level (e.g. 20 in
+#     2017 = elevated; 20 in 2022 = subdued).
+#
+# Sources: ^VIX9D / ^VIX / ^VIX3M from yfinance, cached to data/macro/
+# via scripts/fetch_vix_term_structure.py.
+VIX_TERM_FEATURES = [
+    "vix_term_spread",          # vix3m - vix  (negative = backwardation)
+    "vix9d_over_vix_ratio_minus1",  # vix9d/vix - 1 (positive = near-term spike)
+    "vix_zscore_60d",           # 60d trailing z-score of VIX level
+]
+
 # Optional auxiliary columns (not used by default 7-feature HMM but
 # computed and exposed for downstream consumers / multi-resolution
 # extensions).
@@ -119,6 +144,7 @@ def build_feature_panel(
     start: Optional[str] = None,
     end: Optional[str] = None,
     include_aux: bool = False,
+    include_vix_term: bool = False,
 ) -> pd.DataFrame:
     """Build the daily feature panel for HMM regime detection.
 
@@ -127,9 +153,15 @@ def build_feature_panel(
         start / end: Optional date bounds. If None, returns full available range.
         include_aux: If True, include auxiliary columns (real_rate_level,
             unemployment_momentum_3m, etc.) for downstream consumers.
+        include_vix_term: If True, append VIX_TERM_FEATURES to the panel.
+            Requires data/macro/{VIX9D,VIX,VIX3M}.parquet (fetched via
+            scripts/fetch_vix_term_structure.py). Used by the panel-rebuild
+            HMM variant; the 7-feature default model leaves this False so
+            it stays bit-identical to pre-rebuild behavior.
 
     Returns:
-        DataFrame indexed by daily date. Columns = FEATURE_COLUMNS [+ AUX_COLUMNS].
+        DataFrame indexed by daily date. Columns = FEATURE_COLUMNS
+        [+ VIX_TERM_FEATURES] [+ AUX_COLUMNS].
         Rows with insufficient history will contain NaN values; callers
         (HMMRegimeClassifier) handle NaN gracefully.
     """
@@ -148,6 +180,12 @@ def build_feature_panel(
     dollar = _safe_load_fred("DTWEXBGS")
     real_rate = _safe_load_fred("DFII10")
     unrate = _safe_load_fred("UNRATE")
+
+    # --- VIX term-structure series (yfinance-cached, parquet shape matches
+    # FRED parquet schema so _safe_load_fred is reusable).
+    vix9d = _safe_load_fred("VIX9D") if include_vix_term else None
+    vix_yf = _safe_load_fred("VIX") if include_vix_term else None
+    vix3m = _safe_load_fred("VIX3M") if include_vix_term else None
 
     # Build a daily index from SPY (the most reliable trading-day calendar)
     if spy is None or spy.empty:
@@ -205,6 +243,39 @@ def build_feature_panel(
     else:
         out["dollar_ret_63d"] = np.nan
 
+    # --- VIX term-structure columns (slice 1 of input-panel rebuild) ---
+    if include_vix_term:
+        # Build VIX slope/level features only when all three series are
+        # present. yfinance ^VIX coverage starts ~1990, ^VIX9D from ~2011,
+        # ^VIX3M from ~2008, so the joint window is ^VIX9D-limited. For our
+        # 2021-2025 validation window all three are dense.
+        if vix9d is not None and vix_yf is not None and vix3m is not None \
+                and not vix9d.empty and not vix_yf.empty and not vix3m.empty:
+            vix9d_aligned = vix9d.reindex(daily_idx, method="ffill")
+            vix_aligned = vix_yf.reindex(daily_idx, method="ffill")
+            vix3m_aligned = vix3m.reindex(daily_idx, method="ffill")
+
+            # vix_term_spread = vix3m - vix.  Negative = backwardation.
+            out["vix_term_spread"] = vix3m_aligned - vix_aligned
+
+            # vix9d / vix - 1.  Positive = near-term implied vol > 30d
+            # implied vol (sharper, faster backwardation signal).
+            # Centered at zero; div-by-zero guarded.
+            ratio = vix9d_aligned / vix_aligned.replace(0.0, np.nan)
+            out["vix9d_over_vix_ratio_minus1"] = ratio - 1.0
+
+            # 60-trading-day z-score of VIX level. Rolling mean/std over a
+            # window of 60 *trading* days (~3 months) — long enough to
+            # capture regime drift, short enough to keep current regime in
+            # frame.
+            mean60 = vix_aligned.rolling(60, min_periods=60).mean()
+            std60 = vix_aligned.rolling(60, min_periods=60).std(ddof=1)
+            out["vix_zscore_60d"] = (vix_aligned - mean60) / std60.replace(0.0, np.nan)
+        else:
+            out["vix_term_spread"] = np.nan
+            out["vix9d_over_vix_ratio_minus1"] = np.nan
+            out["vix_zscore_60d"] = np.nan
+
     # --- Auxiliary columns ---
     if include_aux:
         # real_rate_level (DFII10)
@@ -229,8 +300,10 @@ def build_feature_panel(
         else:
             out["credit_spread_z_5y"] = np.nan
 
-    # --- Return only canonical columns (or canonical + aux) ---
+    # --- Return only canonical columns (or canonical + vix-term + aux) ---
     cols = list(FEATURE_COLUMNS)
+    if include_vix_term:
+        cols += [c for c in VIX_TERM_FEATURES if c in out.columns]
     if include_aux:
         cols += [c for c in AUX_COLUMNS if c in out.columns]
     return out[cols]
@@ -292,6 +365,11 @@ _LEVEL_COLUMNS = {
     "spy_ret_5d",
     "tlt_ret_20d",
     "dollar_ret_63d",
+    # VIX term-structure features are also point-in-time levels (slope,
+    # ratio, z-score); take the last observation at the window boundary.
+    "vix_term_spread",
+    "vix9d_over_vix_ratio_minus1",
+    "vix_zscore_60d",
 }
 
 
