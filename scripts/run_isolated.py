@@ -80,6 +80,80 @@ ISOLATED_FILES = [
 ]
 
 
+# Module-level mutable globals OUTSIDE data/governor/ that can corrupt
+# measurements across runs (same shape as the 04-25 registry-stomp bug
+# and the 05-06 SPY-cache bug). Each entry is
+# (import_path, helper_or_attr, kind) where kind selects the reset path:
+#   "helper"     — call module.<helper>()  (preferred when one exists)
+#   "attr_none"  — setattr(module, <attr>, None)
+#   "attr_false" — setattr(module, <attr>, False)
+#   "attr_list"  — setattr(module, <attr>, [])
+#
+# Reset is LAZY — we only act if the module is already in sys.modules.
+# An earlier draft of this patch eagerly imported the production-path
+# modules at isolated()-entry, on the theory that we should reset them
+# whether or not the prod backtest had loaded them yet. That was
+# empirically wrong: pre-loading those modules ahead of when prod
+# naturally imports them perturbs downstream module-init ordering and
+# makes run 1 of a multi-run harness produce a different canon md5 from
+# runs 2..N (Sharpe 0.127 vs 0.054 on the 2025-Q1 anchor used during
+# this patch's verification, vs the pre-patch baseline 3/3 identical
+# at 0.054). Going lazy preserves the prod import order on run 1
+# (the harness stays out of the way) and still resets globals on
+# subsequent runs once the prod path has loaded them.
+#
+# The "tests pre-import then pollute" pattern still works because tests
+# explicitly import the target module before entering isolated().
+ISOLATED_GLOBALS = [
+    # HIGH-RISK — V/Q/A panel cache; helper resets both flags at once.
+    ("engines.engine_a_alpha.edges._fundamentals_helpers",
+     "reset_panel_cache", "helper"),
+    # HIGH-RISK — path_c standalone-script overlay-diags accumulator.
+    ("scripts.path_c_synthetic_compounder",
+     "_LAST_OVERLAY_DIAGS", "attr_list"),
+    # MEDIUM-RISK — feature_foundry caches; clear helpers exist.
+    ("core.feature_foundry.sources.local_ohlcv",
+     "clear_close_cache", "helper"),
+    ("core.feature_foundry.sources.earnings_calendar",
+     "clear_earnings_cache", "helper"),
+    ("core.feature_foundry.sources.fred_macro",
+     "clear_series_cache", "helper"),
+]
+
+
+def _reset_one_global(import_path: str, name: str, kind: str) -> None:
+    """Reset a single module-level mutable global, but only if the
+    module is already loaded (lazy/in-place — never force-import)."""
+    module = sys.modules.get(import_path)
+    if module is None:
+        return
+    if kind == "helper":
+        getattr(module, name)()
+    elif kind == "attr_none":
+        setattr(module, name, None)
+    elif kind == "attr_false":
+        setattr(module, name, False)
+    elif kind == "attr_list":
+        setattr(module, name, [])
+    else:
+        raise ValueError(f"Unknown reset kind: {kind!r}")
+
+
+def reset_module_globals() -> None:
+    """Reset all registered cross-run-contaminating module globals.
+
+    Called from ``isolated()`` on entry AND exit, mirroring the
+    governor-file snapshot/restore pattern. All entries are lazy:
+    modules absent from sys.modules are skipped so the harness doesn't
+    perturb the prod backtest's natural import order on run 1. From
+    run 2 onward the modules are typically already in sys.modules
+    (the prod backtest loaded them in run 1) so the resets fire and
+    keep state from leaking across runs.
+    """
+    for import_path, name, kind in ISOLATED_GLOBALS:
+        _reset_one_global(import_path, name, kind)
+
+
 def _md5(path: Path) -> str:
     if not path.exists():
         return "(missing)"
@@ -135,12 +209,20 @@ def isolated() -> Iterator[None]:
     leaves the worktree in the same anchored state regardless of whether
     each run mutated. This is what lets repeated invocations be
     bit-comparable downstream.
+
+    Beyond the governor-file snapshot, also reset the module-level
+    mutable globals listed in ``ISOLATED_GLOBALS``. Those survive across
+    same-process invocations (e.g. multi-run measurement drivers,
+    sweeps, walk-forward orchestrators) and would otherwise leak state
+    across runs identically to the 04-25 registry-stomp bug.
     """
     restore_anchor()
+    reset_module_globals()
     try:
         yield
     finally:
         restore_anchor()
+        reset_module_globals()
 
 
 def _print_state(label: str) -> None:
