@@ -204,13 +204,13 @@ then LOW. Within each severity, list newest at the top.
 
 ### MEDIUM
 
-### [MEDIUM] Engine F has a duplicate orchestrator `system_governor.py` (653 lines) that no production path calls
+### [MEDIUM → RESOLVED 2026-05-07] Engine F duplicate orchestrator `system_governor.py` (653 lines) archived
 - Engine: F
 - First flagged: 2026-04-28
-- Status: not started
-- Description: `engines/engine_f_governance/system_governor.py` defines a 653-line `SystemGovernor` class that orchestrates the same loop as `StrategyGovernor.update_from_trade_log` — read trades, compute edge metrics, update weights, persist to `data/governor/edge_weights.json`, append history. It has its own CLI entry (`python -m engines.engine_f_governance.system_governor --once / --watch`) and its own dataclass-based config. Grep across the entire repo shows: every production caller (`mode_controller`, `alpha_engine`, `analytics.edge_feedback`, `scripts.system_validity_check`) imports `StrategyGovernor` from `governor.py`. **Nothing imports `SystemGovernor`** — only the file's own `__main__` runs it. This is the textbook `governor.py` + `system_governor.py` duplicate-with-similar-name pattern called out in the code-health checklist. It also accumulates its own bare-except blocks (29 of them) which represent a separate, drifting maintenance burden.
-- Files: `engines/engine_f_governance/system_governor.py` (the dead one), `engines/engine_f_governance/governor.py` (the canonical one)
-- Recommended next step: Move `system_governor.py` to `Archive/engine_f_governance_legacy/system_governor_2026_04_28.py`. If the `--watch`/polling daemon mode is still wanted, port that one feature onto `StrategyGovernor` as a small CLI wrapper (`scripts/governor_daemon.py`) instead of carrying a 653-line shadow implementation. Verify nothing in `cron`, `launchd`, or live_trader/ shells out to `python -m engines.engine_f_governance.system_governor` before archiving.
+- Status: RESOLVED 2026-05-07 — file moved to `Archive/engine_f_governance/system_governor.py`
+- Description: `engines/engine_f_governance/system_governor.py` defined a 653-line `SystemGovernor` class that orchestrated the same loop as `StrategyGovernor.update_from_trade_log` — read trades, compute edge metrics, update weights, persist to `data/governor/edge_weights.json`, append history. It had its own CLI entry (`python -m engines.engine_f_governance.system_governor --once / --watch`) and its own dataclass-based config. Grep across the entire repo confirmed: every production caller (`mode_controller`, `alpha_engine`, `analytics.edge_feedback`, `scripts.system_validity_check`) imports `StrategyGovernor` from `governor.py`. Nothing imported `SystemGovernor` — only the file's own `__main__` ran it. Lineage check: `governor.py` and `system_governor.py` were both created in commit a651446 on 2026-04-21 (parallel design competition); `governor.py` was picked as canonical and accumulated 5 subsequent commits of lifecycle work, `system_governor.py` was never touched again. Zero tests, zero CLI invocations in `scripts/` or `execution_manual`, zero production importers.
+- Files: `Archive/engine_f_governance/system_governor.py` (archived), `engines/engine_f_governance/governor.py` (the canonical one)
+- Resolution note: The `--watch` mode + `system_state.json` dashboard cache features in the archived file are NOT implemented in `governor.py` but aren't currently needed. If a future live-deployment workstream needs continuous file watching, mine the archived file rather than re-deriving it.
 
 ### [MEDIUM] Engine A signal_collector silently returns `{}` when an edge defines a typo'd method — same failure class as the just-fixed `check_signal` vs `compute_signals` bug
 - Engine: A

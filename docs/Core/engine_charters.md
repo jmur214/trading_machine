@@ -432,7 +432,7 @@ D and F both write to `edges.yml` with explicit ownership:
 | `governor.py` | `StrategyGovernor` + `GovernorConfig` | Edge weight management, EMA-smoothed scoring, regime-conditional weights, allocation evaluation orchestration |
 | `regime_tracker.py` | `RegimePerformanceTracker` + `RegimeEdgeStats` | Per-edge, per-regime Welford online stats, learned affinity computation |
 | `evaluator.py` | `EdgeEvaluator` + `EvaluatorConfig` | Research result ranking, time-decay scoring |
-| `system_governor.py` | `SystemGovernor` | Master orchestrator (watch mode, state persistence) |
+| `governor.py` | `StrategyGovernor` | Master orchestrator (canonical) — see row above for full purpose. Earlier `system_governor.py` parallel design archived 2026-05-07. |
 | `regime_analytics.py` | `RegimePerfAnalytics` | Conditional edge performance by regime |
 | `promote.py` | — | Lifecycle promotion: candidate → active in edge_config.json |
 | `evolution_controller.py` | `EvolutionController` | Coordinates evolution cycles with lifecycle management |
