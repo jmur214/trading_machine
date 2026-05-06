@@ -554,3 +554,21 @@ Whenever a significant bug is fixed, a new operational paradigm is adopted, or a
 **Why the user's instinct mattered:** when I proposed mass-deleting old runs, the user asked "would the system lose context for what worked vs didn't work?" The answer turned out to be partially yes — not because the system "learns from old trade_logs" (it doesn't, governor state mutates separately), but because **scripts and docs treat specific runs as data sources by UUID**. That category-4 dependency is invisible to size/age heuristics; only a reference scan finds it.
 
 **Files:** `docs/Core/SESSION_PROCEDURES.md` § "Trade-log cleanup procedure" has the full grep + diff + delete workflow.
+
+---
+
+## 2026-05-06 — Don't measure observability-only layers by flipping flags
+
+**Context:** Wanted to test whether WS-C cross-asset confirmation adds Sharpe over the 1.296 multi-year baseline. Patched `regime_settings.json` to enable `cross_asset_confirm_enabled`, kicked off the 70-min multi-year measurement.
+
+**The trap:** After 5 minutes (year 2021 rep 1 complete), canon md5 was bitwise identical to baseline. The flag was on, but no trade decisions changed.
+
+**Why:** The WS-C agent's brief explicitly stated "default OFF on main: cross-asset confirmation function exists but isn't wired into the live decision path until director approves." The function computes its output and writes it to `advisory["cross_asset_confirm"]`, but **Engine B does not read that field for risk decisions**. Flipping the flag changes a side-channel value that nothing consumes.
+
+**The lesson:** When a workstream ships with "observability-only" or "default OFF, not wired into the decision path" semantics, the **flag does not toggle alpha contribution** — it toggles whether a side-channel field gets populated. To actually measure the layer's Sharpe impact, you need to first integrate it into the live decision path (a separate, propose-first design decision). Running the harness with just the flag flipped is a structural no-op.
+
+**Procedure update:** Before kicking off a measurement run to test a flag, read 2-3 lines of integration code to confirm the flag actually drives a decision-path branch. Specifically grep for whether the relevant `advisory["X"]` field is consumed by `engine_b_risk/` or by the policy code that scales / vetoes trades. If no consumer, flipping the flag is observation-only.
+
+**Cost saved by catching it early:** ~65 minutes of wasted backtest compute. 1 rep was enough evidence (canon md5 match = no behavior change at all).
+
+**What this didn't change:** WS-C (3 cross-asset features + confirmation function + tests) is still valid groundwork for the regime-conditional wash-sale gate when tax-drag work unfreezes. Don't revert. The alpha contribution is just structurally unmeasurable until someone scopes the Engine-B integration as separate work.
