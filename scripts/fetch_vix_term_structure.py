@@ -47,6 +47,7 @@ TICKERS: Dict[str, str] = {
     "^VIX9D": "VIX9D",
     "^VIX": "VIX",
     "^VIX3M": "VIX3M",
+    "^VIX6M": "VIX6M",
 }
 
 

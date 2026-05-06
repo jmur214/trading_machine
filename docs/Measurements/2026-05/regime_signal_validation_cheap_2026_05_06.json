@@ -1,0 +1,189 @@
+{
+  "args": {
+    "start": "2021-01-01",
+    "end": "2025-04-30",
+    "horizon": 20,
+    "dd_threshold": -0.05,
+    "out_json": "/Users/jacksonmurphy/Dev/trading_machine-2/docs/Measurements/2026-05/regime_signal_validation_cheap_2026_05_06.json"
+  },
+  "window_n_days": 1086,
+  "base_rate_dd_5d": 0.012025901942645698,
+  "base_rate_dd_20d": 0.21200750469043153,
+  "base_rate_dd_60d": 0.7095516569200779,
+  "uncond_mean_fwd_dd_20d": -0.03342542980784694,
+  "auc_by_feature_horizon": {
+    "vix_term_slope_9_30": {
+      "5d_5pct": 0.722990492653414,
+      "20d_5pct": 0.3987779182469448,
+      "60d_5pct": 0.2672164245150822,
+      "20d_3pct": 0.31884897028412795
+    },
+    "vix_term_slope_30_3m": {
+      "5d_5pct": 0.7824114088159032,
+      "20d_5pct": 0.3438685208596713,
+      "60d_5pct": 0.18952356368463752,
+      "20d_3pct": 0.24127503470156653
+    },
+    "vix_term_slope_3m_6m": {
+      "5d_5pct": 0.7981129357533852,
+      "20d_5pct": 0.4066398019384745,
+      "60d_5pct": 0.19841064975293163,
+      "20d_3pct": 0.29878225829296623
+    },
+    "vix_term_slope_9_6m": {
+      "5d_5pct": 0.7693748199366177,
+      "20d_5pct": 0.3687789717656974,
+      "60d_5pct": 0.1940592964082897,
+      "20d_3pct": 0.2638345939208521
+    }
+  },
+  "coincident_leading_by_feature": {
+    "vix_term_slope_9_30": {
+      "pearson_vs_trailing_ret": -0.420475490481859,
+      "pearson_vs_forward_ret": 0.10679346793967293,
+      "abs_fwd_over_trail": 0.25398262290458146,
+      "is_leading": false,
+      "n": 1046
+    },
+    "vix_term_slope_30_3m": {
+      "pearson_vs_trailing_ret": -0.5937394960807216,
+      "pearson_vs_forward_ret": 0.12621510574476483,
+      "abs_fwd_over_trail": 0.21257657032741056,
+      "is_leading": false,
+      "n": 1046
+    },
+    "vix_term_slope_3m_6m": {
+      "pearson_vs_trailing_ret": -0.6234590466664105,
+      "pearson_vs_forward_ret": 0.05424955929756057,
+      "abs_fwd_over_trail": 0.08701382967755293,
+      "is_leading": false,
+      "n": 1046
+    },
+    "vix_term_slope_9_6m": {
+      "pearson_vs_trailing_ret": -0.5837406059846464,
+      "pearson_vs_forward_ret": 0.11637032450029236,
+      "abs_fwd_over_trail": 0.19935280038297207,
+      "is_leading": false,
+      "n": 1046
+    }
+  },
+  "conditional_top_decile_by_feature": {
+    "vix_term_slope_9_30": {
+      "regime_label": "feature in top decile (>= 0.0566)",
+      "n_in_regime": 107,
+      "n_total": 1066,
+      "pct_in_regime": 0.10037523452157598,
+      "mean_fwd_dd_in_regime": -0.023676607450376523,
+      "mean_fwd_dd_unconditional": -0.03342542980784694,
+      "median_fwd_dd_in_regime": -0.01562903918709285,
+      "p10_fwd_dd_in_regime": -0.0615903975305914,
+      "p10_fwd_dd_unconditional": -0.061253076049067816
+    },
+    "vix_term_slope_30_3m": {
+      "regime_label": "feature in top decile (>= -0.0286)",
+      "n_in_regime": 107,
+      "n_total": 1066,
+      "pct_in_regime": 0.10037523452157598,
+      "mean_fwd_dd_in_regime": -0.013333384756727415,
+      "mean_fwd_dd_unconditional": -0.03342542980784694,
+      "median_fwd_dd_in_regime": -0.008399723915735829,
+      "p10_fwd_dd_in_regime": -0.03288941566071222,
+      "p10_fwd_dd_unconditional": -0.061253076049067816
+    },
+    "vix_term_slope_3m_6m": {
+      "regime_label": "feature in top decile (>= -0.0252)",
+      "n_in_regime": 107,
+      "n_total": 1066,
+      "pct_in_regime": 0.10037523452157598,
+      "mean_fwd_dd_in_regime": -0.013892753945834745,
+      "mean_fwd_dd_unconditional": -0.03342542980784694,
+      "median_fwd_dd_in_regime": -0.011072233090807937,
+      "p10_fwd_dd_in_regime": -0.031755231782864705,
+      "p10_fwd_dd_unconditional": -0.061253076049067816
+    },
+    "vix_term_slope_9_6m": {
+      "regime_label": "feature in top decile (>= -0.0243)",
+      "n_in_regime": 107,
+      "n_total": 1066,
+      "pct_in_regime": 0.10037523452157598,
+      "mean_fwd_dd_in_regime": -0.01661874517769615,
+      "mean_fwd_dd_unconditional": -0.03342542980784694,
+      "median_fwd_dd_in_regime": -0.00989251980911493,
+      "p10_fwd_dd_in_regime": -0.04931475730256322,
+      "p10_fwd_dd_unconditional": -0.061253076049067816
+    }
+  },
+  "is_oos_auc_by_feature": {
+    "vix_term_slope_9_30": {
+      "is_20d_5pct": 0.4037908823429175,
+      "is_20d_3pct": 0.3116918491932512,
+      "oos_20d_3pct": 0.5116279069767442
+    },
+    "vix_term_slope_30_3m": {
+      "is_20d_5pct": 0.35540231974280617,
+      "is_20d_3pct": 0.24662719712871128,
+      "oos_20d_3pct": 0.2144702842377261
+    },
+    "vix_term_slope_3m_6m": {
+      "is_20d_5pct": 0.4266162654640054,
+      "is_20d_3pct": 0.3079945842880262,
+      "oos_20d_3pct": 0.23385012919896642
+    },
+    "vix_term_slope_9_6m": {
+      "is_20d_5pct": 0.37938359821418427,
+      "is_20d_3pct": 0.263306949095512,
+      "oos_20d_3pct": 0.355297157622739
+    }
+  },
+  "hit_fpr_by_feature_top_decile": {
+    "vix_term_slope_9_30": {
+      "TPR": 0.084070796460177,
+      "FPR": 0.09166666666666666,
+      "precision": 0.19791666666666666,
+      "lift_over_base": -0.014090838023764873,
+      "TP": 19,
+      "FP": 77,
+      "FN": 207,
+      "TN": 763,
+      "threshold": 0.06421391109214389
+    },
+    "vix_term_slope_30_3m": {
+      "TPR": 0.008849557522123894,
+      "FPR": 0.10595238095238095,
+      "precision": 0.02197802197802198,
+      "lift_over_base": -0.19002948271240955,
+      "TP": 2,
+      "FP": 89,
+      "FN": 224,
+      "TN": 751,
+      "threshold": -0.023417258463068864
+    },
+    "vix_term_slope_3m_6m": {
+      "TPR": 0.004424778761061947,
+      "FPR": 0.10595238095238095,
+      "precision": 0.011111111111111112,
+      "lift_over_base": -0.20089639357932043,
+      "TP": 1,
+      "FP": 89,
+      "FN": 225,
+      "TN": 751,
+      "threshold": -0.021135143554185568
+    },
+    "vix_term_slope_9_6m": {
+      "TPR": 0.030973451327433628,
+      "FPR": 0.10238095238095238,
+      "precision": 0.07526881720430108,
+      "lift_over_base": -0.13673868748613044,
+      "TP": 7,
+      "FP": 86,
+      "FN": 219,
+      "TN": 754,
+      "threshold": -0.010349883880932546
+    }
+  },
+  "pc_status": "missing",
+  "leading_features": [],
+  "borderline_features": [],
+  "verdict": "Branch 3 \u2014 neither cheap source is leading; Schwab IV skew is next",
+  "verdict_short": "branch_3_not_leading"
+}
