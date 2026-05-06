@@ -462,35 +462,23 @@ Severity counts: HIGH 3 | MEDIUM 6 | LOW 4. Top-3 highest-impact below.
   goes away entirely. Latter is the structurally cleaner fix and aligns
   with the `EdgeRegistry` charter.
 
-### [MEDIUM] cross_asset_confirm.py is a soft-archive candidate — disabled-by-default, validation showed it as coincident-noise
+### [RESOLVED 2026-05-06] cross_asset_confirm.py archived — disabled-by-default, validation showed it as coincident-noise
 - Category: dead-code / archive candidate
-- Files: `engines/engine_e_regime/cross_asset_confirm.py` (183 lines),
-  `engines/engine_e_regime/regime_config.py:185-205` (the `CrossAssetConfirmConfig`
-  dataclass), `tests/test_ws_c_cross_asset.py` (582+ lines of tests)
+- Files (now archived): `Archive/engine_e_regime/cross_asset_confirm.py` (183 lines),
+  `Archive/engine_e_regime/run_ws_c_smoke.py`
 - First flagged: 2026-05-06
-- Status: not started
-- Description: `cross_asset_confirm.py` is gated behind
-  `cross_asset_confirm_enabled: bool = False` (regime_config.py:204) and the
-  only non-test importer is `regime_detector.py:565` (lazy-import inside a
-  try-except, never reached when the flag is off). The recent regime
-  validation `docs/Measurements/2026-05/regime_signal_validation_2026_05_06.md`
-  concluded the underlying signals are coincident, not predictive
-  ("Verdict: Branch 3 — NOISE. Do NOT scope Engine B integration"). The
-  module ships ~183 lines of code, ~25 lines of config, and 582+ lines of
-  tests for behavior that is intentionally never enabled. Production
-  consumers are zero. This isn't strictly dead — `scripts/run_ws_c_smoke.py`
-  flips the flag to test the gate runs end-to-end — but it's a "misleading
-  standing reference" per CLAUDE.md, and the lessons_learned note from
-  2026-05-05 explicitly documents "WS-C cross-asset is observability-only;
-  do not measure by flipping flags."
-- Recommended next step: User decision required because archiving touches
-  the documented "observability-only" gate. Two options: (a) move
-  `cross_asset_confirm.py` and the dataclass to `Archive/engine_e_regime/`
-  with a redirect note in `engines/engine_e_regime/index.md` so future
-  regime work doesn't rediscover the dead path, OR (b) keep it but add
-  `# ARCHIVED-ON-DISABLE: per docs/Measurements/2026-05/regime_signal_validation_2026_05_06.md`
-  at the top of the module as a header. (a) is cleaner and aligns with the
-  charter that disabled features should not pollute the active-engine surface.
+- Status: RESOLVED 2026-05-06 on branch `f1-lite-cac-archive`
+- Resolution: Option (a) executed — `cross_asset_confirm.py` and
+  `run_ws_c_smoke.py` moved via `git mv` to `Archive/engine_e_regime/`;
+  `CrossAssetConfirmConfig` dataclass and call site removed from
+  `regime_config.py` and `regime_detector.py`; `tests/test_ws_c_cross_asset.py`
+  split — 17 feature tests retained, 12 confirmation-function tests dropped
+  (~240 lines). The 3 Foundry features (hyg_lqd_spread, dxy_change_20d,
+  vvix_or_proxy) STAY — VVIX-proxy was the lone salvageable signal (AUC 0.64).
+  See `docs/Measurements/2026-05/cross_asset_confirm_archive_2026_05_06.md`.
+- Verification: pytest passes (17 cross-asset feature tests + 80 broader
+  regime tests); `RegimeConfig()` no longer has `cross_asset_confirm` attr;
+  no production references remain outside `Archive/` and historical docs.
 
 ### [MEDIUM] `scripts/run_multi_year.py` per-year report assumes uniform rep counts — silent KeyError on heterogeneous failures
 - Category: load-bearing harness fragility
