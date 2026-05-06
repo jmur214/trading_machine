@@ -1,0 +1,20 @@
+feature_id: weekday_dummy
+source_url: https://en.wikipedia.org/wiki/Weekend_effect
+license: internal
+point_in_time_safe: true
+expected_behavior: |
+  Calendar weekday encoded as float 1.0..5.0 (Mon..Fri); None on
+  weekends. Captures intraweek seasonality — historically negative
+  Monday returns (the "weekend effect," French 1980, Gibbons-Hess
+  1981), end-of-week unwinding (Friday-effect), turn-of-week
+  positioning. Pure calendar primitive — ticker-independent;
+  parameter retained for substrate uniformity. Semantically
+  categorical; the meta-learner is expected to non-linearly decode
+  weekday identity rather than treat the value as continuous.
+known_failure_modes:
+  - "Returned as float for substrate uniformity but semantically categorical. Linear models will infer a spurious monotonic Mon-to-Fri trend; tree-based learners (GBMs, random forests) handle it natively."
+  - "Most weekday anomalies have weakened post-2000 (Doyle-Chen 2009, Schwert 2003) — expect contribution Sharpe to be small-positive at best, possibly noise on equities."
+  - "Adversarial twin permutes weekday labels and breaks the seasonal pattern. Real should beat twin only if any intra-week effect persists in the active universe."
+  - "Equity-only assumption — for assets that trade weekends (crypto, FX) the function returns None on Sat/Sun; downstream coverage will silently drop those samples."
+last_revalidation: never
+ablation_history: []

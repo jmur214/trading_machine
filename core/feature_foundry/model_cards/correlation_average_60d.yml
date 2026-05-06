@@ -1,0 +1,20 @@
+feature_id: correlation_average_60d
+source_url: https://www.federalreserve.gov/econresdata/feds/2018/files/2018014pap.pdf
+license: internal
+point_in_time_safe: true
+expected_behavior: |
+  Mean of upper-triangular pairwise Pearson correlations of trailing-60-
+  day daily log returns across the registered universe. Coordinated-
+  drawdown primitive — when correlation spikes toward 1, idiosyncratic
+  risk vanishes and de-grossing is required to retain Sharpe (the
+  classic "diversification fails when you need it most" pattern in
+  2008, 2011, 2020-Mar). Ticker-independent — same value across the
+  universe on a given date. Returns None when fewer than 3 tickers
+  have ≥61 aligned closes ending at-or-before `dt`.
+known_failure_modes:
+  - "Pearson correlation assumes linear relationships and is dominated by tail moves; the metric is most informative around regime transitions but biased upward during crisis flushes vs steady regimes."
+  - "Universe composition matters: a small or sector-concentrated universe will exhibit chronically high correlation that has nothing to do with macro stress. Compare only across like-for-like universe definitions."
+  - "60-day window means crisis spikes wash out roughly 3 months later; the feature is a coincident-to-slightly-lagging indicator, not predictive on its own."
+  - "Mean correlation hides distributional shifts: two universes with identical mean can have very different cross-correlation tails. Pair with a dispersion or eigenvalue-concentration measure for a fuller regime read."
+last_revalidation: never
+ablation_history: []

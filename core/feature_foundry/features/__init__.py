@@ -21,6 +21,12 @@ from . import vix_change_5d  # noqa: F401
 from . import hyg_lqd_spread  # noqa: F401
 from . import dxy_change_20d  # noqa: F401
 from . import vvix_or_proxy  # noqa: F401
+# Fourth batch — cross-sectional regime + trend/range/seasonality primitives
+from . import dispersion_60d  # noqa: F401
+from . import correlation_average_60d  # noqa: F401
+from . import moving_avg_distance_50d  # noqa: F401
+from . import high_minus_low_60d  # noqa: F401
+from . import weekday_dummy  # noqa: F401
 
 __all__ = [
     "cot_commercial_net_long",
@@ -42,4 +48,9 @@ __all__ = [
     "hyg_lqd_spread",
     "dxy_change_20d",
     "vvix_or_proxy",
+    "dispersion_60d",
+    "correlation_average_60d",
+    "moving_avg_distance_50d",
+    "high_minus_low_60d",
+    "weekday_dummy",
 ]

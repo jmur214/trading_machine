@@ -22,7 +22,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
 from pathlib import Path
-from typing import Dict, Optional
+from typing import Dict, List, Optional
 
 import pandas as pd
 
@@ -113,6 +113,16 @@ def close_series(ticker: str) -> Optional[pd.Series]:
 def clear_close_cache() -> None:
     """Test helper — drop the in-process per-ticker cache."""
     _CLOSE_CACHE.clear()
+
+
+def list_tickers() -> List[str]:
+    """All tickers discoverable from the registered LocalOHLCV source.
+    Substrate-independent — works against any registered data_root."""
+    src = get_source_registry().get("local_ohlcv")
+    if src is None or not isinstance(src, LocalOHLCV):
+        return []
+    return sorted(p.stem.replace("_1d", "")
+                  for p in src.data_root.glob("*_1d.csv"))
 
 
 get_source_registry().register(LocalOHLCV())
