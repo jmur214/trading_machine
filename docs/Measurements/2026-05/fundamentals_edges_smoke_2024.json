@@ -1,0 +1,15 @@
+[
+  {
+    "year": 2024,
+    "rep": 1,
+    "run_id": "042d40db-52e2-4fdb-8fa2-c322725f126b",
+    "sharpe": 1.91,
+    "cagr_pct": 8.13,
+    "max_drawdown_pct": -2.75,
+    "win_rate_pct": 53.9,
+    "total_trades": null,
+    "trades_canon_md5": "4ae83833f6d5a35ab941c979f167075b",
+    "wall_time_seconds": 552.2,
+    "ok": true
+  }
+]
