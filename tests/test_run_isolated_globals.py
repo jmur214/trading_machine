@@ -101,6 +101,34 @@ def test_overlay_diags_reset_skipped_when_module_not_imported(monkeypatch):
         assert "scripts.path_c_synthetic_compounder" not in sys.modules
 
 
+def test_lazy_skip_applies_to_all_registered_modules(monkeypatch):
+    """All entries are lazy: if a registered module is NOT in sys.modules
+    when isolated() runs, the harness must NOT import it.
+
+    This is the regression-prevention test for the eager-import bug
+    discovered during this patch's verification (run 1 of a 3-run
+    harness produced Sharpe 0.127 vs 0.054 on subsequent runs because
+    pre-loading the V/Q/A panel module ahead of when prod naturally
+    imports it perturbed downstream module-init ordering)."""
+    # Pre-stash whatever's loaded so we can restore at exit.
+    paths = [p for p, _, _ in run_isolated.ISOLATED_GLOBALS]
+    saved = {p: sys.modules.get(p) for p in paths}
+    for p in paths:
+        monkeypatch.delitem(sys.modules, p, raising=False)
+    monkeypatch.setattr(run_isolated, "restore_anchor", lambda: None)
+
+    with run_isolated.isolated():
+        for p in paths:
+            assert p not in sys.modules, (
+                f"isolated() force-imported {p!r} — this re-introduces "
+                "the run-1-vs-runs-2..N drift the lazy redesign fixed."
+            )
+    # Restore in case the test runner relies on later imports being warm.
+    for p, mod in saved.items():
+        if mod is not None:
+            sys.modules[p] = mod
+
+
 # ---------------------------------------------------------------------------
 # MEDIUM-RISK — feature_foundry caches via existing clear helpers.
 # ---------------------------------------------------------------------------
@@ -153,8 +181,7 @@ def test_isolated_globals_registry_covers_all_six_audit_findings():
         ("scripts.path_c_synthetic_compounder",
          "_LAST_OVERLAY_DIAGS"),
     }
-    actual = {(p, n) for p, n, _ in run_isolated.ISOLATED_GLOBALS_EAGER}
-    actual |= {(p, n) for p, n, _ in run_isolated.ISOLATED_GLOBALS_LAZY}
+    actual = {(p, n) for p, n, _ in run_isolated.ISOLATED_GLOBALS}
     assert actual == expected, (
         "Registry drifted from the 2026-05-06 audit's six findings. "
         f"Currently: {actual}; expected: {expected}. The fundamentals "

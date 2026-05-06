@@ -41,7 +41,6 @@ from __future__ import annotations
 
 import argparse
 import hashlib
-import importlib
 import os
 import shutil
 import sys
@@ -90,15 +89,28 @@ ISOLATED_FILES = [
 #   "attr_false" — setattr(module, <attr>, False)
 #   "attr_list"  — setattr(module, <attr>, [])
 #
-# The first two entries (V/Q/A panel cache) are HIGH-RISK and used in
-# the prod backtest path; we import on demand. The path_c entry is a
-# standalone-script global that prod never imports — reset best-effort
-# only if the script is already present in sys.modules so the harness
-# doesn't pay a 1300-line script-import cost on every isolated run.
-ISOLATED_GLOBALS_EAGER = [
-    # HIGH-RISK — used by V/Q/A edges; one helper resets both flags.
+# Reset is LAZY — we only act if the module is already in sys.modules.
+# An earlier draft of this patch eagerly imported the production-path
+# modules at isolated()-entry, on the theory that we should reset them
+# whether or not the prod backtest had loaded them yet. That was
+# empirically wrong: pre-loading those modules ahead of when prod
+# naturally imports them perturbs downstream module-init ordering and
+# makes run 1 of a multi-run harness produce a different canon md5 from
+# runs 2..N (Sharpe 0.127 vs 0.054 on the 2025-Q1 anchor used during
+# this patch's verification, vs the pre-patch baseline 3/3 identical
+# at 0.054). Going lazy preserves the prod import order on run 1
+# (the harness stays out of the way) and still resets globals on
+# subsequent runs once the prod path has loaded them.
+#
+# The "tests pre-import then pollute" pattern still works because tests
+# explicitly import the target module before entering isolated().
+ISOLATED_GLOBALS = [
+    # HIGH-RISK — V/Q/A panel cache; helper resets both flags at once.
     ("engines.engine_a_alpha.edges._fundamentals_helpers",
      "reset_panel_cache", "helper"),
+    # HIGH-RISK — path_c standalone-script overlay-diags accumulator.
+    ("scripts.path_c_synthetic_compounder",
+     "_LAST_OVERLAY_DIAGS", "attr_list"),
     # MEDIUM-RISK — feature_foundry caches; clear helpers exist.
     ("core.feature_foundry.sources.local_ohlcv",
      "clear_close_cache", "helper"),
@@ -107,27 +119,14 @@ ISOLATED_GLOBALS_EAGER = [
     ("core.feature_foundry.sources.fred_macro",
      "clear_series_cache", "helper"),
 ]
-ISOLATED_GLOBALS_LAZY = [
-    # HIGH-RISK but standalone-script — only reset if already imported.
-    ("scripts.path_c_synthetic_compounder",
-     "_LAST_OVERLAY_DIAGS", "attr_list"),
-]
 
 
-def _reset_one_global(import_path: str, name: str, kind: str,
-                      *, lazy: bool = False) -> None:
-    """Reset a single module-level mutable global.
-
-    For ``lazy=True`` we only act if the module is already in
-    ``sys.modules`` — useful for standalone scripts the prod path never
-    imports.
-    """
-    if lazy:
-        module = sys.modules.get(import_path)
-        if module is None:
-            return
-    else:
-        module = importlib.import_module(import_path)
+def _reset_one_global(import_path: str, name: str, kind: str) -> None:
+    """Reset a single module-level mutable global, but only if the
+    module is already loaded (lazy/in-place — never force-import)."""
+    module = sys.modules.get(import_path)
+    if module is None:
+        return
     if kind == "helper":
         getattr(module, name)()
     elif kind == "attr_none":
@@ -144,13 +143,15 @@ def reset_module_globals() -> None:
     """Reset all registered cross-run-contaminating module globals.
 
     Called from ``isolated()`` on entry AND exit, mirroring the
-    governor-file snapshot/restore pattern. Eager entries import on
-    demand; lazy entries are skipped if the module isn't already loaded.
+    governor-file snapshot/restore pattern. All entries are lazy:
+    modules absent from sys.modules are skipped so the harness doesn't
+    perturb the prod backtest's natural import order on run 1. From
+    run 2 onward the modules are typically already in sys.modules
+    (the prod backtest loaded them in run 1) so the resets fire and
+    keep state from leaking across runs.
     """
-    for import_path, name, kind in ISOLATED_GLOBALS_EAGER:
-        _reset_one_global(import_path, name, kind, lazy=False)
-    for import_path, name, kind in ISOLATED_GLOBALS_LAZY:
-        _reset_one_global(import_path, name, kind, lazy=True)
+    for import_path, name, kind in ISOLATED_GLOBALS:
+        _reset_one_global(import_path, name, kind)
 
 
 def _md5(path: Path) -> str:
@@ -210,10 +211,10 @@ def isolated() -> Iterator[None]:
     bit-comparable downstream.
 
     Beyond the governor-file snapshot, also reset the module-level
-    mutable globals listed in ``ISOLATED_GLOBALS_EAGER/LAZY``. Those
-    survive across same-process invocations (e.g. multi-run measurement
-    drivers, sweeps, walk-forward orchestrators) and would otherwise
-    leak state across runs identically to the 04-25 registry-stomp bug.
+    mutable globals listed in ``ISOLATED_GLOBALS``. Those survive across
+    same-process invocations (e.g. multi-run measurement drivers,
+    sweeps, walk-forward orchestrators) and would otherwise leak state
+    across runs identically to the 04-25 registry-stomp bug.
     """
     restore_anchor()
     reset_module_globals()
