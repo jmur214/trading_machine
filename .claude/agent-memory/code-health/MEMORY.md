@@ -2,3 +2,4 @@
 - [Where debt accumulates fastest](pattern_debt_hotspots.md) — orchestrator-style modules (alpha_engine, governor, system_governor, discovery.validate_candidate) collect god-class lines and bare-excepts
 - [Duplicate orchestrator pattern](pattern_duplicate_orchestrators.md) — this codebase tends to grow `system_X.py` next to `X.py` instead of refactoring; check at every scan
 - [Charter-inversion imports](pattern_charter_inversion_imports.md) — A imports F, D imports B/A — symptom of features added in the closest module rather than the right one
+- [Silent-zero correctness in fundamentals edges](pattern_silent_zero_correctness.md) — denominator components (equity, invested capital) silently substituted with 0 instead of dropping the ticker; inconsistent across sibling files in the same cohort

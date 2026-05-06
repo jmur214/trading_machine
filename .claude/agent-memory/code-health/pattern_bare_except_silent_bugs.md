@@ -17,3 +17,26 @@ When scanning for code health, bare `except Exception` blocks are the highest-yi
 **How to apply:** When auditing this codebase, count `except Exception` occurrences per file (50+ in alpha_engine, governor, lifecycle_manager, system_governor — each is a potential silent-bug nest). Recommend narrowing to `except (RuntimeError, KeyError, FileNotFoundError)` at minimum, with a top-level `except Exception:` that logs traceback. Programmer errors should propagate.
 
 **Verified examples already fixed**: 2026-04-28 commit dda474c (Gate 3, Gate 5, regime_meta correlation key — all bare-except masked). 2026-04-28 health_check additions: 5 more in same pattern.
+
+**2026-05-06 follow-up scan after V/Q/A merge:**
+- `engines/engine_a_alpha/edges/_fundamentals_helpers.py:205-208` — the
+  shared helper `top_quintile_long_signals` swallows ALL exceptions inside
+  the per-ticker score callable. All 6 new SimFin V/Q/A edges (`value_*`,
+  `quality_*`, `accruals_inv_*`) inherit this. One narrow change at this
+  one site removes the silent-bug surface for the whole cohort.
+- All 6 new V/Q/A edges end with `try: _reg.ensure(...) except Exception:
+  pass` for auto-registration. If the registry write throws (file lock,
+  schema drift, FileNotFoundError), the edge silently fails to register
+  but the import still succeeds — alpha_engine loads the class but
+  lifecycle has no spec.
+- Engine D Gates 2/4/5/6 (`discovery.py:975-1183`) still have the
+  bare-except shape. Gate 3 was retrofitted on 2026-05-02 with
+  `if isinstance(e, (TypeError, AttributeError)): raise` — that's the
+  fix-pattern to apply across the other 4. The original gauntlet
+  consolidated-fix closed the *measurement-geometry* bug class but did
+  not propagate the defensive-promotion to all gates.
+
+**Pattern observation:** When a fix lands for one instance of this class,
+the codebase tends NOT to systematically apply it across siblings. Search
+for `except Exception` after every consolidation; expect to find 3-5 more
+adjacent cases that should have received the same patch.

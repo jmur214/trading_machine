@@ -352,3 +352,374 @@ Findings appended by subagents follow one of two formats:
 
 When a finding is resolved, move the entry to the Resolved section 
 and add a `- Resolved: <YYYY-MM-DD>` line.
+---
+
+## Code-health scan 2026-05-06 — post-V/Q/A merge (code-health subagent)
+
+Scope: Engine A (6 new SimFin V/Q/A edges + signal_processor + fill_share_capper),
+Engine E (HMM panel + cross_asset_confirm + transition_warning), Engine C
+(HRP + sleeves), Engine D (gauntlet architectural fix), core/feature_foundry,
+core/observability (net-new), engines/data_manager/fundamentals/simfin_adapter,
+scripts/path_c_synthetic_compounder, scripts/run_multi_year, scripts/run_isolated.
+Prior was tilted toward bare-except / silent-cache / dict-iteration patterns
+because the past week surfaced 2 Path C bugs in those families.
+
+Severity counts: HIGH 3 | MEDIUM 6 | LOW 4. Top-3 highest-impact below.
+
+### [HIGH] Negative-equity ROIC silently zeros the denominator — distressed firms inflate to top-quintile rank
+- Category: silent-correctness / signal-quality bug
+- Files:
+  - `engines/engine_a_alpha/edges/quality_roic_edge.py:87-88` (NEW edge, just shipped)
+  - `scripts/path_c_synthetic_compounder.py:663-664` (Path C real-fundamentals composite)
+- First flagged: 2026-05-06
+- Status: not started
+- Description: ROIC denominator is computed as
+  `invested_capital = (equity if equity > 0 else 0.0) + (lt_debt if lt_debt > 0 else 0.0)`.
+  A firm with negative equity (deeply distressed) thus has its equity component
+  silently treated as 0, and ROIC = `NOPAT / lt_debt`. That denominator is small,
+  so distressed firms can score a *very high* ROIC and end up in the top
+  quintile of the long-only Quality factor — the opposite of what the academic
+  factor (Asness-Frazzini-Pedersen "Quality Minus Junk") prescribes. Compare
+  to `value_book_to_market_edge.py:76-78` four files away in the same package,
+  which correctly drops negative-equity firms with an explicit `return None`
+  and the comment "Negative-equity firms produce misleading signs for B/P".
+  The same silent-zero pattern is duplicated in the Path C compounder's
+  `compute_composite_score_real` at line 663, so any historical Path C
+  result that scored a near-bankrupt firm into the top quintile is suspect.
+  This was unflagged on the 2024 smoke test (canon `4ae83833f6d5a35a...`)
+  because the prod 109-ticker universe is mostly mature mega-caps with
+  positive equity — but the next universe expansion (Workstream H, growing
+  past 109) increases the probability of a negative-equity name in the panel.
+- Recommended next step: In both sites, return `None` (drop the ticker) when
+  `equity is None or equity <= 0`. The contract should match
+  `value_book_to_market_edge.py`'s explicit comment. Add a regression test in
+  `tests/test_fundamentals_edges.py` with a synthetic negative-equity ticker
+  asserting it is dropped from `quality_roic_v1`'s top-quintile.
+
+### [HIGH] `top_quintile_long_signals` swallows ALL exceptions inside the score function — every new V/Q/A edge inherits the silent-bug pattern
+- Category: bare-except / silent failure
+- Files: `engines/engine_a_alpha/edges/_fundamentals_helpers.py:205-208`
+- First flagged: 2026-05-06
+- Status: not started
+- Description: The shared helper that all 6 new SimFin V/Q/A edges use has a
+  bare `except Exception: raw = None` around the per-ticker score callable.
+  Programmer errors in any score function — `TypeError` from a bad pandas
+  operation, `AttributeError` from a method-name typo, `KeyError` from a
+  panel-column rename, `ImportError` from a moved helper — are caught
+  identically to legitimate data-missing cases and quietly turn into "this
+  ticker has no signal." All 6 edges (`value_earnings_yield_v1`,
+  `value_book_to_market_v1`, `quality_roic_v1`, `quality_gross_profitability_v1`,
+  `accruals_inv_sloan_v1`, `accruals_inv_asset_growth_v1`) share this code
+  path. The 2024 smoke result showed all 6 firing — that result tells you
+  the happy path works; it tells you nothing about whether the gauntlet of
+  exception types are being silenced. This is the same failure mode the
+  prior memory `project_gauntlet_consolidated_fix_2026_05_01` documents in
+  Engine D (gates 1-6 hid 5 distinct bugs behind bare-excepts for weeks).
+- Recommended next step: Narrow the catch to `except (KeyError,
+  IndexError, ValueError, ZeroDivisionError) as exc:` (the legitimate
+  data-shape exceptions a score_fn might raise on a sparse SimFin slice),
+  log the exception class+message at DEBUG level when raw is None, and let
+  `TypeError` / `AttributeError` / `ImportError` propagate. This is the
+  single change that has the largest downside-prevention surface across
+  the 6 new edges.
+
+### [HIGH] All 6 new V/Q/A edge auto-register blocks swallow EdgeRegistry errors silently
+- Category: bare-except / silent-state / status-stomp risk
+- Files:
+  - `engines/engine_a_alpha/edges/value_earnings_yield_edge.py:101-112`
+  - `engines/engine_a_alpha/edges/value_book_to_market_edge.py:94-105`
+  - `engines/engine_a_alpha/edges/quality_roic_edge.py:105-116`
+  - `engines/engine_a_alpha/edges/quality_gross_profitability_edge.py:84-95`
+  - `engines/engine_a_alpha/edges/accruals_inv_sloan_edge.py:100-111`
+  - `engines/engine_a_alpha/edges/accruals_inv_asset_growth_edge.py:93-104`
+- First flagged: 2026-05-06
+- Status: not started
+- Description: Every new edge ends with the same pattern:
+  ```python
+  try:
+      _reg = EdgeRegistry()
+      _reg.ensure(EdgeSpec(... status="active"))
+  except Exception:
+      pass
+  ```
+  Memory entry `project_registry_status_stomp_bug_2026_04_25.md` documents that
+  the EdgeRegistry's `ensure()` was previously stomping pause/retire decisions
+  silently — exactly because callers (every edge module) auto-register at
+  import. The 04-25 fix made `ensure()` write-protect status; OK. But the
+  bare `except Exception: pass` in the call site means: if the registry file
+  is locked (concurrent backtest in another worktree), corrupted, or a future
+  schema change to `EdgeSpec` breaks the constructor, the 6 new edges will
+  silently fail to register but the import will succeed. AlphaEngine will
+  load them as classes, the lifecycle layer won't see the spec, and
+  `EdgeRegistry.get_all_specs()` will return a registry that's missing 6
+  edges. The lifecycle audit divergence check is the only thing that would
+  catch this — and only if it runs on a corrupt-registry scenario.
+- Recommended next step: Either narrow the catch to `except (FileNotFoundError,
+  PermissionError, yaml.YAMLError) as exc: log.warning(f"... auto-register
+  skipped: {type(exc).__name__}: {exc}")` so a missing data dir during test
+  runs degrades gracefully but a programmer error fails loudly, OR move the
+  auto-register to `EdgeRegistry`'s own scan-on-startup so the duplication
+  goes away entirely. Latter is the structurally cleaner fix and aligns
+  with the `EdgeRegistry` charter.
+
+### [MEDIUM] cross_asset_confirm.py is a soft-archive candidate — disabled-by-default, validation showed it as coincident-noise
+- Category: dead-code / archive candidate
+- Files: `engines/engine_e_regime/cross_asset_confirm.py` (183 lines),
+  `engines/engine_e_regime/regime_config.py:185-205` (the `CrossAssetConfirmConfig`
+  dataclass), `tests/test_ws_c_cross_asset.py` (582+ lines of tests)
+- First flagged: 2026-05-06
+- Status: not started
+- Description: `cross_asset_confirm.py` is gated behind
+  `cross_asset_confirm_enabled: bool = False` (regime_config.py:204) and the
+  only non-test importer is `regime_detector.py:565` (lazy-import inside a
+  try-except, never reached when the flag is off). The recent regime
+  validation `docs/Measurements/2026-05/regime_signal_validation_2026_05_06.md`
+  concluded the underlying signals are coincident, not predictive
+  ("Verdict: Branch 3 — NOISE. Do NOT scope Engine B integration"). The
+  module ships ~183 lines of code, ~25 lines of config, and 582+ lines of
+  tests for behavior that is intentionally never enabled. Production
+  consumers are zero. This isn't strictly dead — `scripts/run_ws_c_smoke.py`
+  flips the flag to test the gate runs end-to-end — but it's a "misleading
+  standing reference" per CLAUDE.md, and the lessons_learned note from
+  2026-05-05 explicitly documents "WS-C cross-asset is observability-only;
+  do not measure by flipping flags."
+- Recommended next step: User decision required because archiving touches
+  the documented "observability-only" gate. Two options: (a) move
+  `cross_asset_confirm.py` and the dataclass to `Archive/engine_e_regime/`
+  with a redirect note in `engines/engine_e_regime/index.md` so future
+  regime work doesn't rediscover the dead path, OR (b) keep it but add
+  `# ARCHIVED-ON-DISABLE: per docs/Measurements/2026-05/regime_signal_validation_2026_05_06.md`
+  at the top of the module as a header. (a) is cleaner and aligns with the
+  charter that disabled features should not pollute the active-engine surface.
+
+### [MEDIUM] `scripts/run_multi_year.py` per-year report assumes uniform rep counts — silent KeyError on heterogeneous failures
+- Category: load-bearing harness fragility
+- Files: `scripts/run_multi_year.py:77`, lines 84-106
+- First flagged: 2026-05-06
+- Status: not started
+- Description: At line 77 the formatter computes
+  `len(next(iter(by_year.values())))` to print "N years × M reps". This
+  assumes all years have identical rep counts. If a single (year, rep) pair
+  errored out (handled at line 206-213 and skipped via `[r for r in results
+  if r.get("ok")]` at line 222), the surviving by_year buckets can have
+  different lengths and the printed total is misleading. Worse, if ALL reps
+  for a year fail, that year is silently dropped from `by_year` entirely,
+  meaning the markdown table would not show any FAIL row for that year —
+  the report's per-year coverage decays without alerting the reader.
+  Separately, line 96's determinism check `det_pass = (sharpe_range <= 0.02
+  and canon_unique == 1)` computes `sharpe_range` over only non-None Sharpes
+  but `canon_unique` over all reps — so if rep 2 errored out and produced
+  `trades_canon_md5 = "(no run_id)"` while reps 1 and 3 produced identical
+  canons, `canon_unique = 2` and the run is wrongly flagged FAIL. This is
+  the file the user explicitly called out as "load-bearing" (multi-year
+  measurement is currently running). The bug doesn't corrupt measurement,
+  but it can silently misreport the determinism floor.
+- Recommended next step: (a) include FAILED runs in `_format_markdown_report`
+  with explicit "FAIL — error: ..." rows so cross-year coverage is visible;
+  (b) compute total by `sum(len(reps) for reps in by_year.values())` instead
+  of assuming uniformity; (c) compute canon_unique only over reps where
+  `ok=True` and `run_id != "?"`. Add a small unit test with a synthetic
+  results list mixing failed and successful runs to lock the expected
+  report shape.
+
+### [MEDIUM] Engine D Gates 2/4/5/6 still use bare `except Exception` — 5 of 6 gates can silently default to "skipped" or "passing"
+- Category: bare-except / silent-failure persistence after a known-fix
+- Files: `engines/engine_d_discovery/discovery.py:975-976` (Gate 2),
+  `:1006-1009` (Gate 3 — has the partial fix that re-raises TypeError /
+  AttributeError, this is the model), `:1026-1027` (Gate 4),
+  `:1078-1079` (Gate 5), `:1114` (Gate 6 — same pattern), `:1183` (outer
+  catch)
+- First flagged: 2026-05-06
+- Status: not started
+- Description: The gauntlet architectural fix landed 2026-05-02 fixed the
+  measurement-geometry but kept the same bare-except shape around each
+  gate's body. Gate 3 was retrofitted with `if isinstance(e, (TypeError,
+  AttributeError)): raise` (lines 1007-1008) — which is exactly the right
+  pattern. Gates 2, 4, 5, 6 did NOT receive the same patch. They still
+  catch the broad `Exception`, print the type/name, and fall through to
+  default values: Gate 2 leaves `survival_rate=0.0`; Gate 4 leaves
+  `sig_p=1.0`; Gate 5 leaves `universe_b_sharpe=NaN`; Gate 6 leaves
+  factor-alpha defaults. The downstream gate-pass logic varies — Gate 4
+  treats `sig_p=1.0` as failing if a `significance_threshold` is set, but
+  Gate 5's `universe_b_passed` logic treats NaN as passing. This means a
+  silent crash in Gate 5 currently gives a free-pass to the universe-B
+  transfer test — the same bug class that was already documented and
+  resolved on 2026-04-28. The previous fix-pattern of "narrow the catch
+  to `(KeyError, ValueError, RuntimeError)` and re-raise programmer
+  errors" should be replicated to the other 4 gates.
+- Recommended next step: Apply the same `if isinstance(e, (TypeError,
+  AttributeError, ImportError)): raise` defensive promotion to gates 2,
+  4, 5, 6 in discovery.py (plus the outer wrapper at line 1183). Or
+  better: refactor each gate body into its own `_run_gate_N()` method
+  with consistent error-handling — the 5 gate try-except blocks have
+  drifted slightly which is its own reason to factor out the boilerplate.
+
+### [MEDIUM] Engine A imports Engine C optimizers — charter inversion (A→C)
+- Category: charter inversion
+- Files: `engines/engine_a_alpha/signal_processor.py:229-231`
+- First flagged: 2026-05-06
+- Status: not started
+- Description: `signal_processor.py` does
+  `from engines.engine_c_portfolio.optimizers import HRPOptimizer,
+  TurnoverPenalty` (and HRPConfig / TurnoverConfig) inside its `__init__`
+  when `po_settings.method in ("hrp", "hrp_composed")`. Per
+  `engine_charters.md` the data flow is A → B → C; A consuming C optimizers
+  inverts the dependency. In effect, Engine A is now doing portfolio
+  composition as part of signal aggregation. This is not new debt
+  (HRP slice work landed in May), but it is a structural drift the
+  charter-inversion-imports memory `pattern_charter_inversion_imports.md`
+  flagged as a recurring failure mode. Combined with the existing inversion
+  `signal_processor.py:27` (A imports F's `EDGE_CATEGORY_MAP`),
+  signal_processor is now A's largest charter-violation surface.
+- Recommended next step: Long-term: HRP composition belongs in Engine C
+  (or in a `core/portfolio_optimizers/` shared package), with A consuming
+  a portfolio-allocation interface rather than instantiating an optimizer
+  itself. Short-term: rename `engines/engine_c_portfolio/optimizers/` to
+  `core/portfolio_optimizers/` so the directional inversion goes away
+  even if A keeps the lazy-import. Document in
+  `engine_charters.md` that "optimizer interfaces are charter-neutral
+  utilities, not C-owned" if that's the desired contract.
+
+### [MEDIUM] Engine A signal_processor approaching god-class threshold (715 LOC); fundamentals_helpers global cache adds another mutable singleton
+- Category: god-class / mutable singleton
+- Files: `engines/engine_a_alpha/signal_processor.py` (715 LOC),
+  `engines/engine_a_alpha/edges/_fundamentals_helpers.py:43-44, 47-66`
+- First flagged: 2026-05-06
+- Status: not started
+- Description: signal_processor.py grew from ~600 LOC pre-Phase-2.10d to
+  715 LOC after fill_share_capper, HRP/turnover wiring, per-ticker
+  metalearner, and tier-classifier integration. Still under the 1000-LOC
+  hard threshold but worth flagging — the same accretion pattern documented
+  in `pattern_debt_hotspots.md`. Adjacent finding: `_fundamentals_helpers.py`
+  uses a module-global `_PANEL_CACHE` + `_PANEL_LOAD_FAILED` singleton with
+  reset functions for tests. Per-process caching is reasonable for a
+  10MB SimFin parquet, but the pattern is the same one that bit Path C's
+  `fetch_prices` SPY-cache (a cache key that didn't include all required
+  tickers). The current implementation caches the *whole panel* unconditionally,
+  so the SPY-cache shape of bug isn't reproducible here — but the test-helper
+  contract (`reset_panel_cache`, `set_panel`) means production code can
+  observe a fixture-injected panel if a test forgets to reset, with no
+  cache-key isolation. Same semantics as the Path C bug, different surface.
+- Recommended next step: (a) For signal_processor.py: extract the HRP / turnover
+  branch (lines 220-242) into a separate `_PortfolioCompositionLayer` class.
+  Same pattern as the LifecycleManager extraction that "Held" per the
+  hotspots memory. (b) For `_fundamentals_helpers.py`: replace the module-
+  global with `functools.lru_cache(maxsize=1)` on a no-arg `_load_panel_cached()`
+  function and a corresponding `_load_panel_cached.cache_clear()` for tests.
+  Same effective behavior, no mutable globals, harder for tests to leak
+  state into production.
+
+### [MEDIUM] `_LAST_OVERLAY_DIAGS` module-global leaks between calls if `run_compounder_backtest` is invoked outside the wrapper
+- Category: mutable global / leakage between runs
+- Files: `scripts/path_c_synthetic_compounder.py:799, 967, 1295`
+- First flagged: 2026-05-06
+- Status: not started
+- Description: `_LAST_OVERLAY_DIAGS` is a module-global list mutated inside
+  `run_compounder_backtest` (line 967) whenever vol_overlay_enabled=True.
+  The wrapper `_run_with_overlay_diagnostics` is the only function that
+  CLEARS the global (lines 1277, 1291). Any caller that invokes
+  `run_compounder_backtest(vol_overlay_enabled=True, ...)` directly — twice
+  in the same process — will see the diagnostics from run-1 leaked into
+  run-2's view of the global, since `.append()` is the only mutation. This
+  is the same shape as the SPY-cache bug: a process-wide mutable state
+  that an unsuspecting caller can be silently affected by. Currently only
+  `main()` calls the wrapper, so it's latent; but path_c is in active
+  iteration and a future ablation harness might hit this.
+- Recommended next step: Pass diagnostics back through the return tuple
+  (already a 3-tuple; making it a 4-tuple is straightforward) and remove
+  `_LAST_OVERLAY_DIAGS` entirely. The wrapper exists only to hide the
+  signature change — a deliberate workaround per its docstring. With the
+  signature change, the wrapper goes away and the global goes away.
+
+### [LOW] Stale TODO at robustness.py:303 — open since 2026-01-27 (~99 days)
+- Category: stale-todo
+- Files: `engines/engine_d_discovery/robustness.py:303`
+- First flagged: 2026-05-06
+- Status: not started
+- Description: `# TODO: Compare real result to these distribution` set to
+  `"original_sharpe_percentile": 0.0` for every PBO result. Git blame:
+  cb61f4f8, 2026-01-27. Older than the 90-day stale threshold. The PBO
+  output dict has the placeholder field but no consumer ever reads
+  `original_sharpe_percentile` (grep across repo: 0 hits outside this
+  line). The TODO is noting that the bootstrapped distribution is
+  computed but the actual percentile of the live result against that
+  distribution isn't returned. Either implement (1 line:
+  `np.mean(self._sharpe_distribution < actual_sharpe)`) or delete the
+  field from the dict.
+- Recommended next step: One-line fix — either compute the percentile
+  inline, or delete the field. Don't leave the TODO open another quarter.
+
+### [LOW] `engines/engine_c_portfolio/sleeves/` is a documented design artifact with zero consumers
+- Category: design artifact / disable-on-arrival
+- Files: `engines/engine_c_portfolio/sleeves/sleeve_base.py` (151 LOC),
+  `engines/engine_c_portfolio/sleeves/__init__.py` (26 LOC)
+- First flagged: 2026-05-06
+- Status: not started
+- Description: Both files document themselves as DESIGN ARTIFACTS — the
+  module docstrings explicitly say "DESIGN ARTIFACT, not production code"
+  and reference Phases M0-M3 of the path_c_compounder_design_2026_05.md
+  migration plan. There are zero non-test imports of the `Sleeve` ABC
+  anywhere in the repo (grep across `engines/`, `orchestration/`,
+  `scripts/`, `cockpit/`: 0 production consumers). The recent Path C
+  decision (defer pending HMM in-production-decision-path + Engine B
+  regime-driven de-grossing — see `project_compounder_synthetic_failed_2026_05_02`)
+  pushes M1+ further out. This is borderline between "intentional
+  forward-looking placeholder" and "dead code that will go stale before
+  it ships." The honest framing per
+  `pattern_duplicate_orchestrators.md`: a placeholder that ships before
+  the migration does often grows two implementations.
+- Recommended next step: Either (a) ship a minimal concrete sleeve (e.g.
+  CoreSleeve wrapping the existing PortfolioPolicy.allocate() at zero
+  semantic change) so the abstraction has at least one real consumer
+  beyond tests, OR (b) move sleeves/ to `Archive/engine_c_portfolio/sleeves/`
+  with a pointer in the migration plan saying "interface-first design,
+  resurrect when M1 unblocks." Per CLAUDE.md, archive-not-delete.
+  Path (a) is more useful if Path C unblock happens in next quarter; (b)
+  if longer.
+
+### [LOW] `accruals_inv_sloan_edge.py` and `accruals_inv_asset_growth_edge.py` directly negate adapter-precomputed factors — adapter-edge contract is implicit
+- Category: implicit contract / future-fragility
+- Files: `engines/engine_a_alpha/edges/accruals_inv_sloan_edge.py:88`,
+  `engines/engine_a_alpha/edges/accruals_inv_asset_growth_edge.py:81`,
+  `engines/data_manager/fundamentals/simfin_adapter.py:131-177`
+  (`compute_factors` adds these as derived columns)
+- First flagged: 2026-05-06
+- Status: not started
+- Description: The two accruals edges read `sloan_accruals` and `asset_growth`
+  directly from the SimFin panel (precomputed by the adapter at panel-build
+  time) and just negate them. The contract — "adapter populates these
+  columns, edge consumes them" — is implicit; nothing pins the column
+  names or sign convention. If a future adapter rewrite renames
+  `sloan_accruals` to `accruals_sloan` (or flips the sign convention), the
+  edges fail silently via the bare-except in `top_quintile_long_signals`
+  (the previous HIGH finding) — score_fn returns None for every ticker,
+  edge abstains, signals drop to zero. No alert fires. Compare to the
+  `_INC_KEEP` / `_BAL_KEEP` / `_CF_KEEP` mapping dicts in simfin_adapter.py
+  (lines 60-92) which are the canonical column-name registry — these two
+  derived columns aren't listed there, just computed inline at line 156-174.
+- Recommended next step: Add a `_DERIVED_COLUMNS = {"sloan_accruals", ...}`
+  set in simfin_adapter.py and assert the columns exist after `compute_factors`.
+  Have edges import that constant rather than the literal string, so a
+  rename is enforced by the import. Or: add a `DerivedColumnsContract`
+  test that builds a tiny synthetic panel, calls `compute_factors`, and
+  asserts the expected columns + sign conventions.
+
+### [LOW] `_LAST_OVERLAY_DIAGS` declared at line 1295 but used at line 799 — forward-reference works only because it's never read in the same module-scope
+- Category: code-organization / readability
+- Files: `scripts/path_c_synthetic_compounder.py:799, 1295`
+- First flagged: 2026-05-06
+- Status: not started
+- Description: `global _LAST_OVERLAY_DIAGS` at line 799 references a name
+  defined at module load time at line 1295 (~500 lines later). This works
+  in Python because module loading is top-down and the global is read at
+  call-time, not at function-definition-time — but it makes the file
+  surprising to read, especially given the global is only mutated inside
+  `run_compounder_backtest` and read inside `_run_with_overlay_diagnostics`.
+  Same finding as the MEDIUM one above on the global itself, but the
+  ordering is independently a readability issue.
+- Recommended next step: When the MEDIUM finding above is fixed by
+  threading diagnostics through the return tuple, this issue resolves
+  automatically. Otherwise, move the `_LAST_OVERLAY_DIAGS: List = []`
+  declaration to the top of the module (near other module-level state)
+  and add a `# Module-global: see _run_with_overlay_diagnostics docstring`
+  comment.
