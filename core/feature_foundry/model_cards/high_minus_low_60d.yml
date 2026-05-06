@@ -1,0 +1,21 @@
+feature_id: high_minus_low_60d
+source_url: https://www.jstor.org/stable/2352838
+license: internal
+point_in_time_safe: true
+expected_behavior: |
+  `(max(close[t-59 .. t]) - min(close[t-59 .. t])) / mean(close[t-59 ..
+  t])`. Range-based volatility primitive — captures peak-to-trough
+  amplitude rather than dispersion of period returns. The Parkinson
+  (1980) and Garman-Klass (1980) families show range-based vol
+  estimators are more efficient than close-to-close stdev for the same
+  horizon. Distinct from `realized_vol_60d` which uses log-return
+  stdev. Output is non-negative; typical equity values 0.10-0.60.
+  Returns None when fewer than 60 closes are available before `dt` or
+  the window mean is non-positive.
+known_failure_modes:
+  - "Uses close-to-close max/min, not intraday OHLC range. The Parkinson estimator's efficiency advantage is fully realized only with true intraday H/L; this version is a coarser approximation."
+  - "Range is dominated by single-day extremes; one large gap-down moves the feature even if the rest of the 60-day window is quiet. Less robust than realized_vol for that reason."
+  - "Pairs strongly with realized_vol_60d (correlation often >0.8) but captures different distributional information — heavy tails vs body. Both can carry incremental information but expect collinearity in linear models."
+  - "Normalization by window mean works for stationary-price assets; for trending names with strong drift, the mean is biased upward by the trend, suppressing the range ratio. Cross-sectional comparisons across high-momentum vs flat names will reflect the drift bias."
+last_revalidation: never
+ablation_history: []

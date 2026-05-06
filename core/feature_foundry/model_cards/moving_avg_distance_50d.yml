@@ -1,0 +1,20 @@
+feature_id: moving_avg_distance_50d
+source_url: https://en.wikipedia.org/wiki/Moving_average_crossover
+license: internal
+point_in_time_safe: true
+expected_behavior: |
+  Natural log of `close_t / mean(close[t-49 .. t])`. Trend primitive
+  distinct from `mom_*` (return over fixed lookback) and
+  `dist_52w_high` (distance from extreme): positive means the close is
+  above its 50-day simple moving average, negative means below. The
+  log scale makes the feature symmetric around zero and approximately
+  equal to the percent deviation for small displacements. Returns None
+  when fewer than 50 closes are available before `dt` or any close in
+  the window is non-positive.
+known_failure_modes:
+  - "Mean-reversion vs trend: in chop, large positive readings revert; in trending bull regimes they persist. Without a regime conditioner the feature is direction-ambiguous."
+  - "50-day horizon is faster than the 200-day moving-average primitive used by the ma_cross_50_200 feature; pairing the two is meaningful (e.g., crossover signals) but using both raw values introduces collinearity."
+  - "Sensitive to single-day outliers (gap moves, splits not fully adjusted): a 10% gap on day t leaves the feature elevated for ~50 days as the gap rolls through the window."
+  - "Symmetric around zero by construction; meta-learners that assume bounded inputs will need scaling. Empirical range on US equities is roughly [-0.4, +0.4] outside of crisis."
+last_revalidation: never
+ablation_history: []

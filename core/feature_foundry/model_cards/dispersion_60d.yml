@@ -1,0 +1,21 @@
+feature_id: dispersion_60d
+source_url: https://www.bis.org/publ/qtrpdf/r_qt2106e.htm
+license: internal
+point_in_time_safe: true
+expected_behavior: |
+  Cross-sectional standard deviation of trailing 60-day returns across
+  the registered universe. Captures factor-rotation regimes: high
+  dispersion means there is meaningful spread between winners and
+  losers (factor pickers' market, intra-universe alpha is harvestable);
+  low dispersion means the universe moves together (macro-driven, beta
+  dominates, factor harvest underperforms). Ticker-independent — same
+  value across the universe on a given date; the parameter is kept for
+  substrate uniformity. Returns None when fewer than 5 tickers have ≥61
+  closes ending at-or-before `dt`.
+known_failure_modes:
+  - "Defined per universe, not per regime — value is sensitive to the universe composition. Adding/removing tickers changes the time-series; cross-period comparison is only valid when the universe is stable."
+  - "Cap-weighted vs equal-weighted matters: the feature treats every ticker equally regardless of market cap. Concentrated universes (few mega-caps) will look artificially low-dispersion even when underlying breadth is healthy."
+  - "60-day horizon blends short crisis windows into longer regimes. The 2020-03 COVID dislocation flushes out of the rolling window by mid-2020, biasing the post-crisis dispersion read."
+  - "Ticker-independent broadcast pattern is unusual for the substrate; meta-learner architectures that assume per-ticker variation may extract less value than they would from per-ticker features."
+last_revalidation: never
+ablation_history: []
