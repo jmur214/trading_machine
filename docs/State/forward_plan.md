@@ -1,10 +1,23 @@
-# Forward Plan — 2026-05-02 (post-reviewer synthesis)
+# Forward Plan — live (last substantive update 2026-05-06)
 
 > **Live plan.** Supersedes `forward_plan_2026_05_01.md` after the
 > two outside-reviewer docs landed
 > (`docs/Sessions/Other-dev-opinion/05-1-26_1-percent.md`
 > + `05-1-26_a-and-i_full.mf`). Both converge on the same architectural
 > picture and identify gaps the prior plans had underweighted.
+>
+> **PATH C DEFERRED — 2026-05-06:** 3-day Path C arc complete. Cells
+> E/F/G/H all falsified (vol overlay, defensive vol-rank pre-screen,
+> 70/30 IEF buffer, combined). Cell F closest miss at -16.09% MDD /
+> 4.74% CAGR; do NOT iterate further on 4-event sample. Path C is
+> paused (not abandoned). **Unblock criteria** (all three required):
+> (1) Engine E HMM in production decision path, (2) Engine B reads
+> regime signals + de-grosses on regime change events, (3) vol overlay
+> infrastructure at `scripts/path_c_overlays.py` becomes load-bearing
+> via regime-conditional trigger. See memory
+> `project_path_c_deferred_2026_05_06.md` for full results table +
+> mechanism diagnosis. DO NOT reset -15% MDD target — load-bearing
+> per design, not arbitrary.
 >
 > **HONEST RE-ACCOUNTING — 2026-05-02 evening:**
 >
