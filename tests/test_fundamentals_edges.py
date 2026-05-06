@@ -69,6 +69,28 @@ def _fake_close_df(price: float = 100.0) -> pd.DataFrame:
     )
 
 
+@pytest.fixture
+def stub_panel():
+    """Inject a tiny non-empty panel so ``get_panel()`` returns a truthy object.
+
+    The helper's score_fn never queries this panel directly in tests that pass
+    a closure-bound score_fn; the panel just needs to be non-None to bypass
+    the "no fundamentals — abstain" early-return at the top of
+    ``top_quintile_long_signals``.
+    """
+    fake = pd.DataFrame(
+        {"publish_date": [pd.Timestamp("2024-01-01")], "net_income": [1.0]},
+        index=pd.MultiIndex.from_tuples(
+            [("STUB", pd.Timestamp("2024-01-01"))],
+            names=["Ticker", "Report Date"],
+        ),
+    )
+    fh.reset_panel_cache()
+    fh.set_panel(fake)
+    yield fake
+    fh.reset_panel_cache()
+
+
 # ---------------------------------------------------------------------------
 # 1. Registration cleanly
 # ---------------------------------------------------------------------------
@@ -549,11 +571,19 @@ def test_auto_register_swallows_io_error(monkeypatch, caplog):
 # 10. Bug #4 — State-transition emission (basket-stable → empty signal)
 # ---------------------------------------------------------------------------
 
-def test_helper_emits_only_on_basket_transitions():
+def test_helper_emits_only_on_basket_transitions(stub_panel):
     """Calling the helper twice with the same factor data must emit
-    long_score on the FIRST call and ZERO new entries on the SECOND call
+    long_score on the FIRST call and NO NEW ENTRIES on the SECOND call
     (basket hasn't changed). This is the core fix for the daily over-trading
     on quarterly-cadence fundamentals data.
+
+    Updated 2026-05-07: sustained members now emit ``sustained_score``
+    (default 0.3) instead of 0.0 so slow-moving factor edges keep voting
+    to hold the position rather than silently consenting to exits driven
+    by other edges' transient negative signals. The over-trading fix is
+    preserved because sustained_score is below the entry threshold and
+    is itself unchanging across consecutive bars (engine deduplication
+    still suppresses entries).
     """
     universe = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J"]
     data_map = {t: _fake_close_df() for t in universe}
@@ -582,24 +612,128 @@ def test_helper_emits_only_on_basket_transitions():
         f"Top quintile should be {{A,B}}; got {selected1}"
     )
 
-    # SECOND call with IDENTICAL inputs: basket unchanged → ZERO new entries.
-    # This is the over-trading fix in action — the helper recognizes the
-    # basket is stable and emits all-zero signals.
+    # SECOND call with IDENTICAL inputs: basket unchanged → no NEW entries
+    # (no ticker emits long_score=1.0). Sustained members emit
+    # sustained_score=0.3 instead.
     out2 = fh.top_quintile_long_signals(
         data_map, asof, stable_score_fn,
         top_quantile=0.20, long_score=1.0, min_universe=2,
         state=state, edge_id="test_edge",
     )
-    selected2 = {t for t, v in out2.items() if v == 1.0}
-    assert selected2 == set(), (
-        f"Second call with stable basket must emit ZERO new entries (the "
-        f"over-trading fix). Got entries: {selected2}. State: {state}."
+    new_entries2 = {t for t, v in out2.items() if v == 1.0}
+    assert new_entries2 == set(), (
+        f"Second call with stable basket must emit NO new entries (no "
+        f"long_score=1.0). Got new entries: {new_entries2}. State: {state}."
     )
+    # Sustained members emit the default sustained_score=0.3 (the
+    # position-defending vote).
+    assert out2["A"] == pytest.approx(0.3), (
+        f"Sustained member A must emit sustained_score=0.3; got {out2['A']}"
+    )
+    assert out2["B"] == pytest.approx(0.3), (
+        f"Sustained member B must emit sustained_score=0.3; got {out2['B']}"
+    )
+    # Non-members still emit 0.0
+    assert out2["J"] == 0.0
     # Every ticker still appears in output (signal_processor expects it)
     assert set(out2.keys()) == set(universe)
 
 
-def test_helper_emits_exits_when_basket_changes():
+def test_helper_emits_sustained_score_on_held_position(stub_panel):
+    """Sustained members of the top quintile (in basket on call N AND call
+    N+1) emit ``sustained_score`` — the position-defending vote — rather
+    than 0.0. This addresses the integration mismatch surfaced by the
+    2021 V/Q/A smoke (Sharpe 0.592 vs baseline 1.666): held positions
+    should not silently consent to exits driven by other edges' transient
+    negative signals.
+    """
+    universe = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J"]
+    data_map = {t: _fake_close_df() for t in universe}
+    static_scores = {t: float(10 - i) for i, t in enumerate(universe)}
+
+    def stable_score_fn(panel_, ticker, asof_ts, df):
+        return static_scores.get(ticker)
+
+    state: dict = {}
+    asof = pd.Timestamp("2024-09-30")
+
+    # First call: A and B are entries → long_score=1.0
+    out1 = fh.top_quintile_long_signals(
+        data_map, asof, stable_score_fn,
+        top_quantile=0.20, long_score=1.0, min_universe=2,
+        state=state, edge_id="test_edge",
+    )
+    assert out1["A"] == 1.0
+    assert out1["B"] == 1.0
+
+    # Second call with same basket: both sustained → sustained_score=0.3
+    out2 = fh.top_quintile_long_signals(
+        data_map, asof, stable_score_fn,
+        top_quantile=0.20, long_score=1.0, min_universe=2,
+        state=state, edge_id="test_edge",
+    )
+    assert out2["A"] == pytest.approx(0.3), (
+        f"Sustained A must emit sustained_score=0.3; got {out2['A']}"
+    )
+    assert out2["B"] == pytest.approx(0.3), (
+        f"Sustained B must emit sustained_score=0.3; got {out2['B']}"
+    )
+    # Non-members still emit 0.0
+    for t in ["C", "D", "E", "F", "G", "H", "I", "J"]:
+        assert out2[t] == 0.0, f"Non-member {t} must emit 0.0; got {out2[t]}"
+
+
+def test_sustained_score_parameterizable(stub_panel):
+    """The ``sustained_score`` parameter is honored when overridden — each
+    edge can tune its position-defending vote magnitude independently.
+    """
+    universe = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J"]
+    data_map = {t: _fake_close_df() for t in universe}
+    static_scores = {t: float(10 - i) for i, t in enumerate(universe)}
+
+    def stable_score_fn(panel_, ticker, asof_ts, df):
+        return static_scores.get(ticker)
+
+    asof = pd.Timestamp("2024-09-30")
+
+    # Run with sustained_score=0.5
+    state: dict = {}
+    fh.top_quintile_long_signals(
+        data_map, asof, stable_score_fn,
+        top_quantile=0.20, long_score=1.0, min_universe=2,
+        state=state, edge_id="test_edge", sustained_score=0.5,
+    )
+    out2 = fh.top_quintile_long_signals(
+        data_map, asof, stable_score_fn,
+        top_quantile=0.20, long_score=1.0, min_universe=2,
+        state=state, edge_id="test_edge", sustained_score=0.5,
+    )
+    assert out2["A"] == pytest.approx(0.5), (
+        f"Sustained_score=0.5 must be honored; got {out2['A']}"
+    )
+    assert out2["B"] == pytest.approx(0.5)
+
+    # Run with sustained_score=0.0 (back-compat with prior pure entry-only
+    # / exit-only shape)
+    state2: dict = {}
+    fh.top_quintile_long_signals(
+        data_map, asof, stable_score_fn,
+        top_quantile=0.20, long_score=1.0, min_universe=2,
+        state=state2, edge_id="test_edge", sustained_score=0.0,
+    )
+    out2_zero = fh.top_quintile_long_signals(
+        data_map, asof, stable_score_fn,
+        top_quantile=0.20, long_score=1.0, min_universe=2,
+        state=state2, edge_id="test_edge", sustained_score=0.0,
+    )
+    assert out2_zero["A"] == 0.0, (
+        f"sustained_score=0.0 must restore pure entry-only emission; "
+        f"got {out2_zero['A']}"
+    )
+    assert out2_zero["B"] == 0.0
+
+
+def test_helper_emits_exits_when_basket_changes(stub_panel):
     """When a ticker leaves the top quintile, the helper emits 0.0 for
     that ticker on the transition call (so the per-ticker aggregator stops
     boosting it). New entries get long_score; sustained members get 0.0."""
@@ -635,11 +769,15 @@ def test_helper_emits_exits_when_basket_changes():
     # Basket after round 2: {J, A}; A sustained, B exited, J entered
     assert out2["J"] == 1.0, "J entered the basket → must emit long_score"
     assert out2["B"] == 0.0, "B exited the basket → must emit 0.0 (exit)"
-    assert out2["A"] == 0.0, "A is sustained → emit 0.0 (no re-entry signal)"
+    # A is sustained → emit sustained_score=0.3 (default, position-defending)
+    # rather than 0.0 — slow-moving factors should keep voting to hold.
+    assert out2["A"] == pytest.approx(0.3), (
+        "A is sustained → emit sustained_score=0.3 (default, position-defending)"
+    )
     assert set(state["last_basket"]) == {"A", "J"}
 
 
-def test_helper_state_resets_below_min_universe():
+def test_helper_state_resets_below_min_universe(stub_panel):
     """When coverage drops below min_universe, the helper aborts AND clears
     state — so a recovery bar doesn't fire spurious "transitions" treating
     every basket member as a new entry."""
