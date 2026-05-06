@@ -41,6 +41,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import importlib
 import os
 import shutil
 import sys
@@ -78,6 +79,78 @@ ISOLATED_FILES = [
     "regime_edge_performance.json",
     "lifecycle_history.csv",
 ]
+
+
+# Module-level mutable globals OUTSIDE data/governor/ that can corrupt
+# measurements across runs (same shape as the 04-25 registry-stomp bug
+# and the 05-06 SPY-cache bug). Each entry is
+# (import_path, helper_or_attr, kind) where kind selects the reset path:
+#   "helper"     — call module.<helper>()  (preferred when one exists)
+#   "attr_none"  — setattr(module, <attr>, None)
+#   "attr_false" — setattr(module, <attr>, False)
+#   "attr_list"  — setattr(module, <attr>, [])
+#
+# The first two entries (V/Q/A panel cache) are HIGH-RISK and used in
+# the prod backtest path; we import on demand. The path_c entry is a
+# standalone-script global that prod never imports — reset best-effort
+# only if the script is already present in sys.modules so the harness
+# doesn't pay a 1300-line script-import cost on every isolated run.
+ISOLATED_GLOBALS_EAGER = [
+    # HIGH-RISK — used by V/Q/A edges; one helper resets both flags.
+    ("engines.engine_a_alpha.edges._fundamentals_helpers",
+     "reset_panel_cache", "helper"),
+    # MEDIUM-RISK — feature_foundry caches; clear helpers exist.
+    ("core.feature_foundry.sources.local_ohlcv",
+     "clear_close_cache", "helper"),
+    ("core.feature_foundry.sources.earnings_calendar",
+     "clear_earnings_cache", "helper"),
+    ("core.feature_foundry.sources.fred_macro",
+     "clear_series_cache", "helper"),
+]
+ISOLATED_GLOBALS_LAZY = [
+    # HIGH-RISK but standalone-script — only reset if already imported.
+    ("scripts.path_c_synthetic_compounder",
+     "_LAST_OVERLAY_DIAGS", "attr_list"),
+]
+
+
+def _reset_one_global(import_path: str, name: str, kind: str,
+                      *, lazy: bool = False) -> None:
+    """Reset a single module-level mutable global.
+
+    For ``lazy=True`` we only act if the module is already in
+    ``sys.modules`` — useful for standalone scripts the prod path never
+    imports.
+    """
+    if lazy:
+        module = sys.modules.get(import_path)
+        if module is None:
+            return
+    else:
+        module = importlib.import_module(import_path)
+    if kind == "helper":
+        getattr(module, name)()
+    elif kind == "attr_none":
+        setattr(module, name, None)
+    elif kind == "attr_false":
+        setattr(module, name, False)
+    elif kind == "attr_list":
+        setattr(module, name, [])
+    else:
+        raise ValueError(f"Unknown reset kind: {kind!r}")
+
+
+def reset_module_globals() -> None:
+    """Reset all registered cross-run-contaminating module globals.
+
+    Called from ``isolated()`` on entry AND exit, mirroring the
+    governor-file snapshot/restore pattern. Eager entries import on
+    demand; lazy entries are skipped if the module isn't already loaded.
+    """
+    for import_path, name, kind in ISOLATED_GLOBALS_EAGER:
+        _reset_one_global(import_path, name, kind, lazy=False)
+    for import_path, name, kind in ISOLATED_GLOBALS_LAZY:
+        _reset_one_global(import_path, name, kind, lazy=True)
 
 
 def _md5(path: Path) -> str:
@@ -135,12 +208,20 @@ def isolated() -> Iterator[None]:
     leaves the worktree in the same anchored state regardless of whether
     each run mutated. This is what lets repeated invocations be
     bit-comparable downstream.
+
+    Beyond the governor-file snapshot, also reset the module-level
+    mutable globals listed in ``ISOLATED_GLOBALS_EAGER/LAZY``. Those
+    survive across same-process invocations (e.g. multi-run measurement
+    drivers, sweeps, walk-forward orchestrators) and would otherwise
+    leak state across runs identically to the 04-25 registry-stomp bug.
     """
     restore_anchor()
+    reset_module_globals()
     try:
         yield
     finally:
         restore_anchor()
+        reset_module_globals()
 
 
 def _print_state(label: str) -> None:
