@@ -60,6 +60,8 @@ class ValueBookToMarketEdge(EdgeBase):
         self.params = dict(self.DEFAULT_PARAMS)
         if params:
             self.params.update(params)
+        # Per-instance basket-transition cache (Bug #4 fix 2026-05-06).
+        self._basket_state: dict = {}
 
     @classmethod
     def sample_params(cls) -> dict:
@@ -86,10 +88,18 @@ class ValueBookToMarketEdge(EdgeBase):
             top_quantile=float(self.params.get("top_quantile", 0.20)),
             long_score=float(self.params.get("long_score", 1.0)),
             min_universe=int(self.params.get("min_universe", 30)),
+            state=self._basket_state,
+            edge_id=self.EDGE_ID,
         )
 
 
+# Bug #3 fix 2026-05-06: narrow auto-register exception handling. See
+# value_earnings_yield_edge.py for full rationale.
+import logging  # noqa: E402
+
 from engines.engine_a_alpha.edge_registry import EdgeRegistry, EdgeSpec  # noqa: E402
+
+_REG_LOG = logging.getLogger(__name__)
 
 try:
     _reg = EdgeRegistry()
@@ -101,5 +111,8 @@ try:
         params=dict(ValueBookToMarketEdge.DEFAULT_PARAMS),
         status="active",
     ))
-except Exception:
-    pass
+except (FileNotFoundError, PermissionError, OSError) as _exc:
+    _REG_LOG.warning(
+        "%s auto-register skipped: %s: %s",
+        ValueBookToMarketEdge.EDGE_ID, type(_exc).__name__, _exc,
+    )
