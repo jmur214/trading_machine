@@ -973,7 +973,10 @@ class DiscoveryEngine:
                 result["pbo_actual_sharpe"] = pbo.get("actual_sharpe", 0.0)
                 result["pbo_avg_synthetic_sharpe"] = pbo.get("avg_synthetic_sharpe", 0.0)
             except Exception as e:
-                print(f"[DISCOVERY] PBO check failed: {type(e).__name__}: {e}")
+                if isinstance(e, (TypeError, AttributeError, NameError, AssertionError, ImportError)):
+                    raise
+                print(f"[Gate 2] {type(e).__name__}: {e}")
+                survival_rate = 0.0
 
             result["robustness_survival"] = float(survival_rate)
             result["gate_2_passed"] = bool(survival_rate >= gate2_survival_threshold)
@@ -1004,9 +1007,9 @@ class DiscoveryEngine:
                         result["wfo_is_sharpe"] = float(attribution_sharpe)
                         result["wfo_window_sharpes"] = [float(x) for x in rolling_sharpes]
             except Exception as e:
-                if isinstance(e, (TypeError, AttributeError)):
+                if isinstance(e, (TypeError, AttributeError, NameError, AssertionError, ImportError)):
                     raise
-                print(f"[DISCOVERY] WFO check skipped: {type(e).__name__}: {e}")
+                print(f"[Gate 3] {type(e).__name__}: {e}")
 
             result["wfo_degradation"] = float(wfo_consistency)
             result["gate_3_evaluated"] = bool(wfo_consistency != 0.0)
@@ -1024,10 +1027,17 @@ class DiscoveryEngine:
                 )
                 sig_p = sig_result.get("p_value", 1.0)
             except Exception as e:
-                print(f"[DISCOVERY] Significance test failed: {type(e).__name__}: {e}")
+                if isinstance(e, (TypeError, AttributeError, NameError, AssertionError, ImportError)):
+                    raise
+                print(f"[Gate 4] {type(e).__name__}: {e}")
+                sig_p = 1.0
 
             result["significance_p"] = float(sig_p)
-            if significance_threshold is not None:
+            # None threshold means "skip" — but skip cannot pass; failing
+            # closed is the correct default for an un-runnable gate.
+            if significance_threshold is None:
+                result["gate_4_passed"] = False
+            else:
                 result["gate_4_passed"] = bool(sig_p < significance_threshold)
             _stamp("gate_4", _g4_t0)
 
@@ -1076,20 +1086,32 @@ class DiscoveryEngine:
                     universe_b_sharpe = stream_sharpe(ub_attribution)
                     universe_b_contribution = ub_contribution
             except Exception as e:
-                print(f"[DISCOVERY] Gate 5 (Universe B) failed: {type(e).__name__}: {e}")
+                if isinstance(e, (TypeError, AttributeError, NameError, AssertionError, ImportError)):
+                    raise
+                print(f"[Gate 5] {type(e).__name__}: {e}")
+                universe_b_sharpe = float("nan")
+                universe_b_contribution = float("nan")
 
             result["universe_b_sharpe"] = universe_b_sharpe
             result["universe_b_contribution"] = universe_b_contribution
             result["universe_b_n_tickers"] = universe_b_n_tickers
+            # NaN means we couldn't measure — fail closed. Previously NaN
+            # short-circuited to pass, which let any gate-5 setup error
+            # silently green-light a candidate.
             result["gate_5_passed"] = bool(
-                math.isnan(universe_b_sharpe) or universe_b_sharpe > 0
+                not math.isnan(universe_b_sharpe) and universe_b_sharpe > 0
             )
             _stamp("gate_5", _g5_t0)
 
             # ---- Gate 6: FF5+Mom factor decomposition on attribution stream ----
             _g6_t0 = _time.time()
-            factor_alpha_passed = True
-            factor_alpha_reason = "skipped: not run"
+            # Fail-closed default: a candidate that cannot prove non-trivial
+            # alpha vs FF5+Mom should not pass on the absence of evidence.
+            # FileNotFoundError (missing factor cache) is the one preserved
+            # skip-pass case — no factor data available at all is an
+            # operational state, not an attribute of the candidate.
+            factor_alpha_passed = False
+            factor_alpha_reason = "failed: not run"
             try:
                 from core.factor_decomposition import (
                     load_factor_data,
@@ -1112,11 +1134,11 @@ class DiscoveryEngine:
                 factor_alpha_reason = "skipped: factor cache missing"
                 print(f"[DISCOVERY] Gate 6 skipped: {e}")
             except Exception as e:
-                if isinstance(e, (TypeError, AttributeError)):
+                if isinstance(e, (TypeError, AttributeError, NameError, AssertionError, ImportError)):
                     raise
-                factor_alpha_passed = True
-                factor_alpha_reason = f"skipped: {type(e).__name__}"
-                print(f"[DISCOVERY] Gate 6 (factor alpha) failed: {type(e).__name__}: {e}")
+                factor_alpha_passed = False
+                factor_alpha_reason = f"failed: {type(e).__name__}"
+                print(f"[Gate 6] {type(e).__name__}: {e}")
 
             result["factor_alpha_passed"] = factor_alpha_passed
             result["factor_alpha_reason"] = factor_alpha_reason
@@ -1126,15 +1148,18 @@ class DiscoveryEngine:
                 print(f"[DISCOVERY] {cand_id} failed Gate 6 ({factor_alpha_reason})")
 
             # ---- Final pass check ----
+            # Fail-closed: a None threshold or NaN universe-B reading both
+            # mean the gate could not be evaluated, which is not the same
+            # as evidence of a pass.
             if significance_threshold is None:
-                sig_passed = True
+                sig_passed = False
                 sig_threshold_for_log = float("nan")
             else:
                 sig_passed = sig_p < significance_threshold
                 sig_threshold_for_log = significance_threshold
 
             universe_b_passed = (
-                math.isnan(universe_b_sharpe) or universe_b_sharpe > 0
+                not math.isnan(universe_b_sharpe) and universe_b_sharpe > 0
             )
 
             passed = (
@@ -1146,9 +1171,6 @@ class DiscoveryEngine:
             )
             result["passed_all_gates"] = passed
             result["significance_threshold"] = sig_threshold_for_log
-
-            if significance_threshold is None:
-                result["gate_4_passed"] = bool(sig_p < 0.05)
 
             b_sharpe_str = (
                 "skipped" if math.isnan(universe_b_sharpe)
@@ -1181,7 +1203,13 @@ class DiscoveryEngine:
             return result
 
         except Exception as e:
-            print(f"[DISCOVERY] Validation failed for {candidate_spec['edge_id']}: {e}")
+            # Programmer errors must propagate so they surface in CI / logs
+            # instead of silently masking a candidate as "failed validation."
+            if isinstance(e, (TypeError, AttributeError, NameError, AssertionError, ImportError)):
+                _diag_error = f"{type(e).__name__}: {e}"
+                _emit_diag()
+                raise
+            print(f"[validate_candidate] {type(e).__name__}: {e}")
             _diag_error = f"{type(e).__name__}: {e}"
             _emit_diag()
             return result

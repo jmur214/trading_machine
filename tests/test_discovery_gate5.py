@@ -175,7 +175,11 @@ def test_malformed_csv_is_skipped(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# Gate 5 gate logic — Sharpe > 0 and nan-skip semantics
+# Gate 5 gate logic — Sharpe > 0 and fail-closed-on-NaN semantics
+#
+# Post-2026-05-07 (f3-gauntlet-gates-remediation): NaN means Universe-B
+# could not be measured, which is not the same as evidence of a pass.
+# Pre-remediation behaviour (`isnan or > 0`) is now considered a bug.
 # ---------------------------------------------------------------------------
 
 
@@ -183,27 +187,40 @@ def test_gate5_passes_when_universe_b_sharpe_positive():
     """Sharpe > 0 on universe B → gate passes."""
     import math
     universe_b_sharpe = 0.5
-    universe_b_passed = math.isnan(universe_b_sharpe) or universe_b_sharpe > 0
+    universe_b_passed = (
+        not math.isnan(universe_b_sharpe) and universe_b_sharpe > 0
+    )
     assert universe_b_passed is True
 
 
 def test_gate5_fails_when_universe_b_sharpe_zero():
     import math
     universe_b_sharpe = 0.0
-    universe_b_passed = math.isnan(universe_b_sharpe) or universe_b_sharpe > 0
+    universe_b_passed = (
+        not math.isnan(universe_b_sharpe) and universe_b_sharpe > 0
+    )
     assert universe_b_passed is False
 
 
 def test_gate5_fails_when_universe_b_sharpe_negative():
     import math
     universe_b_sharpe = -0.3
-    universe_b_passed = math.isnan(universe_b_sharpe) or universe_b_sharpe > 0
+    universe_b_passed = (
+        not math.isnan(universe_b_sharpe) and universe_b_sharpe > 0
+    )
     assert universe_b_passed is False
 
 
-def test_gate5_skips_when_sharpe_nan():
-    """nan means no universe-B data was available — don't penalise the edge."""
+def test_gate5_fails_when_sharpe_nan():
+    """NaN means Universe-B couldn't be measured — fail closed.
+
+    Pre-remediation, NaN short-circuited via ``isnan or > 0`` to a pass,
+    which let any setup error inside the Gate-5 try/except silently
+    green-light a candidate.
+    """
     import math
     universe_b_sharpe = float("nan")
-    universe_b_passed = math.isnan(universe_b_sharpe) or universe_b_sharpe > 0
-    assert universe_b_passed is True
+    universe_b_passed = (
+        not math.isnan(universe_b_sharpe) and universe_b_sharpe > 0
+    )
+    assert universe_b_passed is False
