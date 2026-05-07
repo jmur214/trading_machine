@@ -65,6 +65,20 @@ def _run_year(year: int, use_historical_universe: bool = False) -> dict:
     )
 
 
+def _safe_extended_metrics(run_id: str) -> dict | None:
+    """
+    Best-effort load of extended metrics (PSR, IR, Calmar, etc.) for a run_id.
+    Returns None on any failure — the caller should fall back to the headline-
+    Sharpe-only path so the report still writes. Added 2026-05-09 evening per
+    the metric-framework upgrade.
+    """
+    try:
+        from core.measurement_reporter import compute_extended_metrics
+        return compute_extended_metrics(run_id)
+    except Exception:
+        return None
+
+
 def _format_markdown_report(
     results: list[dict],
     output_path: Path,
@@ -74,6 +88,20 @@ def _format_markdown_report(
     by_year: dict[int, list[dict]] = {}
     for r in results:
         by_year.setdefault(r["year"], []).append(r)
+
+    # Compute extended metrics (PSR / IR / Calmar / Sortino / Tail / Skew /
+    # Kurt / Ulcer) per (year, rep) using the first rep as the
+    # representative — within-year reps are bitwise-identical under
+    # determinism, so any single rep gives the same extended metrics.
+    extended_by_year: dict[int, dict] = {}
+    for year, reps in by_year.items():
+        for r in reps:
+            rid = r.get("run_id") or "?"
+            if rid != "?":
+                ext = _safe_extended_metrics(rid)
+                if ext is not None:
+                    extended_by_year[year] = ext
+                    break
 
     lines: list[str] = []
     lines.append("# Multi-Year Foundation Measurement")
@@ -85,8 +113,12 @@ def _format_markdown_report(
     lines.append("")
     lines.append("## Per-year results")
     lines.append("")
-    lines.append("| Year | Reps | Sharpe (rep1, rep2, rep3) | Sharpe range | CAGR%(mean) | Canon md5 unique | Determinism |")
-    lines.append("|---|---|---|---:|---:|---:|---|")
+    if extended_by_year:
+        lines.append("| Year | Sharpe | PSR(>0) | Sortino | Calmar | IR vs SPY | Skew | Kurt | Tail | Ulcer | MDD% | Determinism |")
+        lines.append("|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|")
+    else:
+        lines.append("| Year | Reps | Sharpe (rep1, rep2, rep3) | Sharpe range | CAGR%(mean) | Canon md5 unique | Determinism |")
+        lines.append("|---|---|---|---:|---:|---:|---|")
 
     year_means: list[tuple[int, float]] = []
     for year in sorted(by_year.keys()):
@@ -97,7 +129,6 @@ def _format_markdown_report(
         if not sharpes:
             lines.append(f"| {year} | {len(reps)} | (all None) | — | — | — | FAIL |")
             continue
-        sharpe_str = ", ".join(f"{s:.4f}" for s in sharpes)
         sharpe_range = max(sharpes) - min(sharpes)
         canon_unique = len(set(canons))
         det_pass = (sharpe_range <= 0.02 and canon_unique == 1)
@@ -107,10 +138,22 @@ def _format_markdown_report(
         cagr_mean = sum(cagrs) / len(cagrs) if cagrs else float("nan")
         sharpe_mean = sum(sharpes) / len(sharpes)
         year_means.append((year, sharpe_mean))
-        lines.append(
-            f"| {year} | {len(reps)} | {sharpe_str} | {sharpe_range:.4f} | "
-            f"{cagr_mean:.2f} | {canon_unique}/{len(canons)} | {det_str} |"
-        )
+        ext = extended_by_year.get(year)
+        if ext is not None:
+            lines.append(
+                f"| {year} | {sharpe_mean:.4f} | {ext['PSR']:.3f} | "
+                f"{ext['Sortino']:.3f} | {ext['Calmar']:.3f} | "
+                f"{ext['Information Ratio']:.3f} | "
+                f"{ext['Skewness']:.3f} | {ext['Excess Kurtosis']:.3f} | "
+                f"{ext['Tail Ratio']:.3f} | {ext['Ulcer Index']:.2f} | "
+                f"{ext['Max Drawdown %']:.2f} | {det_str} |"
+            )
+        else:
+            sharpe_str = ", ".join(f"{s:.4f}" for s in sharpes)
+            lines.append(
+                f"| {year} | {len(reps)} | {sharpe_str} | {sharpe_range:.4f} | "
+                f"{cagr_mean:.2f} | {canon_unique}/{len(canons)} | {det_str} |"
+            )
 
     lines.append("")
     lines.append("## Cross-year aggregate")
@@ -141,6 +184,35 @@ def _format_markdown_report(
         lines.append(f"- Worst year: {worst[0]} (Sharpe {worst[1]:.4f})")
         lines.append(f"- Best year:  {best[0]} (Sharpe {best[1]:.4f})")
         lines.append(f"- Best-vs-worst spread: {best[1] - worst[1]:.4f} (cross-year regime sensitivity)")
+
+    # Extended-metric aggregate (PSR / IR median across years)
+    if extended_by_year:
+        lines.append("")
+        lines.append("## Extended metric framework (2026-05-09 upgrade)")
+        lines.append("")
+        psrs = [ext["PSR"] for ext in extended_by_year.values()]
+        irs = [ext["Information Ratio"] for ext in extended_by_year.values()]
+        calmars = [ext["Calmar"] for ext in extended_by_year.values()]
+        skews = [ext["Skewness"] for ext in extended_by_year.values()]
+        if psrs:
+            lines.append(f"- **PSR(SR>0) median across years: {statistics.median(psrs):.3f}** "
+                         f"(min {min(psrs):.3f}, max {max(psrs):.3f})")
+            lines.append("  Interpretation: probability the true Sharpe is > 0 in each year. "
+                         "PSR ≥ 0.95 = strong evidence of skill; ≥ 0.80 = moderate; < 0.50 = no evidence.")
+        if irs:
+            lines.append(f"- **IR vs SPY median: {statistics.median(irs):.3f}** "
+                         f"(positive = beating SPY on tracking error; negative = underperforming)")
+        if calmars:
+            lines.append(f"- Calmar median: {statistics.median(calmars):.3f}  "
+                         f"(drawdown-adjusted; relevant for Goal A — compound)")
+        if skews:
+            avg_skew = statistics.mean(skews)
+            lines.append(f"- Skewness mean: {avg_skew:.3f}  "
+                         f"({'right-skewed (asymmetric upside)' if avg_skew > 0.2 else 'left-skewed (negative tail risk)' if avg_skew < -0.2 else 'roughly symmetric'})")
+        lines.append("")
+        lines.append("**Headline metric (per 2026-05-09 framework upgrade):** PSR median, not Sharpe mean. "
+                     "Sharpe mean kept above for backward compatibility.")
+
     lines.append("")
     lines.append("## Raw run records")
     lines.append("")
