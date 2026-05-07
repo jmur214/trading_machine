@@ -51,9 +51,16 @@ import os
 from .signal_collector import SignalCollector
 from .signal_processor import (
     SignalProcessor, RegimeSettings, HygieneSettings, EnsembleSettings,
-    MetaLearnerSettings, PortfolioOptimizerSettings,
+    MetaLearnerSettings,
 )
 from .signal_formatter import SignalFormatter
+# Engine C portfolio composer — applies HRP + turnover-cost gating to
+# the per-ticker info dict produced by SignalProcessor. Default method
+# "weighted_sum" is a strict no-op. Closes F4 charter inversion: HRP
+# instantiation now lives in Engine C; Engine A consumes it as a service.
+from engines.engine_c_portfolio.composer import (
+    PortfolioComposer, PortfolioOptimizerSettings,
+)
 
 from typing import Optional
 from engines.engine_f_governance.governor import StrategyGovernor
@@ -490,8 +497,13 @@ class AlphaEngine:
             edge_tiers=_edge_tiers,
             paused_edge_ids=_paused_edge_ids,
             paused_max_weight=float(cfg_raw.get("paused_max_weight", 0.5)),
-            portfolio_optimizer_settings=portfolio_optimizer_settings,
         )
+        # Engine C portfolio composer (F4 charter close, 2026-05). HRP +
+        # turnover-cost gating now live in engine_c_portfolio/composer.py;
+        # SignalProcessor is pure edge-aggregation. Default method
+        # "weighted_sum" is a strict no-op — instantiated unconditionally
+        # so call sites stay branch-free.
+        self.composer = PortfolioComposer(portfolio_optimizer_settings, debug=self.cfg.debug)
         self.formatter = SignalFormatter(
             enter_threshold=self.cfg.enter_threshold,
             exit_threshold=self.cfg.exit_threshold,
@@ -709,6 +721,14 @@ class AlphaEngine:
         proc = self.processor.process(data_map, now, raw_scores, regime_meta=regime_meta)
         if is_debug_enabled("ALPHA"):
             print(f"[ALPHA][TRACE] Processor output size={len(proc) if proc else 0}")
+        # Engine C portfolio composer — applies HRP + turnover-cost
+        # gating across the active universe. No-op when method is
+        # "weighted_sum" (default). Mutates `proc` in place to add
+        # ``hrp_weight`` / ``optimizer_weight`` per-ticker; the
+        # signal-build loop below threads ``optimizer_weight`` into
+        # signal.meta for Engine B's sizing path.
+        if proc and self.composer.is_active:
+            proc = self.composer.compose(proc, data_map)
         # --- Fallback: if processor yields nothing but we have raw_scores, build a minimal proc ---
         if (not proc) and raw_scores:
             proc = {}

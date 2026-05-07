@@ -59,6 +59,18 @@
 - **Function `run_audit()`**: Iterate over every card in `root`, evaluate, and (unless
 - **Function `main()`**: No docstring
 
+### `audit_per_edge_substrate.py`
+**Module Docstring:** scripts/audit_per_edge_substrate.py
+- **Function `main()`**: No docstring
+
+### `audit_six_names_isolation.py`
+**Module Docstring:** scripts/audit_six_names_isolation.py
+- **Function `main()`**: No docstring
+
+### `audit_surviving_edges_multi_year.py`
+**Module Docstring:** scripts/audit_surviving_edges_multi_year.py
+- **Function `main()`**: No docstring
+
 ### `backfill_decision_diary.py`
 **Module Docstring:** One-shot backfill of decision diary with this week's load-bearing decisions.
 - **Function `main()`**: No docstring

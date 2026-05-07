@@ -40,6 +40,14 @@
   - `def __init__()`
   - `def select()`: scored:  {ticker: {"score": float, "side": "long|short|none", "contrib":[...]}}
 
+### `composer.py`
+**Module Docstring:** Engine C — Portfolio Composer.
+- **Class `PortfolioOptimizerSettings`**: Config for PortfolioComposer.
+- **Class `PortfolioComposer`**: Applies HRP + turnover gating to per-ticker info dicts.
+  - `def __init__()`
+  - `def is_active()`
+  - `def compose()`: Mutate ``per_ticker`` in place to add ``hrp_weight`` and
+
 ### `optimizer.py`
 - **Class `PortfolioOptimizer`**: Mean-Variance Optimizer (MVO) for professional portfolio construction.
   - `def __init__()`

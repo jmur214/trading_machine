@@ -30,6 +30,9 @@ from engines.engine_a_alpha.signal_processor import (
     RegimeSettings,
     HygieneSettings,
     EnsembleSettings,
+)
+from engines.engine_c_portfolio.composer import (
+    PortfolioComposer,
     PortfolioOptimizerSettings,
 )
 
@@ -200,14 +203,19 @@ class TestTurnoverPenalty:
 
 
 # --------------------------------------------------------------------- #
-# SignalProcessor dispatch
+# SignalProcessor + Engine C composer dispatch
+#
+# Post-2026-05 F4 close: HRP + turnover live in
+# engines/engine_c_portfolio/composer.py. SignalProcessor produces pure
+# per-ticker aggregate_score; PortfolioComposer mutates that dict to add
+# hrp_weight/optimizer_weight (or, for slice-1 method "hrp", overwrite
+# aggregate_score).
 # --------------------------------------------------------------------- #
 
 class TestSignalProcessorDispatch:
     def _make_inputs(self, seed: int = 0):
         returns = _synthetic_returns(5, 120, seed=seed)
         data_map = _data_map_from_returns(returns)
-        # raw scores: per-ticker per-edge
         raw_scores = {
             "T0": {"edge_a": 0.5},
             "T1": {"edge_a": 0.3},
@@ -218,41 +226,36 @@ class TestSignalProcessorDispatch:
         now = returns.index[-1]
         return data_map, now, raw_scores
 
-    def _build(self, method: str = "weighted_sum"):
+    def _processor(self):
         return SignalProcessor(
             regime=RegimeSettings(enable_trend=False, enable_vol=False),
             hygiene=HygieneSettings(min_history=20, clamp=1.5),
             ensemble=EnsembleSettings(enable_shrink=False),
             edge_weights={"edge_a": 1.0},
-            portfolio_optimizer_settings=PortfolioOptimizerSettings(method=method),
         )
 
-    def test_default_method_strict_passthrough(self):
-        """method="weighted_sum" must produce identical output to a
-        SignalProcessor constructed without any PO settings."""
+    def _run(self, method: str, data_map, now, raw):
+        proc = self._processor()
+        out = proc.process(data_map, now, raw)
+        composer = PortfolioComposer(PortfolioOptimizerSettings(method=method))
+        return composer.compose(out, data_map)
+
+    def test_weighted_sum_strict_passthrough(self):
+        """method="weighted_sum" composer is a strict no-op."""
         data_map, now, raw = self._make_inputs(seed=11)
-
-        sp_legacy = SignalProcessor(
-            regime=RegimeSettings(enable_trend=False, enable_vol=False),
-            hygiene=HygieneSettings(min_history=20, clamp=1.5),
-            ensemble=EnsembleSettings(enable_shrink=False),
-            edge_weights={"edge_a": 1.0},
-        )
-        sp_explicit = self._build("weighted_sum")
-
-        a = sp_legacy.process(data_map, now, raw)
-        b = sp_explicit.process(data_map, now, raw)
+        a = self._processor().process(data_map, now, raw)
+        b = self._run("weighted_sum", data_map, now, raw)
 
         assert a.keys() == b.keys()
         for t in a:
             assert a[t]["aggregate_score"] == pytest.approx(b[t]["aggregate_score"])
+            assert "hrp_weight" not in b[t]
+            assert "optimizer_weight" not in b[t]
 
     def test_hrp_preserves_signs(self):
         data_map, now, raw = self._make_inputs(seed=22)
-        sp_ws = self._build("weighted_sum")
-        sp_hrp = self._build("hrp")
-        out_ws = sp_ws.process(data_map, now, raw)
-        out_hrp = sp_hrp.process(data_map, now, raw)
+        out_ws = self._run("weighted_sum", data_map, now, raw)
+        out_hrp = self._run("hrp", data_map, now, raw)
         assert set(out_ws.keys()) == set(out_hrp.keys())
         for t in out_ws:
             sign_ws = np.sign(out_ws[t]["aggregate_score"])
@@ -269,35 +272,40 @@ class TestSignalProcessorDispatch:
         block = rng.standard_normal(n_days) * 0.01
         idio = rng.standard_normal((n_days, 5)) * 0.001
         cols_data = {
-            f"T{i}": block + idio[:, i] for i in range(4)  # tightly correlated
+            f"T{i}": block + idio[:, i] for i in range(4)
         }
-        cols_data["T4"] = rng.standard_normal(n_days) * 0.01  # diversifier
+        cols_data["T4"] = rng.standard_normal(n_days) * 0.01
         idx = pd.date_range("2024-01-01", periods=n_days, freq="B")
         returns = pd.DataFrame(cols_data, index=idx)
         data_map = _data_map_from_returns(returns)
         raw = {t: {"edge_a": 0.4} for t in returns.columns}
         now = returns.index[-1]
 
-        sp_hrp = self._build("hrp")
-        out_hrp = sp_hrp.process(data_map, now, raw)
+        out_hrp = self._run("hrp", data_map, now, raw)
 
-        # HRP must produce non-uniform weights when the covariance has
-        # structure — that's the whole point of the optimizer. Equal-
-        # weight inputs should NOT produce equal-weight outputs.
         assert "hrp_weight" in out_hrp["T4"]
         weights = np.array([out_hrp[t]["hrp_weight"] for t in returns.columns])
         assert weights.sum() == pytest.approx(1.0, abs=1e-9)
-        assert weights.std() > 1e-3  # real differentiation, not uniform
+        assert weights.std() > 1e-3
 
     def test_hrp_deterministic_across_runs(self):
-        """Determinism floor — same inputs produce identical outputs
-        when the processor is re-instantiated. Critical for the harness.
-        """
+        """Same inputs → identical outputs across re-instantiations."""
         data_map, now, raw = self._make_inputs(seed=33)
-        out1 = self._build("hrp").process(data_map, now, raw)
-        out2 = self._build("hrp").process(data_map, now, raw)
-        out3 = self._build("hrp").process(data_map, now, raw)
+        out1 = self._run("hrp", data_map, now, raw)
+        out2 = self._run("hrp", data_map, now, raw)
+        out3 = self._run("hrp", data_map, now, raw)
         assert set(out1.keys()) == set(out2.keys()) == set(out3.keys())
         for t in out1:
             assert out1[t]["aggregate_score"] == pytest.approx(out2[t]["aggregate_score"])
             assert out2[t]["aggregate_score"] == pytest.approx(out3[t]["aggregate_score"])
+
+    def test_signal_processor_no_engine_c_imports(self):
+        """Charter check (F4): signal_processor.py must not reference
+        HRPOptimizer or TurnoverPenalty after the 2026-05 migration.
+        """
+        from pathlib import Path
+        sp_src = Path(__file__).parent.parent / "engines" / "engine_a_alpha" / "signal_processor.py"
+        text = sp_src.read_text()
+        assert "HRPOptimizer" not in text
+        assert "TurnoverPenalty" not in text
+        assert "engine_c_portfolio" not in text

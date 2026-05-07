@@ -17,7 +17,9 @@ import pytest
 
 from engines.engine_a_alpha.signal_processor import (
     SignalProcessor, RegimeSettings, HygieneSettings, EnsembleSettings,
-    PortfolioOptimizerSettings,
+)
+from engines.engine_c_portfolio.composer import (
+    PortfolioComposer, PortfolioOptimizerSettings,
 )
 from engines.engine_b_risk.risk_engine import RiskEngine
 from engines.engine_b_risk.wash_sale_avoidance import (
@@ -278,52 +280,49 @@ class TestHRPCompositionVsReplacement:
             }, index=idx)
         return out
 
-    def _processor(self, method: str):
+    def _processor(self):
         return SignalProcessor(
             regime=RegimeSettings(enable_trend=False, enable_vol=False),
             hygiene=HygieneSettings(min_history=10, clamp=1.0),
             ensemble=EnsembleSettings(enable_shrink=False),
             edge_weights={"e1": 1.0},
-            portfolio_optimizer_settings=PortfolioOptimizerSettings(
-                method=method, cov_lookback=60, min_history=20,
-                turnover_enabled=False,
-            ),
         )
+
+    def _composer(self, method: str):
+        return PortfolioComposer(PortfolioOptimizerSettings(
+            method=method, cov_lookback=60, min_history=20,
+            turnover_enabled=False,
+        ))
+
+    def _run(self, method: str, data, ts, raw):
+        out = self._processor().process(data, ts, raw)
+        return self._composer(method).compose(out, data)
 
     def test_weighted_sum_no_optimizer_weight_emitted(self):
         data = self._build_data_map()
-        proc = self._processor("weighted_sum")
-        # Direct aggregate scores per ticker
         raw = {t: {"e1": 0.7} for t in data}
-        out = proc.process(data, pd.Timestamp("2024-04-30"), raw)
+        out = self._run("weighted_sum", data, pd.Timestamp("2024-04-30"), raw)
         for t, info in out.items():
             assert "optimizer_weight" not in info
-            # tanh(0.7/1.0) ≈ 0.604 — we just check the score is set; the
-            # composition tests below compare against this baseline.
             assert "aggregate_score" in info
 
     def test_hrp_replacement_overwrites_aggregate_score(self):
         """Replicates slice-1 behavior: aggregate_score is replaced."""
         data = self._build_data_map()
-        baseline = self._processor("weighted_sum").process(
-            data, pd.Timestamp("2024-04-30"),
+        baseline = self._run(
+            "weighted_sum", data, pd.Timestamp("2024-04-30"),
             {t: {"e1": 0.7} for t in data},
         )
         baseline_score = next(iter(baseline.values()))["aggregate_score"]
 
-        proc = self._processor("hrp")
-        out = proc.process(
-            data, pd.Timestamp("2024-04-30"),
+        out = self._run(
+            "hrp", data, pd.Timestamp("2024-04-30"),
             {t: {"e1": 0.7} for t in data},
         )
         scores = [info["aggregate_score"] for info in out.values()]
         assert all("hrp_weight" in info for info in out.values())
-        # Slice 1 sets optimizer_weight=1.0 (already absorbed).
         assert all(info["optimizer_weight"] == 1.0 for info in out.values())
-        # Score magnitudes differ from the weighted_sum baseline
         assert max(abs(s) for s in scores) <= 1.0
-        # At least one score should differ meaningfully from the baseline
-        # (HRP-weight × N replacement → covariance-driven, not conviction)
         assert any(abs(abs(s) - abs(baseline_score)) > 0.05 for s in scores), (
             f"slice-1 should change at least one ticker's magnitude from "
             f"baseline {baseline_score:.4f}; got scores {scores}"
@@ -332,39 +331,32 @@ class TestHRPCompositionVsReplacement:
     def test_hrp_composed_preserves_aggregate_score(self):
         """Slice-3: aggregate_score == weighted_sum baseline; optimizer_weight emitted."""
         data = self._build_data_map()
-        baseline = self._processor("weighted_sum").process(
-            data, pd.Timestamp("2024-04-30"),
+        baseline = self._run(
+            "weighted_sum", data, pd.Timestamp("2024-04-30"),
             {t: {"e1": 0.7} for t in data},
         )
 
-        proc = self._processor("hrp_composed")
-        out = proc.process(
-            data, pd.Timestamp("2024-04-30"),
+        out = self._run(
+            "hrp_composed", data, pd.Timestamp("2024-04-30"),
             {t: {"e1": 0.7} for t in data},
         )
         for t, info in out.items():
-            # Conviction preserved exactly (matches weighted_sum baseline)
             assert info["aggregate_score"] == pytest.approx(
                 baseline[t]["aggregate_score"], abs=1e-9
             )
-            # Optimizer weight emitted as composition multiplier
             assert "optimizer_weight" in info
             assert "hrp_weight" in info
-            # Slice 3: lower-clamped at 0, no upper clamp (HRP weights are
-            # non-negative by construction so no negative output ever).
             ow = info["optimizer_weight"]
             assert ow >= 0.0
 
     def test_hrp_slice3_redistribution_not_reduction(self):
         """Slice 3 invariant: optimizer_weight has mean ≈ 1.0 across firing
         set AND at least one position is amplified (>1.0) and at least one
-        attenuated (<1.0). Slice 2's clamp at 1.0 made every position ≤ 1.0,
-        so this test would FAIL on slice 2.
+        attenuated (<1.0).
         """
         data = self._build_data_map(n_tickers=8, n_bars=120, seed=0)
-        proc = self._processor("hrp_composed")
-        out = proc.process(
-            data, pd.Timestamp("2024-04-30"),
+        out = self._run(
+            "hrp_composed", data, pd.Timestamp("2024-04-30"),
             {t: {"e1": 0.7} for t in data},
         )
         active = [info for info in out.values() if "optimizer_weight" in info]
@@ -373,50 +365,32 @@ class TestHRPCompositionVsReplacement:
         )
         weights = [info["optimizer_weight"] for info in active]
         mean_w = sum(weights) / len(weights)
-        # Mean of HRP_weight × N over all members exactly equals 1.0 by
-        # construction (committed sums to 1.0). Allow small float epsilon.
         assert mean_w == pytest.approx(1.0, abs=1e-9)
-        # Redistribution invariant: at least one above and one below 1.0.
-        # On the synthetic 2-cluster data this is guaranteed by the cluster
-        # variance asymmetry HRP detects.
-        assert max(weights) > 1.0, (
-            f"slice 3 must amplify above-mean tickers; max={max(weights):.4f} "
-            f"means slice-2 clamp is still active"
-        )
-        assert min(weights) < 1.0, (
-            f"slice 3 should attenuate below-mean tickers; min={min(weights):.4f}"
-        )
+        assert max(weights) > 1.0
+        assert min(weights) < 1.0
 
     def test_hrp_slice3_no_upper_clamp_degeneracy(self):
         """Construct a high-concentration covariance (one ticker with sharply
         higher HRP weight) and verify the resulting optimizer_weight goes
-        materially above 1.0 — the exact behaviour slice 2 was suppressing.
+        materially above 1.0.
         """
-        # Build 4 tickers where one has a much lower variance — HRP will
-        # concentrate weight on it.
         rng = np.random.default_rng(42)
         idx = pd.date_range("2024-01-01", periods=120, freq="D")
         out_data = {}
         for i in range(4):
-            sigma = 0.005 if i == 0 else 0.05  # T0 is 10× lower vol
+            sigma = 0.005 if i == 0 else 0.05
             close = 100.0 * np.exp(np.cumsum(rng.normal(0.0, sigma, 120)))
             out_data[f"T{i}"] = pd.DataFrame({
                 "Close": close, "Open": close, "High": close * 1.001,
                 "Low": close * 0.999, "Volume": 1_000_000.0,
             }, index=idx)
 
-        proc = self._processor("hrp_composed")
-        out = proc.process(
-            out_data, pd.Timestamp("2024-04-30"),
+        out = self._run(
+            "hrp_composed", out_data, pd.Timestamp("2024-04-30"),
             {t: {"e1": 0.7} for t in out_data},
         )
-        # T0 should receive the highest HRP weight → optimizer_weight > 1.0
-        # (would be capped at exactly 1.0 under slice 2's clamp)
         ow_t0 = out["T0"]["optimizer_weight"]
-        assert ow_t0 > 1.05, (
-            f"low-vol ticker should be amplified; got optimizer_weight={ow_t0:.4f}. "
-            f"Value ≈ 1.0 would indicate slice-2 clamp is still in place."
-        )
+        assert ow_t0 > 1.05
 
 
 # ============================================================================
