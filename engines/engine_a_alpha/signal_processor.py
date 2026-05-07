@@ -24,7 +24,7 @@ from typing import Any, Dict, List, Optional, Set
 import numpy as np
 import pandas as pd
 
-from engines.engine_f_governance.regime_tracker import EDGE_CATEGORY_MAP
+from engines.engine_a_alpha.edge_taxonomy import EDGE_CATEGORY_MAP
 
 
 # ----------------------------- Settings ----------------------------- #

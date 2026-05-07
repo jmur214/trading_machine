@@ -90,21 +90,13 @@ class RegimeEdgeStats:
         return cls(**{k: d[k] for k in cls.__dataclass_fields__ if k in d})
 
 
-# Edge name → category mapping (for affinity aggregation)
-EDGE_CATEGORY_MAP = {
-    "momentum": "momentum",
-    "xsec_momentum": "momentum",
-    "sma_cross": "trend_following",
-    "atr_breakout": "trend_following",
-    "trend": "trend_following",
-    "rsi_bounce": "mean_reversion",
-    "bollinger": "mean_reversion",
-    "mean_reversion": "mean_reversion",
-    "xsec_reversion": "mean_reversion",
-    "fundamental": "fundamental",
-    "value": "fundamental",
-    "earnings": "fundamental",
-}
+# Edge name → category mapping for affinity aggregation. Imported from
+# Engine A (the canonical owner of edge taxonomy). Re-exported at this
+# module level so legacy callers that did `from engines.engine_f_governance
+# .regime_tracker import EDGE_CATEGORY_MAP` continue to work; the
+# `engines/engine_a_alpha/edge_taxonomy.py` location is canonical.
+# (Charter restoration 2026-05-07; closes the documented A←F inversion.)
+from engines.engine_a_alpha.edge_taxonomy import EDGE_CATEGORY_MAP  # noqa: F401
 
 
 class RegimePerformanceTracker:

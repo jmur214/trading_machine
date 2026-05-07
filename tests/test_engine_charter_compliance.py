@@ -132,17 +132,29 @@ def test_engine_a_no_longer_imports_hrp_or_turnover():
     )
 
 
-@pytest.mark.xfail(
-    reason="EDGE_CATEGORY_MAP currently imported from regime_tracker. Closed by C-engines-5.",
-    strict=True,
-)
 def test_engine_a_does_not_import_from_engine_f():
     """Engine A must not consume Engine F internals — A's taxonomy should
-    live in A or core/. Closed by C-engines-5."""
+    live in A or core/. **Charter exception:** the docstring at
+    `docs/Core/engine_charters.md` § Engine A explicitly lists
+    "Edge weights from Engine F (applied during ensemble aggregation)" as
+    an allowed input. So `from engines.engine_f_governance.governor`
+    (the StrategyGovernor consumed for edge weights) is whitelisted.
+    Anything else from F is a charter inversion.
+
+    **Closed 2026-05-07**: EDGE_CATEGORY_MAP relocated from
+    regime_tracker.py:94 to engines/engine_a_alpha/edge_taxonomy.py.
+    Engine F re-exports from the canonical location for back-compat."""
     matches = _grep_imports_in_engine("A", "from engines.engine_f_governance")
-    assert not matches, (
-        "Engine A imports from Engine F — charter inversion. "
-        f"Hits:\n  " + "\n  ".join(matches)
+    # Filter out the charter-allowed governor dependency
+    forbidden = [
+        m for m in matches
+        if "engine_f_governance.governor" not in m
+    ]
+    assert not forbidden, (
+        "Engine A imports forbidden Engine F module(s) — charter inversion. "
+        "(Engine A may import only from engine_f_governance.governor for "
+        "edge_weights consumption per charter.) "
+        f"Forbidden hits:\n  " + "\n  ".join(forbidden)
     )
 
 
