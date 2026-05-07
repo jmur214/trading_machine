@@ -1,0 +1,195 @@
+{
+  "metadata": {
+    "year": 2024,
+    "runs_per_variant": 3,
+    "variants": [
+      "A",
+      "B",
+      "C"
+    ],
+    "non_sp500_names": [
+      "COIN",
+      "MARA",
+      "RIOT",
+      "DKNG",
+      "PLTR",
+      "SNOW"
+    ],
+    "generated_at": "2026-05-06T22:32:47",
+    "wall_time_seconds": 7814.9
+  },
+  "results": [
+    {
+      "variant": "A",
+      "year": 2024,
+      "rep": 1,
+      "run_id": "f2c5559f-e3c5-4852-8423-e5481f42a4ea",
+      "sharpe": 0.855,
+      "cagr_pct": 3.27,
+      "max_drawdown_pct": -3.25,
+      "win_rate_pct": 48.5,
+      "total_trades": null,
+      "trades_canon_md5": "9a6b12b86a7468905785b89fd3cfccbd",
+      "wall_time_seconds": 374.2,
+      "ok": true
+    },
+    {
+      "variant": "A",
+      "year": 2024,
+      "rep": 2,
+      "run_id": "80e74343-b372-45e9-82ee-348e46de1bba",
+      "sharpe": 0.855,
+      "cagr_pct": 3.27,
+      "max_drawdown_pct": -3.25,
+      "win_rate_pct": 48.5,
+      "total_trades": null,
+      "trades_canon_md5": "9a6b12b86a7468905785b89fd3cfccbd",
+      "wall_time_seconds": 359.2,
+      "ok": true
+    },
+    {
+      "variant": "A",
+      "year": 2024,
+      "rep": 3,
+      "run_id": "ccc2c6fd-02fa-4bfd-a5ed-f882fa72add3",
+      "sharpe": 0.855,
+      "cagr_pct": 3.27,
+      "max_drawdown_pct": -3.25,
+      "win_rate_pct": 48.5,
+      "total_trades": null,
+      "trades_canon_md5": "9a6b12b86a7468905785b89fd3cfccbd",
+      "wall_time_seconds": 346.9,
+      "ok": true
+    },
+    {
+      "variant": "B",
+      "year": 2024,
+      "rep": 1,
+      "run_id": "9068cdf0-b586-4330-a1fa-9c2ad3cb105d",
+      "sharpe": 2.15,
+      "cagr_pct": 9.23,
+      "max_drawdown_pct": -2.63,
+      "win_rate_pct": 49.61,
+      "total_trades": null,
+      "trades_canon_md5": "a9ab47bbedf56cf421c5fdb353a02783",
+      "wall_time_seconds": 332.0,
+      "ok": true
+    },
+    {
+      "variant": "B",
+      "year": 2024,
+      "rep": 2,
+      "run_id": "56ddd494-53f7-41b1-a939-cbf23b998171",
+      "sharpe": 2.15,
+      "cagr_pct": 9.23,
+      "max_drawdown_pct": -2.63,
+      "win_rate_pct": 49.61,
+      "total_trades": null,
+      "trades_canon_md5": "a9ab47bbedf56cf421c5fdb353a02783",
+      "wall_time_seconds": 328.7,
+      "ok": true
+    },
+    {
+      "variant": "B",
+      "year": 2024,
+      "rep": 3,
+      "run_id": "db7eb21e-4480-41ff-af8e-8411c467ecfa",
+      "sharpe": 2.15,
+      "cagr_pct": 9.23,
+      "max_drawdown_pct": -2.63,
+      "win_rate_pct": 49.61,
+      "total_trades": null,
+      "trades_canon_md5": "a9ab47bbedf56cf421c5fdb353a02783",
+      "wall_time_seconds": 331.9,
+      "ok": true
+    },
+    {
+      "variant": "C",
+      "year": 2024,
+      "rep": 1,
+      "run_id": "45514a19-e9ec-4d09-8fbf-733707f18b41",
+      "sharpe": 0.268,
+      "cagr_pct": 1.11,
+      "max_drawdown_pct": -3.52,
+      "win_rate_pct": 41.41,
+      "total_trades": null,
+      "trades_canon_md5": "965d5a4513c52a4357a244a88e74b791",
+      "wall_time_seconds": 2024.3,
+      "ok": true
+    },
+    {
+      "variant": "C",
+      "year": 2024,
+      "rep": 2,
+      "run_id": "b6504096-9eff-4573-87af-cd7e30aad8ab",
+      "sharpe": 0.268,
+      "cagr_pct": 1.11,
+      "max_drawdown_pct": -3.52,
+      "win_rate_pct": 41.41,
+      "total_trades": null,
+      "trades_canon_md5": "965d5a4513c52a4357a244a88e74b791",
+      "wall_time_seconds": 1767.0,
+      "ok": true
+    },
+    {
+      "variant": "C",
+      "year": 2024,
+      "rep": 3,
+      "run_id": "87f083a9-610e-4aae-bf84-de1485a42588",
+      "sharpe": 0.268,
+      "cagr_pct": 1.11,
+      "max_drawdown_pct": -3.52,
+      "win_rate_pct": 41.41,
+      "total_trades": null,
+      "trades_canon_md5": "965d5a4513c52a4357a244a88e74b791",
+      "wall_time_seconds": 1950.8,
+      "ok": true
+    }
+  ],
+  "summary": {
+    "per_variant": {
+      "A": {
+        "n_reps": 3,
+        "sharpes": [
+          0.855,
+          0.855,
+          0.855
+        ],
+        "mean": 0.855,
+        "min": 0.855,
+        "max": 0.855,
+        "range": 0.0
+      },
+      "B": {
+        "n_reps": 3,
+        "sharpes": [
+          2.15,
+          2.15,
+          2.15
+        ],
+        "mean": 2.15,
+        "min": 2.15,
+        "max": 2.15,
+        "range": 0.0
+      },
+      "C": {
+        "n_reps": 3,
+        "sharpes": [
+          0.268,
+          0.268,
+          0.268
+        ],
+        "mean": 0.268,
+        "min": 0.268,
+        "max": 0.268,
+        "range": 0.0
+      }
+    },
+    "deltas": {
+      "A_minus_B": -1.295,
+      "A_minus_C": 0.587,
+      "B_minus_C": 1.882,
+      "pct_of_substrate_gap_explained_by_six_names": -220.61328790459967
+    }
+  }
+}
