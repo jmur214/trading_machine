@@ -157,6 +157,17 @@
 - **Function `migrate()`**: Apply graveyard tags. Returns map of edge_id -> action taken.
 - **Function `main()`**: No docstring
 
+### `operational_pattern_audit.py`
+**Module Docstring:** scripts/operational_pattern_audit.py
+- **Function `audit_edge_population()`**: Edge-curation pattern audit.
+- **Function `audit_oos_lock_status()`**: Is the F8 frozen-code OOS window declared and active?
+- **Function `audit_discovery_cycle_activity()`**: When did Engine D last promote a candidate?
+- **Function `audit_metalearner_status()`**: Is the autonomous portfolio meta-learner enabled in production?
+- **Function `audit_recent_param_sweeps()`**: Scan recent measurement docs for parameter-sweep activity.
+- **Function `render_markdown_report()`**: No docstring
+- **Function `render_summary()`**: One-paragraph stdout summary.
+- **Function `main()`**: No docstring
+
 ### `optimize.py`
 - **Function `main()`**: No docstring
 
