@@ -1,4 +1,77 @@
-# Forward Plan — live (last substantive update 2026-05-06)
+# Forward Plan — live (last substantive update 2026-05-09)
+
+> **2026-05-09 VERDICT: F6 returns COLLAPSES.** Multi-year mean Sharpe
+> 1.296 → **0.5074** on substrate-honest universe (476-503 historical S&P
+> 500 union). −0.789 Sharpe / −61%. Audit doc:
+> `docs/Measurements/2026-05/universe_aware_verdict_2026_05_09.md`. Memory:
+> `project_universe_aware_collapses_2026_05_09.md`.
+>
+> **Per-year breakdown:**
+>
+> | Year | Static (109) | Universe-aware (476-503) | Δ | Within ±0.15? |
+> |---:|---:|---:|---:|---|
+> | 2021 | 1.666 | 0.862 | −0.804 | NO |
+> | 2022 | 0.583 | −0.321 | −0.904 | NO |
+> | 2023 | 1.387 | 1.292 | −0.095 | **YES (only year)** |
+> | 2024 | 1.890 | 0.268 | −1.622 | NO |
+> | 2025 | 0.954 | 0.436 | −0.518 | NO |
+>
+> **0.507 is an upper bound.** 26-54 names per year were silently dropped
+> for missing CSV files (FRC, DISCA, ATVI confirmed). Those are mostly
+> delisted names — survivorship-bias signal pushing the real Sharpe lower.
+> To pin down: run `scripts/fetch_universe.py` then re-measure.
+>
+> **What this means:**
+>
+> - **Path 1 ship: NOT VIABLE in current form.** 6 weeks of headline
+>   Sharpe wins (1.296 Foundation Gate, 1.666 baseline, 1.890 in 2024,
+>   V/Q/A 1.607 sustained-scores) were measured against a substrate
+>   that implicitly selected for the same names the system was trading.
+>   The math was correct; the test was easy.
+> - **Pre-commit kill thesis nominally TRIGGERED** (Foundation Gate
+>   measured at 0.507 vs. 0.5 gate; the gate is a clean fail when the
+>   missing-CSV upper bound resolves). Honest restatement of the kill
+>   criteria on substrate-honest universe is owed before the next
+>   commitment cycle.
+> - **The discipline framework is working.** This is what 8 months of
+>   gauntlet / harness / decision-diary / external-review investment
+>   was FOR. Today is the highest-value moment of that investment.
+>   No live capital was risked on the biased measurement.
+> - **2023 is the only year that held** (-0.095 within noise band on a
+>   4.5× expanded universe). Highly anomalous; almost certainly
+>   reflects 2023's Magnificent-7 mega-cap concentration making the
+>   static and historical universes overlap heavily on the same 8-15
+>   names. The implication: existing edges aren't factor edges, they're
+>   concentrated mega-cap bets that look like factor edges. Building
+>   edges that work on a representative universe is genuinely different
+>   work from "tune the existing edges harder."
+>
+> **What survives:**
+>
+> All infrastructure (Foundry, harness, gauntlet, decision diary,
+> code-health, doc lifecycle, lifecycle automation, edge graveyard,
+> V/Q/A integration, falsification framework). The 2023 anomaly itself
+> is a falsifiable hypothesis worth running down. Edge code is intact;
+> what's invalidated is the headline narrative around it.
+>
+> **What's queued (Phase C-collapses path):**
+>
+> | Step | Dispatch | What it produces |
+> |---|---|---|
+> | Pre-audit | 2023-anomaly investigation (~1-2 hr) | Why does 2023 hold? Hypothesis test before edge audit |
+> | C-collapses-1 | Per-edge audit on substrate-honest universe (~6-8 hr) | CONFIRMED / DEGRADED / FALSIFIED classification per edge; surviving-edges multi-year; honest forward_plan reset |
+> | C-collapses-2 | Substrate-honest edge construction kickoff | Edges that exploit small-cap inefficiencies, sector rotation, factors that work on representative universes (multi-week workstream) |
+>
+> **All measurements citing 1.296 / 1.666 / 1.890 / 1.607 baselines below
+> this section are now KNOWN substrate-conditional.** Read with the
+> caveat that the substrate is biased; the magnitudes are upper bounds;
+> the rank ordering between configs may or may not survive substrate
+> honesty. Pending C-collapses-1, treat all those measurements as
+> "happened, but on a strawman universe."
+>
+> ---
+
+## Pre-2026-05-09 plan (substrate-conditional — kept for reference)
 
 > **Live plan.** Supersedes `forward_plan_2026_05_01.md` after the
 > two outside-reviewer docs landed
@@ -249,7 +322,19 @@ These are **investigation tasks, not dispatched tasks** for this round. The user
 
 **5 agents in parallel this round: gauntlet architectural fix, Feature Foundry skeleton, Engine C HRP slice, Engine E HMM slice, cost completeness. After this round, re-run 2025 OOS under harness to test the Foundation Gate. If pass → unlock the rest of the 10-workstream plan in tiered parallel waves. If fail → pre-committed kill thesis kicks in, structural review. The reviewer's most emphatic point — "build infrastructure first, then features" — is captured by putting Foundry in this round; the engine-gap finding (C and E are biggest) is captured by putting both engines' first slices in this round. After Foundation, the path is parallel-track aggressive but discipline-gated. Real-money deployment no earlier than ~12 months out, probably mid-late Year 2.**
 
-## V/Q/A FUNDAMENTALS EDGES STATUS — 2026-05-07
+## V/Q/A FUNDAMENTALS EDGES STATUS — 2026-05-07 (substrate-conditional, see top-of-file caveat)
+
+> **2026-05-09 update:** F6 verdict COLLAPSES means the 1.666 baseline
+> and 1.607 sustained-scores result below were measured on a biased
+> substrate. The "-0.06 drag (within noise band)" framing assumed both
+> baseline and treatment were measured against the same biased universe;
+> on substrate-honest universe, both magnitudes are unknown. The
+> integration-mismatch fix is still architecturally correct (held
+> positions need a defending vote vs. silence) — that's a software
+> finding, not a measurement claim. Whether V/Q/A net-helps on
+> substrate-honest universe is open: gated on C-collapses-1's per-edge
+> audit. Treat the 2022 bear smoke + grid search as DEFERRED until
+> per-edge audit completes.
 
 The 6 V/Q/A edges (`value_earnings_yield_v1`, `value_book_to_market_v1`, `quality_roic_v1`, `quality_gross_profitability_v1`, `accruals_inv_sloan_v1`, `accruals_inv_asset_growth_v1`) shipped 2026-05-06. Three sequential fixes:
 

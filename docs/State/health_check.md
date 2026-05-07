@@ -128,7 +128,7 @@ then LOW. Within each severity, list newest at the top.
 - Files: `engines/engine_a_alpha/edges/rule_based_edge.py::check_signal`, `engines/engine_d_discovery/discovery.py::validate_candidate` (data_map passed to AlphaEngine without feature engineering), `engines/engine_d_discovery/feature_engineering.py` (where features are computed but only for hunt).
 - Recommended next step: Either (a) `RuleBasedEdge.compute_signals` calls `FeatureEngineer` on the per-ticker DataFrame at signal-time to add the columns its conditions reference, OR (b) `validate_candidate` runs `FeatureEngineer.compute_basic_features()` over `data_map` before instantiating the AlphaEngine. Option (a) is cleaner — keeps the edge self-sufficient and matches how rsi_bounce/atr_breakout compute their features inline. Add a unit test asserting hunter validation produces non-zero Sharpe given a contrived dataset where the rule trivially matches.
 
-### [HIGH] Engine A alpha_engine references deleted `rsi_mean_reversion` module — bare-except masks 6-month-old broken import
+### [HIGH → RESOLVED 2026-04-28] Engine A alpha_engine references deleted `rsi_mean_reversion` module — bare-except masks 6-month-old broken import
 - Engine: A
 - First flagged: 2026-04-28
 - Status: **resolved 2026-04-28** — dead imports removed, default edge swapped to `rsi_bounce`
@@ -163,10 +163,18 @@ then LOW. Within each severity, list newest at the top.
 - Description: `feature_engineering.py:347-358` did `regime_meta.get("correlation")`, but RegimeDetector's output only has `"correlation"` nested under `correlation_regime["state"]`. `Regime_CorrSpike` was hardcoded 0 for every bar of every TreeScanner hunt.
 - Fix: Read all three regime states from the structured form (`trend_regime["state"]`, `volatility_regime["state"]`, `correlation_regime["state"]`) with fallback to the top-level backward-compat keys (`trend`, `volatility`). 6 new tests in `tests/test_discovery_regime_features.py` cover the fix path AND the legacy fallback path.
 
-### [MEDIUM] Engine D has duplicate, drifting WFO orchestrators (evolution_controller and validate_candidate)
+### [MEDIUM → DECISION KEPT 2026-05-07] Engine D has duplicate, drifting WFO orchestrators (evolution_controller and validate_candidate)
 - Engine: D + F (charter boundary issue — `evolution_controller.py` lives in `engine_f_governance/` but does Engine D work)
 - First flagged: 2026-04-28
-- Status: **awaiting user decision** — `validate_candidate` WFO is now correctly wired; `evolution_controller.py` is confirmed dead code (zero importers in `engines/`, `orchestration/`, `scripts/`).
+- Status: **DECISION 2026-05-07: kept active.** During Phase A task A1
+  the agent verified `evolution_controller.py` is NOT dead — it has 10+
+  tests in `tests/test_evolution_controller.py` and is "Critical-path
+  autonomy code rewired in Phase γ" per memory
+  `project_lifecycle_phase_abg_shipped_2026_04_24.md`. Excluded from the
+  A1 archive. The "duplicate orchestrator" framing in this finding was
+  audit-side error — the two paths solve different problems. Charter-
+  boundary concern remains valid (E-engine work in F's package); revisit
+  if Engine F refactor is on the roadmap.
 - Description: `engines/engine_f_governance/evolution_controller.py` implements a complete validate-from-registry-with-WFO pipeline (`run_cycle`, `run_wfo_for_candidate`). Until commit 8ee8289 it was the only WFO orchestrator with a correct interface — `discovery.py::validate_candidate` was broken. After 8ee8289, validate_candidate is canonical and works; evolution_controller.py is unused. Its module location violates the charter (Engine D work in F's package).
 - Charter reference: engine_charters.md Engine F Forbidden Inputs: "Edge discovery, parameter optimization, or walk-forward testing (that's D's job)."
 - Recommended next step: User decision required — moving the file is a charter-boundary change which CLAUDE.md classifies as propose-first. Recommend archiving to `Archive/engine_f_governance/evolution_controller.py` since validate_candidate is now the canonical path. Alternative: keep evolution_controller as a future migration target if you want a more structured WFO orchestrator separate from validate_candidate.
@@ -519,7 +527,7 @@ Severity counts: HIGH 3 | MEDIUM 6 | LOW 4. Top-3 highest-impact below.
   results list mixing failed and successful runs to lock the expected
   report shape.
 
-### [MEDIUM] Engine D Gates 2/4/5/6 still use bare `except Exception` — 5 of 6 gates can silently default to "skipped" or "passing"
+### [MEDIUM → RESOLVED 2026-05-07] Engine D Gates 2/4/5/6 still use bare `except Exception` — 5 of 6 gates can silently default to "skipped" or "passing"
 - Category: bare-except / silent-failure persistence after a known-fix
 - Files: `engines/engine_d_discovery/discovery.py:975-976` (Gate 2),
   `:1006-1009` (Gate 3 — has the partial fix that re-raises TypeError /
@@ -527,7 +535,13 @@ Severity counts: HIGH 3 | MEDIUM 6 | LOW 4. Top-3 highest-impact below.
   `:1078-1079` (Gate 5), `:1114` (Gate 6 — same pattern), `:1183` (outer
   catch)
 - First flagged: 2026-05-06
-- Status: not started
+- Status: RESOLVED via Phase A task A3 (commit `2513676`). Gates 2, 4, 5,
+  and the outer wrapper got the narrowed `(TypeError, AttributeError,
+  NameError, AssertionError, ImportError)` re-raise pattern. Gate 5
+  NaN-passes-the-gate bug specifically eliminated (NaN now FAILS Gate 5).
+  Gate 4 None-threshold-bypass eliminated. Gate 6 default-True-on-
+  exception flipped to default-False. 4 new tests in
+  `tests/test_discovery_gate_remediation.py` cover the failure modes.
 - Description: The gauntlet architectural fix landed 2026-05-02 fixed the
   measurement-geometry but kept the same bare-except shape around each
   gate's body. Gate 3 was retrofitted with `if isinstance(e, (TypeError,
@@ -606,11 +620,17 @@ Severity counts: HIGH 3 | MEDIUM 6 | LOW 4. Top-3 highest-impact below.
   Same effective behavior, no mutable globals, harder for tests to leak
   state into production.
 
-### [MEDIUM] `_LAST_OVERLAY_DIAGS` module-global leaks between calls if `run_compounder_backtest` is invoked outside the wrapper
+### [MEDIUM → MITIGATED 2026-05-07] `_LAST_OVERLAY_DIAGS` module-global leaks between calls if `run_compounder_backtest` is invoked outside the wrapper
 - Category: mutable global / leakage between runs
 - Files: `scripts/path_c_synthetic_compounder.py:799, 967, 1295`
 - First flagged: 2026-05-06
-- Status: not started
+- Status: MITIGATED via Phase A task A2 (commit `86527f5` / fix
+  `686dbfb`). The determinism harness's `isolated()` context now
+  lazy-resets `_LAST_OVERLAY_DIAGS` (and 5 other module-level mutable
+  globals) at session start. Measurement-determinism risk is closed.
+  The architectural finding stands — the module-global itself remains;
+  removing it via the recommended return-tuple refactor is still the
+  proper fix.
 - Description: `_LAST_OVERLAY_DIAGS` is a module-global list mutated inside
   `run_compounder_backtest` (line 967) whenever vol_overlay_enabled=True.
   The wrapper `_run_with_overlay_diagnostics` is the only function that
@@ -628,11 +648,15 @@ Severity counts: HIGH 3 | MEDIUM 6 | LOW 4. Top-3 highest-impact below.
   signature change — a deliberate workaround per its docstring. With the
   signature change, the wrapper goes away and the global goes away.
 
-### [LOW] Stale TODO at robustness.py:303 — open since 2026-01-27 (~99 days)
+### [LOW → RESOLVED 2026-05-07] Stale TODO at robustness.py:303 — open since 2026-01-27 (~99 days)
 - Category: stale-todo
 - Files: `engines/engine_d_discovery/robustness.py:303`
 - First flagged: 2026-05-06
-- Status: not started
+- Status: RESOLVED via Phase A task A3 (commit `2513676`).
+  `original_sharpe_percentile` now computes the percentile of actual
+  Sharpe within the synthetic null distribution by calling
+  `strategy_func({"SYTH": df})` once on historical data; falls back to
+  50.0 if strategy_func chokes.
 - Description: `# TODO: Compare real result to these distribution` set to
   `"original_sharpe_percentile": 0.0` for every PBO result. Git blame:
   cb61f4f8, 2026-01-27. Older than the 90-day stale threshold. The PBO

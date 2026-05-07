@@ -112,7 +112,7 @@ Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
 
 ## C-survives-2 — Minimal-HMM regime experiment on existing FRED features
 
-**Why this is second:** the slice-1 HMM panel rebuild work (memory `project_vix_term_structure_coincident_2026_05_06.md`) found that yield-curve and credit features ALREADY in the panel were quietly leading (78-day lead before 2025 -18.8% drawdown), drowned out by coincident features. The cheap-validation Branch 3 (memory `project_cheap_input_validation_branch3_2026_05_06.md`) confirmed VIX term structure is decisively coincident.
+**Why this is second:** the slice-1 HMM panel rebuild work found that yield-curve and credit features ALREADY in the panel were quietly leading (78-day lead before 2025 -18.8% drawdown), drowned out by coincident features. The cheap-validation Branch 3 (memory `project_cheap_input_validation_branch3_2026_05_06.md` — same memory captures both the VIX-term coincident verdict and the surviving FRED features for the next experiment) confirmed VIX term structure is decisively coincident.
 
 The minimal-HMM experiment isolates the leading subset.
 
