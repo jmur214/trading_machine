@@ -1108,9 +1108,18 @@ Files added/modified, BoTorch dependency added, synthetic-objective convergence 
 
 ---
 
-## C-engines-5 — Engine A pure-signals refactor (sequenced AFTER C-engines-1)
+## C-engines-5 — Engine A pure-signals refactor (scope reduced 2026-05-07)
 
-**Why this sequences after C-engines-1:** C-engines-1 moves HRP+TurnoverPenalty out of `signal_processor.py:228-242`. C-engines-5 strips remaining cross-charter responsibilities. Both touch the same file; sequence them.
+**Why this sequences after C-engines-1:** C-engines-1 (cae2002) moved HRP+TurnoverPenalty out of `signal_processor.py:228-242`. C-engines-5 strips remaining cross-charter responsibilities. Both touch the same file.
+
+**Scope reduction note (2026-05-07 night):** Deliverable #1 of the original C-engines-5 brief was "move EDGE_CATEGORY_MAP from Engine F to Engine A." That sub-task was completed standalone in commit `18c7cac`:
+- New `engines/engine_a_alpha/edge_taxonomy.py` is canonical source
+- Engine F's `regime_tracker.py` re-exports from canonical for back-compat
+- Engine A's `signal_processor.py:27` now imports from `engine_a_alpha.edge_taxonomy`
+- Charter compliance test `test_engine_a_does_not_import_from_engine_f` now PASSES (was xfail)
+- Engine A version bumped 0.2.0 → 0.3.0
+
+So when this dispatch fires, **deliverable #1 (EDGE_CATEGORY_MAP move) is already done**. The agent's remaining scope is deliverables #2 (calibrated `signal_strength`) + #3 (`holding_period_bars` metadata). Time budget reduces from 6-8 hours → ~4-5 hours.
 
 ### SETUP
 
@@ -1144,17 +1153,17 @@ Read for orientation:
 
 ## Goal — three deliverables
 
-### 1. Identify and move all remaining cross-charter responsibilities
+### 1. Identify and move all remaining cross-charter responsibilities (✓ EDGE_CATEGORY_MAP closed standalone)
 
-Audit signal_processor.py post-C-engines-1 for:
+**Status note (2026-05-07 night, commit `18c7cac`):** the EDGE_CATEGORY_MAP move was completed standalone before this dispatch fires. Engine A's `signal_processor.py:27` now imports from `engines.engine_a_alpha.edge_taxonomy` (canonical); Engine F re-exports from the canonical location for back-compat. `test_engine_a_does_not_import_from_engine_f` now passes.
+
+Remaining audit for cross-charter responsibilities in `signal_processor.py` post-C-engines-1 + post-`18c7cac`:
 - Risk-engine-shaped logic (anything making capital decisions) → should be Engine B
 - Portfolio-shaped logic (anything making cross-ticker allocation decisions) → should be Engine C (already moved in C-engines-1, but double-check)
 - Lifecycle-shaped logic (anything reading/mutating edges.yml) → should be Engine F
 - Regime-shaped logic (anything making regime calls beyond consuming) → should be Engine E
 
-`grep -n "EDGE_CATEGORY_MAP\|regime_tracker\|edges_yaml\|risk_per_trade" engines/engine_a_alpha/signal_processor.py`
-
-The known charter inversion documented in `health_check.md`: signal_processor imports `EDGE_CATEGORY_MAP` from `engine_f_governance/regime_tracker.py`. Move the taxonomy to `engines/engine_a_alpha/edge_taxonomy.py` (new file) and have Engine F import from there.
+`grep -n "edges_yaml\|risk_per_trade\|portfolio\." engines/engine_a_alpha/signal_processor.py` — primary search pattern post-EDGE_CATEGORY_MAP-closure.
 
 ### 2. Calibrated probability outputs (refactor binary/ternary signals to probabilities)
 
