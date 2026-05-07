@@ -237,3 +237,21 @@ def test_engines_dir_structure_matches_charter():
         assert (path / "__init__.py").exists(), (
             f"Engine {letter} not a Python package (missing __init__.py)"
         )
+
+
+def test_every_engine_exports_a_semver_version():
+    """Per audit recommendation (2026-05-09), every engine package MUST
+    expose a semver __version__ in its __init__.py. The
+    core.engine_versions registry depends on it for forensic
+    per-run snapshots; missing __version__ would silently fall back
+    to '0.0.0' and lose engine state in the trade log."""
+    from core.engine_versions import get_all_engine_versions, is_valid_semver
+    versions = get_all_engine_versions()
+    for letter in ENGINE_DIRS.keys():
+        v = versions.get(letter)
+        assert v is not None and v != "0.0.0", (
+            f"Engine {letter} missing __version__ in __init__.py"
+        )
+        assert is_valid_semver(v), (
+            f"Engine {letter} __version__ {v!r} is not strict semver"
+        )
