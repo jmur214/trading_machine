@@ -794,21 +794,387 @@ Co-Authored-By in commit(s): Claude Opus 4.7 (1M context) <noreply@anthropic.com
 LOC delta on signal_processor.py, files modified, integration test result, 3-rep determinism (both flag values), charter check (grep), final main commit hash. Note any unexpected behavior surfaced by actually calling `PortfolioPolicy.allocate()` for the first time.
 ```
 
-## C-engines-2 — Engine B portfolio vol-targeting + correlation-aware sizing (skeleton)
+## C-engines-2 — Engine B portfolio vol-targeting + correlation-aware sizing (PROPOSE-FIRST)
 
-(Flesh out after C-engines-1 lands.) Today Engine B does per-trade vol-targeting (each trade sized to a vol budget). Should be portfolio-level: total portfolio realized vol targets a level (e.g. 12%); position sizes scale to keep portfolio vol on target; covariance matrix as input. ~2-3 day work. Branch: `c-engines-2-portfolio-vol-target`. Closes the Engine B charter gap.
+**Status: scoping doc, not a fire-and-forget dispatch.** Per CLAUDE.md, Engine B work requires explicit user approval before any code lands. This section captures the design space for the user to make decisions on; only after the user resolves the open questions does this become an actionable dispatch.
 
-## C-engines-3 — Engine E minimal-HMM on leading FRED features + Engine B de-grossing wire (skeleton)
+### Current state of Engine B (`engines/engine_b_risk/risk_engine.py`, 955 LOC)
 
-(Flesh out after C-engines-2 lands.) Per memory `project_cheap_input_validation_branch3_2026_05_06` and the slice-2 plan: train fresh HMM on `{yield_curve_spread, credit_spread_baa_aaa, dollar_ret_63d, spy_vol_20d}` ONLY (the leading subset). Wire Engine E's regime call into Engine B's de-grossing decision (currently Engine B has `risk_score` from regime, but it's inert because the regime call isn't predictive). ~2-3 day work. Branch: `c-engines-3-minimal-hmm-wire`.
+Read for orientation:
+- `RiskConfig` (line 12): config schema for risk-engine behavior
+- `RiskEngine` (line 62): the live class. Per-trade ATR-based sizing; per-position stops; advisory exposure cap; vol-target multiplier; risk_per_trade_pct (default 0.025).
 
-## C-engines-4 — Engine D Bayesian opt scaffolding (skeleton)
+**What Engine B does today:**
+- Sizes each trade individually to a per-trade vol budget (`risk_per_trade_pct` of equity)
+- Caps gross exposure via `exposure_cap_enabled` (advisory from Engine E regime)
+- Applies vol-target multiplier (max 2.0x leverage when realized vol below target)
+- Applies stop-loss + take-profit per position
+- Has wash-sale-avoidance ledger (prior work; partially-validated)
 
-(Flesh out after C-engines-3 lands.) Replace GA with Bayesian opt via BoTorch. ~200 LOC. Doesn't promote candidates yet — they still go through the gauntlet. Closes Engine D charter gap (autonomous discovery). The dev's pushback applies AT THE EDGE LEVEL (don't optimize on absent signal) — but engine machinery is substrate-independent. Branch: `c-engines-4-bayesian-opt`.
+**What Engine B doesn't do (per audit + this engine-completion review):**
+- **Portfolio-level vol targeting.** Per-trade vol-targeting can produce portfolio vol radically off-target if positions are correlated. The current `vol_scalar` upper-cap-of-2.0 hits every bar in low-realized-vol regimes (memory `project_vol_target_in_sample_measured_2026_04_24`). This is "max 2x leverage when calm" — not regime-aware portfolio vol management.
+- **Correlation-aware sizing.** Each trade is sized as if independent. A portfolio of 10 mega-cap tech longs has correlation ~0.6-0.8; the realized portfolio vol is much higher than the sum of per-trade vol budgets. The system survives this because total positions are small, but it's a structural gap.
+- **GARCH/HAR-RV vol forecasting.** Realized ATR is backward-looking; better-conditioned forecasts exist (ARCH package, ~100 LOC).
+- **Stress testing.** Current portfolio replayed against historical regimes (2008 GFC, 2020 COVID, 2022 bear). Builds the muscle, doesn't claim Sharpe.
 
-## C-engines-5 — Engine A pure-signals refactor (skeleton)
+### Open design questions for the user
 
-(Flesh out after C-engines-1 lands.) Strip remaining cross-charter responsibilities from `signal_processor.py`. Calibrated probability outputs (currently binary/ternary). Edge horizon metadata explicit. ~2 day work. Branch: `c-engines-5-pure-signals`.
+**Q1 — Scope.** Three escalating levels:
+- (a) **Minimum viable portfolio vol-target.** Replace per-trade `risk_per_trade_pct` with a portfolio-vol target (e.g., 12% annualized). Each bar, scale all positions to keep realized portfolio vol = target. ~150 LOC. ~2 days.
+- (b) **(a) + correlation-aware sizing.** Add covariance matrix input from Engine C (which it should already be computing per the C-engines-1 work). Position sizes scale via inverse-covariance contribution to portfolio vol. ~250 LOC. ~3 days.
+- (c) **(b) + GARCH/HAR-RV forecasting.** Replaces realized ATR with conditional-vol forecasts. Materially better in regime transitions. ~350 LOC + arch dependency. ~4-5 days.
+
+Recommendation: start with (a). It's the cleanest test of "does portfolio vol-targeting matter for the Sharpe question?" If (a) materially helps, escalate to (b). If (a) doesn't help, the engine isn't the issue.
+
+**Q2 — Backward compatibility.** Existing measurements were taken under per-trade vol-targeting. Two options:
+- **Hard cutover:** new portfolio-vol behavior becomes default; old behavior is removed. Cleanest, but loses reproducibility for prior measurements.
+- **Flag-gated:** `engine_b_portfolio_vol_target: false` (default) preserves current path; flag-on enables new behavior. Same pattern as B1's `use_historical_universe`.
+
+Recommendation: flag-gated. Same discipline as Phase A.
+
+**Q3 — Vol target value.** What's the target? Three reasonable defaults:
+- 8% annualized (conservative; Goal A retiree-aligned per fitness profile)
+- 12% annualized (balanced; matches typical balanced-fund volatility)
+- 15% annualized (matches SPY's typical long-run vol; aggressive)
+
+Recommendation: 12% as default, configurable per fitness profile (`config/fitness_profiles.yml` already supports profile-conditional behavior).
+
+**Q4 — Interaction with Engine C activation (C-engines-1).** Once Engine C is wired (C-engines-1), the portfolio composition has weights. Engine B's portfolio-vol-target needs the COMPOSED portfolio's vol, not the raw signal-weighted portfolio's vol. So C-engines-2 sequences AFTER C-engines-1.
+
+**Q5 — Branch + safety.** This is Engine B work. CLAUDE.md says: stop and propose first for "Engine B / live_trader/." This scoping doc IS the proposal. The user's explicit approval is required before any code lands.
+
+### What to surface back to the user before firing
+
+A scoping decision that pins down: chosen scope (a/b/c), backward compat (hard / flag-gated), vol target (8/12/15%), branch name. Once those four decisions land, this section gets rewritten as an actionable dispatch and the user fires it.
+
+### Time budget when fired
+
+Depends on scope choice. (a) = 2 days. (b) = 3 days. (c) = 4-5 days.
+
+### Branch (when activated)
+
+`c-engines-2-portfolio-vol-target`
+
+---
+
+## C-engines-3 — Engine E minimal-HMM on leading FRED features + Engine B de-grossing wire
+
+**Why this works substrate-independently:** The HMM model itself is universe-independent. Engine E reads macro features (yield_curve_spread, credit_spread_baa_aaa, dollar_ret_63d, spy_vol_20d), trains an HMM, outputs a regime label. The wire-into-Engine-B step does require Engine B work, so this dispatch's deliverable #2 needs to be carefully scoped (it could be flag-gated or the dispatch could just produce the signal stream and Engine B integration stays a separate propose-first decision).
+
+The 2026-05-06 cheap-validation Branch 3 finding (memory `project_cheap_input_validation_branch3_2026_05_06`) showed that VIX term structure is decisively coincident; the FRED features above carry forward signal but get drowned by coincident features when mixed in. This dispatch isolates the leading subset and tests whether they predict drawdowns.
+
+### SETUP
+
+```bash
+cd /Users/jacksonmurphy/Dev/trading_machine-2
+git worktree add .claude/worktrees/c-engines-3 -b c-engines-3-minimal-hmm
+cd .claude/worktrees/c-engines-3
+claude
+```
+
+### PROMPT
+
+```
+You are working on the ArchonDEX trading system. Read CLAUDE.md first. Full autonomous cycle.
+
+## Setup
+
+```bash
+git worktree add .claude/worktrees/c-engines-3 -b c-engines-3-minimal-hmm
+cd .claude/worktrees/c-engines-3
+```
+
+## Background
+
+The 2026-05-06 cheap-validation work found:
+- VIX term structure: coincident across all 4 tenor pairs (memory `project_cheap_input_validation_branch3_2026_05_06`)
+- 4 FRED features (yield_curve_spread, credit_spread_baa_aaa, dollar_ret_63d, spy_vol_20d) carried a 78-day OOS lead before the 2025 -18.8% drawdown — drowned out by coincident features in the larger panel
+
+The current Engine E HMM (`engines/engine_e_regime/hmm_classifier.py`) trains on the full panel and is empirically coincident (memory `project_regime_signal_falsified_2026_05_06`). Crisis AUC 0.49 on 20d-fwd drawdowns — coin flip.
+
+The hypothesis: a minimal HMM trained on ONLY the 4 leading FRED features might recover the 78-day lead.
+
+## Goal — three deliverables
+
+### 1. Train fresh minimal-HMM on the 4 leading FRED features only
+
+Read for orientation:
+- `engines/engine_e_regime/hmm_classifier.py` — current HMM trainer
+- `engines/engine_e_regime/macro_features.py` — feature panel construction
+- `scripts/train_hmm_vix_term.py` — slice-1 training script (existing pattern to mirror)
+- `data/macro/` — FRED feature CSVs
+
+Implementation:
+- New script `scripts/train_minimal_hmm.py`
+- Loads ONLY: yield_curve_spread, credit_spread_baa_aaa, dollar_ret_63d, spy_vol_20d
+- Trains HMM with N states (try 2, 3, 4 — pick by BIC/cross-validation)
+- Outputs a regime label time series saved to `data/macro/minimal_hmm_states.parquet`
+- Includes log of train/eval split + holdout metrics
+
+### 2. Validate vs forward drawdowns
+
+Reuse `scripts/validate_regime_signals.py` patterns:
+- AUC vs SPY 20d-fwd drawdown ≤ -5%
+- Coincident-vs-leading correlation flip (forward corr > trailing corr — the criterion the existing HMM fails)
+- Per-state breakdown (which state precedes drawdowns)
+
+Three variants to test (per `docs/Core/Ideas_Pipeline/regime_panel_slice_2_plan.md`):
+- A: 4 leading FRED features alone
+- B: A + VIX term as confirmation feature (does the dual gate help)
+- C: A + VIX term as interaction term (nonlinear value test)
+
+### 3. Wire-readiness assessment (do NOT actually wire into Engine B in this dispatch)
+
+If at least one variant clears AUC > 0.55 AND coincident-leading flip:
+- Document the wire-into-Engine-B integration plan in the audit doc (file:line refactor map)
+- Engine B integration becomes a separate propose-first dispatch (CLAUDE.md requires Engine B work to be approved before code lands)
+- DO NOT modify `engines/engine_b_risk/risk_engine.py` in this dispatch
+
+If no variant clears the threshold:
+- Document explicitly: "minimal-HMM on FRED features does not lead drawdowns at AUC > 0.55"
+- Recommend the next experiment (paid options-history provider for IV skew, OR earnings-revision dispersion, OR retire the regime-conditional sleeve infra)
+
+## Acceptance
+
+- 3 minimal-HMM variants trained
+- AUC + coincident-leading correlation flip + per-state breakdown for each
+- Audit doc at `docs/Measurements/2026-05/minimal_hmm_2026_05_<date>.md`
+- Verdict: which variant (if any) clears AUC > 0.55 AND coincident-leading flip
+- Wire-into-Engine-B plan (NOT executed) if leading; "no signal found" recommendation if not
+- New unit tests in `tests/test_minimal_hmm.py`
+
+## Hard constraints
+
+- DO NOT modify Engine B / live_trader/ in this dispatch (separate propose-first)
+- DO NOT promote any HMM model to production
+- Read-only on existing data; no new data integration required (uses existing FRED panel)
+- Branch: `c-engines-3-minimal-hmm`
+- Time budget: 3-4 hours
+
+## Honest interpretation guidance
+
+This is read-mostly research. The output is "does the leading FRED subset predict drawdowns?" Yes/no. If yes, Engine B integration becomes a separate workstream. If no, the regime-conditional sleeve infrastructure stays parked indefinitely (per the 2026-05-06 falsification).
+
+## End-of-cycle
+
+```bash
+cd /Users/jacksonmurphy/Dev/trading_machine-2
+git checkout main
+git merge --no-ff c-engines-3-minimal-hmm -m "Merge branch 'c-engines-3-minimal-hmm' — minimal HMM on leading FRED features, verdict: <LEADING|PARTIAL|NOT_LEADING>"
+git push origin main
+git worktree remove .claude/worktrees/c-engines-3
+```
+
+Co-Authored-By in commit(s): Claude Opus 4.7 (1M context) <noreply@anthropic.com>
+
+## Report
+
+AUC for each variant + horizon (5d, 20d, 60d), coincident-leading correlation table, branch verdict, Engine B integration plan if leading, final main commit hash.
+```
+
+---
+
+## C-engines-4 — Engine D Bayesian opt scaffolding (replaces GA noise factory)
+
+**Why this is autonomous-improvement territory:** Engine D's GA (`engines/engine_d_discovery/genetic_algorithm.py`) has been documented as a "strip-mined search space" that produces 0 promoted edges (memory `project_alpha_diagnosis_2026_04_22` and the 2026-04-24 finding still open in `health_check.md`). Replacing the search method with Bayesian optimization via BoTorch is substrate-independent infrastructure work — it doesn't claim Sharpe; it produces candidates that still go through the existing gauntlet.
+
+The dev's earlier pushback (don't optimize on absent signal) applies at the EDGE level: Bayesian opt won't manufacture alpha that doesn't exist. But the engine MACHINERY upgrade is still correct — replacing a known-broken search method is unambiguous improvement, and the gauntlet still gates anything Bayesian opt produces.
+
+### SETUP
+
+```bash
+cd /Users/jacksonmurphy/Dev/trading_machine-2
+git worktree add .claude/worktrees/c-engines-4 -b c-engines-4-bayesian-opt
+cd .claude/worktrees/c-engines-4
+claude
+```
+
+### PROMPT
+
+```
+You are working on the ArchonDEX trading system. Read CLAUDE.md first. Full autonomous cycle.
+
+## Setup
+
+```bash
+git worktree add .claude/worktrees/c-engines-4 -b c-engines-4-bayesian-opt
+cd .claude/worktrees/c-engines-4
+```
+
+## Background
+
+Engine D's discovery loop uses a genetic algorithm at `engines/engine_d_discovery/genetic_algorithm.py:25` (called from `discovery.py:184` `_run_ga_evolution`). The GA has produced 0 promoted edges across the project's history despite many cycles. The 2026-04-24 finding (still open in `docs/State/health_check.md`) documents the search space as effectively strip-mined — the gene vocabulary doesn't allow the GA to find new alpha.
+
+Replacing GA with Bayesian optimization via BoTorch (`pip install botorch`) is the audit's recommendation (F10-F11 territory). The Gaussian-process surrogate model is much better-suited to this problem than evolutionary search.
+
+## Goal — three deliverables
+
+### 1. New `engines/engine_d_discovery/bayesian_optimizer.py`
+
+- `class BayesianOptimizer` with the same interface contract as `GeneticAlgorithm` (so it can be a drop-in)
+- Uses BoTorch for the GP surrogate + acquisition (Expected Improvement default)
+- Search space defined by the same gene vocabulary as the GA (don't change the parameter space yet — that's a separate workstream)
+- Initialization: 10 random points (Sobol sequence); then 20 BO iterations
+- Returns candidates as `List[Dict[str, Any]]` matching the GA's output format
+
+### 2. `discovery.py:_run_ga_evolution` becomes `_run_search_evolution` with method dispatch
+
+- Read config flag `discovery_search_method: "ga" | "bayesian"` (default "ga" — no regression)
+- Dispatch to the appropriate optimizer
+- Same downstream gauntlet processing for either method
+
+### 3. Tests + integration
+
+- `tests/test_bayesian_optimizer.py` with at least:
+  - Synthetic test: known-good objective (e.g., parabola peak at `(0.5, 0.5)`) — BO finds it within 30 calls
+  - Same-interface test: returns same shape as GA output
+  - Determinism: same seed produces same trajectory
+- Integration: discovery cycle runs end-to-end with `discovery_search_method: "bayesian"` and produces candidates that hit the gauntlet
+- Determinism harness: 3-rep run with the new method should be bitwise-identical (set BoTorch's torch seed)
+
+## Acceptance
+
+- BoTorch added to project dependencies (verify `pip install botorch torch` works in venv)
+- BayesianOptimizer class produces candidates indistinguishable in shape from GA
+- Discovery cycle works end-to-end with the new method
+- 6+ new tests; all pass
+- Audit doc at `docs/Measurements/2026-05/engine_d_bayesian_opt_2026_05_<date>.md`
+- DOES NOT promote any edges; Bayesian-opt-produced candidates still go through the existing gauntlet (which currently kills 30/30 candidates per `project_gauntlet_consolidated_fix_2026_05_01`)
+
+## Hard constraints
+
+- DO NOT modify the gauntlet itself (validate_candidate); only the upstream candidate-generation
+- DO NOT promote any edges based on this dispatch
+- DO NOT modify Engine B / live_trader/
+- The default `discovery_search_method: "ga"` MUST be preserved (no regression on prior measurement reproducibility)
+- Branch: `c-engines-4-bayesian-opt`
+- Time budget: 6-8 hours
+
+## Honest interpretation guidance
+
+This is engine machinery, not alpha generation. The success criterion is "Bayesian opt is wired and produces gauntlet-eligible candidates." Whether those candidates survive the gauntlet is a separate question — addressed by C-collapses-1's gauntlet-on-substrate-honest-universe work. The two workstreams compose.
+
+## End-of-cycle
+
+```bash
+cd /Users/jacksonmurphy/Dev/trading_machine-2
+git checkout main
+git merge --no-ff c-engines-4-bayesian-opt -m "Merge branch 'c-engines-4-bayesian-opt' — Bayesian optimization scaffolding for Engine D, GA replaced under flag"
+git push origin main
+git worktree remove .claude/worktrees/c-engines-4
+```
+
+Co-Authored-By in commit(s): Claude Opus 4.7 (1M context) <noreply@anthropic.com>
+
+## Report
+
+Files added/modified, BoTorch dependency added, synthetic-objective convergence test result, determinism harness verification, final main commit hash.
+```
+
+---
+
+## C-engines-5 — Engine A pure-signals refactor (sequenced AFTER C-engines-1)
+
+**Why this sequences after C-engines-1:** C-engines-1 moves HRP+TurnoverPenalty out of `signal_processor.py:228-242`. C-engines-5 strips remaining cross-charter responsibilities. Both touch the same file; sequence them.
+
+### SETUP
+
+```bash
+cd /Users/jacksonmurphy/Dev/trading_machine-2
+git worktree add .claude/worktrees/c-engines-5 -b c-engines-5-pure-signals
+cd .claude/worktrees/c-engines-5
+claude
+```
+
+### PROMPT
+
+```
+You are working on the ArchonDEX trading system. Read CLAUDE.md first. Full autonomous cycle.
+
+## Setup
+
+```bash
+git worktree add .claude/worktrees/c-engines-5 -b c-engines-5-pure-signals
+cd .claude/worktrees/c-engines-5
+```
+
+## Background
+
+After C-engines-1 moved HRPOptimizer and TurnoverPenalty OUT of `engines/engine_a_alpha/signal_processor.py`, the file should be smaller but still contains residual cross-charter responsibilities. This dispatch finishes the pure-signals refactor.
+
+Read for orientation:
+- `engines/engine_a_alpha/signal_processor.py` (post-C-engines-1 size)
+- `engines/engine_a_alpha/alpha_engine.py` (984 LOC; complementary)
+- `docs/Core/engine_charters.md` — Engine A's charter (signals only)
+
+## Goal — three deliverables
+
+### 1. Identify and move all remaining cross-charter responsibilities
+
+Audit signal_processor.py post-C-engines-1 for:
+- Risk-engine-shaped logic (anything making capital decisions) → should be Engine B
+- Portfolio-shaped logic (anything making cross-ticker allocation decisions) → should be Engine C (already moved in C-engines-1, but double-check)
+- Lifecycle-shaped logic (anything reading/mutating edges.yml) → should be Engine F
+- Regime-shaped logic (anything making regime calls beyond consuming) → should be Engine E
+
+`grep -n "EDGE_CATEGORY_MAP\|regime_tracker\|edges_yaml\|risk_per_trade" engines/engine_a_alpha/signal_processor.py`
+
+The known charter inversion documented in `health_check.md`: signal_processor imports `EDGE_CATEGORY_MAP` from `engine_f_governance/regime_tracker.py`. Move the taxonomy to `engines/engine_a_alpha/edge_taxonomy.py` (new file) and have Engine F import from there.
+
+### 2. Calibrated probability outputs (refactor binary/ternary signals to probabilities)
+
+Most edges output binary (1.0 / 0.0) or ternary (1.0 / 0.0 / -1.0) signals. Continuous probabilities (e.g., logistic-calibrated) carry richer information for downstream Engine C composition.
+
+This is a deeper refactor; for this dispatch, scope is:
+- Add `signal_strength: float` field alongside the existing binary/ternary `signal: int` in EdgeOutput
+- Edges that already produce continuous signals (some Foundry features) populate this field
+- Edges that don't (legacy edges) leave it None
+- `signal_processor` weights by signal_strength when present, falls back to signal when not
+
+This is additive — no edges break, but new edges can produce richer signal info.
+
+### 3. Edge horizon metadata explicit
+
+Each edge has an implicit holding period (e.g., V/Q/A is quarterly; momentum is daily). Make it explicit:
+- Add `holding_period_bars: int` to EdgeSpec (default None)
+- Edges that know their natural cadence populate this
+- signal_processor uses it for sustained-score logic (currently hardcoded 0.3 for held positions per V/Q/A fix)
+
+## Acceptance
+
+- signal_processor.py LOC reduced toward < 500 (from current ~700 post-C-engines-1)
+- `grep -rn "EDGE_CATEGORY_MAP" engines/engine_a_alpha/` returns import from edge_taxonomy.py only
+- `grep -rn "from engines.engine_f_governance" engines/engine_a_alpha/` returns zero hits (charter direction restored)
+- New tests in `tests/test_signal_processor_refactor.py` covering:
+  - Charter check: A doesn't import from F
+  - Calibrated probability path produces same output as binary path when signal_strength=signal
+  - Holding-period metadata threading
+- Determinism harness 3-rep on default config (signal_strength=None falls back to existing path) — bitwise identical to pre-refactor
+
+## Hard constraints
+
+- DO NOT modify Engine B / live_trader/
+- DO NOT touch `data/governor/` outside the harness's snapshot scope
+- Default behavior MUST be unchanged (signal_strength=None, holding_period_bars=None preserve existing path)
+- Branch: `c-engines-5-pure-signals`
+- Time budget: 6-8 hours
+
+## End-of-cycle
+
+```bash
+cd /Users/jacksonmurphy/Dev/trading_machine-2
+git checkout main
+git merge --no-ff c-engines-5-pure-signals -m "Merge branch 'c-engines-5-pure-signals' — Engine A charter restored, calibrated probabilities + horizon metadata"
+git push origin main
+git worktree remove .claude/worktrees/c-engines-5
+```
+
+Co-Authored-By in commit(s): Claude Opus 4.7 (1M context) <noreply@anthropic.com>
+
+## Report
+
+LOC delta on signal_processor.py, charter check (grep), tests added, determinism harness result, final main commit hash.
+```
 
 ## C-remeasure — Engine-complete substrate-honest multi-year (skeleton)
 
