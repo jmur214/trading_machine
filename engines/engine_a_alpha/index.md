@@ -113,7 +113,6 @@
 - **Class `RegimeSettings`**: No docstring
 - **Class `HygieneSettings`**: No docstring
 - **Class `EnsembleSettings`**: No docstring
-- **Class `PortfolioOptimizerSettings`**: Cross-ticker portfolio construction layer.
 - **Class `MetaLearnerSettings`**: Layer 3 (allocation) meta-learner integration.
 - **Class `SignalProcessor`**: No docstring
   - `def __init__()`

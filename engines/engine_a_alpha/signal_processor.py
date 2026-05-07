@@ -18,7 +18,7 @@ Output schema per ticker:
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Set
 
 import numpy as np
@@ -55,56 +55,6 @@ class EnsembleSettings:
     enable_shrink: bool = True
     shrink_lambda: float = 0.35  # ridge-like shrinkage
     combine: str = "weighted_mean"  # 'weighted_mean' only for now
-
-
-@dataclass
-class PortfolioOptimizerSettings:
-    """Cross-ticker portfolio construction layer.
-
-    After per-ticker aggregation produces ``aggregate_score`` (per-edge
-    weighted_sum within each ticker), an optional cross-ticker step
-    re-shapes the score magnitudes via a real portfolio optimizer
-    (Engine C). The sign of each ``aggregate_score`` is preserved (long
-    vs short direction stays as Engine A produced it); only the
-    *magnitude* is replaced with the portfolio-weight share.
-
-    method = "weighted_sum"  → no-op, behavior identical to legacy
-                               (this is the default; existing backtests
-                               are unaffected)
-    method = "hrp"           → HRP-as-replacement (slice 1 — FALSIFIED).
-                               Preserved for cell D verification only.
-                               Strips ensemble conviction from
-                               aggregate_score and replaces with HRP-weight
-                               × N. Sharpe regression -0.63 vs weighted_sum
-                               on prod-109 2025 OOS. Do not deploy.
-    method = "hrp_composed"  → HRP slice 2 (compose-not-replace). Preserves
-                               aggregate_score (Engine A's edge-ensemble
-                               conviction) and ALSO emits per-ticker
-                               ``optimizer_weight`` into the per-ticker
-                               info dict. AlphaEngine.generate_signals
-                               threads optimizer_weight into signal.meta;
-                               Engine B multiplies it into the ATR-risk
-                               sizing path. The two are composed
-                               multiplicatively rather than HRP overwriting
-                               conviction.
-
-    The turnover gate is consulted *after* HRP produces weights — if
-    expected alpha lift < expected transaction cost, the previously-
-    committed weight vector is reused instead, suppressing churn. Active
-    for both ``hrp`` and ``hrp_composed`` methods.
-
-    Default OFF for safety: when ``method == "weighted_sum"``, all HRP
-    machinery is bypassed, including turnover state. This is a strict
-    no-op for callers that don't opt in.
-    """
-    method: str = "weighted_sum"  # "weighted_sum" | "hrp" | "hrp_composed"
-    cov_lookback: int = 60
-    min_history: int = 30
-    use_ledoit_wolf: bool = True
-    linkage_method: str = "single"
-    turnover_enabled: bool = True
-    turnover_flat_cost_bps: float = 10.0
-    turnover_min_check: float = 0.01
 
 
 @dataclass
@@ -172,7 +122,6 @@ class SignalProcessor:
         edge_tiers: Optional[Dict[str, str]] = None,
         paused_edge_ids: Optional[Set[str]] = None,
         paused_max_weight: float = 0.5,
-        portfolio_optimizer_settings: Optional["PortfolioOptimizerSettings"] = None,
     ):
         self.regime = regime
         self.hygiene = hygiene
@@ -217,37 +166,12 @@ class SignalProcessor:
         if self.ml_settings.enabled and self.ml_settings.per_ticker:
             self._per_ticker_models = {}
 
-        # Engine C portfolio optimizer (Workstream B, 2026-05). Default
-        # method "weighted_sum" is a strict no-op — the per-ticker
-        # aggregate scores pass through unchanged. method="hrp" delegates
-        # cross-ticker re-shaping to Engine C's HRP optimizer with a
-        # turnover-cost gate.
-        self.po_settings = portfolio_optimizer_settings or PortfolioOptimizerSettings()
-        self._hrp = None
-        self._turnover = None
-        if self.po_settings.method in ("hrp", "hrp_composed"):
-            from engines.engine_c_portfolio.optimizers import HRPOptimizer, TurnoverPenalty
-            from engines.engine_c_portfolio.optimizers.hrp import HRPConfig
-            from engines.engine_c_portfolio.optimizers.turnover import TurnoverConfig
-            self._hrp = HRPOptimizer(HRPConfig(
-                cov_lookback=self.po_settings.cov_lookback,
-                min_history=self.po_settings.min_history,
-                use_ledoit_wolf=self.po_settings.use_ledoit_wolf,
-                linkage_method=self.po_settings.linkage_method,
-            ))
-            self._turnover = TurnoverPenalty(TurnoverConfig(
-                enabled=self.po_settings.turnover_enabled,
-                flat_cost_bps=self.po_settings.turnover_flat_cost_bps,
-                min_turnover_to_check=self.po_settings.turnover_min_check,
-            ))
-
         if self.debug:
             print(f"[SIGNAL_PROCESSOR] Init with Regime: {self.regime}")
             print(f"[SIGNAL_PROCESSOR] MetaLearner: enabled={self.ml_settings.enabled}, "
                   f"profile={self.ml_settings.profile_name}, "
                   f"per_ticker={self.ml_settings.per_ticker}, "
                   f"trained={self._metalearner.is_trained() if self._metalearner else False}")
-            print(f"[SIGNAL_PROCESSOR] PortfolioOptimizer: method={self.po_settings.method}")
 
     def _try_load_metalearner(self):
         """Load the trained MetaLearner for the active profile. Cold-start
@@ -596,121 +520,4 @@ class SignalProcessor:
                 "ml_contribution": float(ml_contribution),
             }
 
-        # Engine C portfolio-optimizer hook (Workstream B). When method
-        # is "weighted_sum" (default), this is a no-op. When "hrp", it
-        # re-shapes per-ticker score magnitudes so they reflect HRP
-        # weight share across the active universe.
-        if self.po_settings.method != "weighted_sum" and self._hrp is not None:
-            out = self._apply_portfolio_optimizer(out, data_map)
-
         return out
-
-    def _apply_portfolio_optimizer(
-        self,
-        out: Dict[str, dict],
-        data_map: Dict[str, pd.DataFrame],
-    ) -> Dict[str, dict]:
-        """Cross-ticker reshape via HRP.
-
-        Two methods:
-        - ``method == "hrp"`` (slice 1, FALSIFIED, retained for D-cell
-          verification): replaces aggregate_score magnitude with
-          HRP-weight × N. Strips edge-ensemble conviction; produces
-          -0.63 Sharpe regression vs weighted_sum.
-        - ``method == "hrp_composed"`` (slice 3): preserves aggregate_score
-          (sign + magnitude) and emits per-ticker ``optimizer_weight``
-          (= HRP-weight × N, lower-clamped at 0; mean is exactly 1.0
-          across the firing set so the multiplier redistributes size
-          rather than reducing it). AlphaEngine threads optimizer_weight
-          into signal.meta; Engine B multiplies it into ATR-risk sizing.
-          Composes conviction with HRP rather than replacing it. Slice 2
-          additionally clamped at 1.0 — that made the multiplier a strict
-          reducer (above-mean clamped down, below-mean attenuated; net
-          every position ≤ baseline). Slice 3 removes that upper clamp.
-
-        Tickers with aggregate_score ≈ 0 are excluded from HRP and pass
-        through unchanged. The turnover gate decides whether to commit
-        new weights or reuse the previously-committed vector (active
-        for both methods).
-        """
-        active = [
-            t for t, info in out.items()
-            if abs(float(info.get("aggregate_score", 0.0))) > 1e-6
-        ]
-        if len(active) < 2:
-            return out
-
-        returns_df = self._build_returns_panel(active, data_map)
-        if returns_df is None or returns_df.empty:
-            return out
-
-        active = [t for t in active if t in returns_df.columns]
-        if len(active) < 2:
-            return out
-
-        proposed = self._hrp.optimize(returns_df, active_tickers=active)
-        if proposed.empty or not np.isfinite(proposed.values).all():
-            return out
-
-        mu = pd.Series(
-            {t: float(out[t]["aggregate_score"]) for t in proposed.index}
-        )
-        committed = self._turnover.evaluate(proposed, mu)
-
-        n = len(committed)
-        if n == 0:
-            return out
-        scale = float(n)
-        is_composed = (self.po_settings.method == "hrp_composed")
-
-        for t, w in committed.items():
-            if t not in out:
-                continue
-            raw_magnitude = float(w) * scale
-            out[t]["hrp_weight"] = float(w)
-
-            if is_composed:
-                # Slice 3 — redistribution, not reduction.
-                # `committed` sums to 1.0 by HRP construction, so committed × N
-                # has mean exactly 1.0 across the firing set. Keeping only the
-                # lower clamp at 0 lets above-mean tickers amplify (>1.0) and
-                # below-mean tickers attenuate (<1.0). The slice-2 upper clamp
-                # at 1.0 made every position size-at-or-below baseline — a
-                # strict reducer, never a redistributor. Engine B's
-                # max_gross_exposure cap clips any pathological amplification.
-                out[t]["optimizer_weight"] = max(0.0, raw_magnitude)
-            else:
-                # Slice-1 replacement (kept for D-cell verification only).
-                # aggregate_score is conventionally in [-1, 1]; keep the
-                # original clamp on this code path so slice-1 reproductions
-                # remain bit-identical to the falsified design.
-                magnitude = max(0.0, min(1.0, raw_magnitude))
-                sgn = 1.0 if out[t]["aggregate_score"] >= 0 else -1.0
-                out[t]["aggregate_score"] = sgn * magnitude
-                out[t]["optimizer_weight"] = 1.0  # already absorbed into score
-
-        if self.debug:
-            print(f"[PORTFOLIO_OPTIMIZER] {self.po_settings.method} applied "
-                  f"to n={n} tickers, turnover_stats={self._turnover.stats}")
-        return out
-
-    @staticmethod
-    def _build_returns_panel(
-        tickers: List[str],
-        data_map: Dict[str, pd.DataFrame],
-        col: str = "Close",
-    ) -> Optional[pd.DataFrame]:
-        """Wide returns DataFrame across the active tickers, joined on
-        the bar index. Returns None if no ticker has usable data.
-        """
-        series_map: Dict[str, pd.Series] = {}
-        for t in tickers:
-            df = data_map.get(t)
-            if df is None or df.empty or col not in df.columns:
-                continue
-            s = df[col].astype(float).pct_change().dropna()
-            if len(s) > 0:
-                series_map[t] = s
-        if not series_map:
-            return None
-        return pd.DataFrame(series_map).dropna(how="all")
