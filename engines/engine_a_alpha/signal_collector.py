@@ -91,6 +91,14 @@ class SignalCollector:
                         print(f"[ALPHA][TRACE][Collector] class.compute_signals returned {len(result or {})} entries")
                     return dict(result or {})
             except Exception as inst_err:
+                # Narrowed-catch (2026-05-07, mirrors the outer per-edge fix
+                # earlier this session). Class instantiation that raises a
+                # programmer error (e.g., AttributeError on a missing method,
+                # ImportError from an unresolved dependency, NameError from a
+                # typo'd reference) must surface loudly — masking it as
+                # "edge not supported" loses the actual root cause.
+                if isinstance(inst_err, (TypeError, AttributeError, NameError, AssertionError, ImportError)):
+                    raise
                 if self.debug:
                     from debug_config import is_debug_enabled
                     if is_debug_enabled("COLLECTOR"):

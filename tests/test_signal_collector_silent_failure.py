@@ -43,12 +43,12 @@ class _EdgeWithTypoedMethod:
     Levenshtein-1 typo that the pre-fix code accepted silently.
     """
 
-    def compute_signal(self, data_map, now):  # ← typo: missing 's'
+    def compute_signal(self, _data_map, _now):  # ← typo: missing 's'
         return {"AAPL": 1.0}
 
 
 class _EdgeWithCorrectMethod:
-    def compute_signals(self, data_map, now):
+    def compute_signals(self, _data_map, _now):
         return {"AAPL": 1.0}
 
 
@@ -66,7 +66,7 @@ class _EdgeRaisingAttributeError:
     DataFrame). Pre-fix the outer broad-except swallowed them. Post-fix
     they re-raise."""
 
-    def compute_signals(self, data_map, now):
+    def compute_signals(self, _data_map, _now):
         # Trigger a real AttributeError
         broken = None
         return broken.iloc[0]  # noqa
@@ -79,7 +79,7 @@ class _EdgeRaisingValueError:
     runtime errors that are environmental, not programmer errors).
     """
 
-    def compute_signals(self, data_map, now):
+    def compute_signals(self, _data_map, _now):
         raise ValueError("simulated runtime data issue")
 
 
@@ -149,7 +149,7 @@ def test_type_error_propagates_as_programmer_error():
     """TypeError is in the propagate set — typically signals a bad call
     signature or operating on the wrong type."""
     class _EdgeRaisingTypeError:
-        def compute_signals(self, data_map, now):
+        def compute_signals(self, _data_map, _now):
             return None + "not_a_number"  # noqa
 
     collector = SignalCollector(edges={"buggy": _EdgeRaisingTypeError()})
@@ -161,9 +161,28 @@ def test_import_error_propagates():
     """ImportError is in the propagate set — typically signals a missing
     module or a typo in an import."""
     class _EdgeRaisingImportError:
-        def compute_signals(self, data_map, now):
+        def compute_signals(self, _data_map, _now):
             raise ImportError("simulated missing module")
 
     collector = SignalCollector(edges={"buggy": _EdgeRaisingImportError()})
     with pytest.raises(ImportError):
+        collector.collect(_make_data_map(), pd.Timestamp("2024-01-03"))
+
+
+def test_class_with_instantiation_typeerror_propagates():
+    """Edge class whose __init__ raises TypeError (bad signature) must
+    propagate, not silently fall through to 'no recognized method'.
+    Pre-fix the inner instantiation try/except swallowed everything."""
+
+    class _EdgeBadInit:
+        def __init__(self, required_arg):
+            # No-arg constructor call from collector → TypeError
+            self.x = required_arg
+
+        def compute_signals(self, _data_map, _now):
+            return {"AAPL": 1.0}
+
+    # Pass the class itself (not an instance) — collector handles isclass case
+    collector = SignalCollector(edges={"buggy_class": _EdgeBadInit})
+    with pytest.raises(TypeError):
         collector.collect(_make_data_map(), pd.Timestamp("2024-01-03"))
