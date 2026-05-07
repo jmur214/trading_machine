@@ -96,11 +96,40 @@ class SignalCollector:
                     if is_debug_enabled("COLLECTOR"):
                         print(f"[COLLECTOR][DEBUG] Failed to instantiate edge class {edge_obj}: {inst_err}")
 
-        if self.debug:
-            from debug_config import is_debug_enabled
-            if is_debug_enabled("COLLECTOR"):
-                print(f"[COLLECTOR][DEBUG] Edge {edge_obj} not supported — no recognized function found.")
-        return {}
+        # No recognized method found. Pre-2026-05-07 this returned {} silently,
+        # which masked the same typo class as the check_signal/compute_signals
+        # bug fixed earlier (project_alpha_diagnosis_2026_04_22.md, F2 in audit
+        # health_check.md). A typo'd method name on an edge would silently
+        # produce zero signals and therefore zero trades, with the failure
+        # invisible under standard logging. Raise loudly instead — the caller's
+        # narrowed-except (post-2026-05-07) re-raises AttributeError as a
+        # programmer error rather than swallowing it.
+        available_methods = sorted(
+            m for m in dir(edge_obj)
+            if not m.startswith("_") and callable(getattr(edge_obj, m, None))
+        )
+        # Prefer to flag near-matches that look like typos
+        expected_methods = ["compute_signals", "generate_signals", "generate"]
+        near_matches = [
+            m for m in available_methods
+            if any(
+                exp in m or m in exp or
+                # rough Levenshtein-1 check via prefix overlap
+                (len(m) >= 4 and m[:5] == exp[:5])
+                for exp in expected_methods
+            )
+        ]
+        hint = ""
+        if near_matches:
+            hint = (
+                f" Found similarly-named methods: {near_matches}. "
+                f"Possible typo? Edge interface expects one of "
+                f"{expected_methods}."
+            )
+        raise AttributeError(
+            f"SignalCollector: edge {edge_obj!r} has no recognized signal "
+            f"method. Searched for: {expected_methods}.{hint}"
+        )
 
     # --- helper for converting various signal formats to ticker->score dict --- #
     def _convert_signals_to_dict(self, signals):
@@ -322,6 +351,13 @@ class SignalCollector:
                         print(f"[COLLECTOR][DEBUG] Edge {edge_name} returned empty result after normalization")
 
             except Exception as e:
+                # Narrowed-catch pattern (2026-05-07, mirrors the gauntlet
+                # remediation in project_phase_a_substrate_cleanup_2026_05_07).
+                # Programmer errors propagate so a typo'd edge method or
+                # missing import fails LOUDLY at startup rather than silently
+                # producing zero signals across the whole backtest.
+                if isinstance(e, (TypeError, AttributeError, NameError, AssertionError, ImportError)):
+                    raise
                 if self.debug:
                     from debug_config import is_debug_enabled
                     if is_debug_enabled("COLLECTOR"):
