@@ -1165,11 +1165,29 @@ class ModeController:
                         raise TimeoutError(f"validate_candidate exceeded {_diag_per_cand_timeout}s")
                     _prev_handler = _signal.signal(_signal.SIGALRM, _to_handler)
                     _signal.alarm(_diag_per_cand_timeout)
+                # Validation window: pass an explicit 24-month window so
+                # Gate 1's "quick filter" runs over a calibrated training
+                # interval rather than the full ~6yr data_map extent
+                # (~30-35 min/candidate observed pre-fix per
+                # health_check.md). Gate 3 (WFO) does proper multi-window
+                # OOS via train_months / test_months, so a short Gate 1
+                # window is fine for the cheap pass/fail filter.
+                # Override via DISCOVERY_VALIDATION_MONTHS env var if a
+                # specific campaign needs longer history.
+                _val_months = int(_os_diag.environ.get("DISCOVERY_VALIDATION_MONTHS", "24"))
+                _first_tkr = next(iter(data_map.keys()), None)
+                _val_start = _val_end = None
+                if _first_tkr is not None and not data_map[_first_tkr].empty:
+                    _last_idx = data_map[_first_tkr].index[-1]
+                    _val_end = _last_idx.isoformat()
+                    _val_start = (_last_idx - pd.DateOffset(months=_val_months)).isoformat()
                 try:
                     result = discovery.validate_candidate(
                         cand, data_map, significance_threshold=None,
                         diagnostic_log_path=_diag_log_path,
                         cache=cycle_cache,
+                        start_date=_val_start,
+                        end_date=_val_end,
                     )
                 except TimeoutError as toe:
                     _timed_out = True
