@@ -246,20 +246,20 @@ then LOW. Within each severity, list newest at the top.
 - Files: `engines/engine_a_alpha/signal_processor.py:27`, `engines/engine_f_governance/regime_tracker.py` (where EDGE_CATEGORY_MAP is defined)
 - Recommended next step: Move `EDGE_CATEGORY_MAP` to `engines/engine_a_alpha/edge_taxonomy.py` (new small module), import it from there in both `signal_processor.py` and `regime_tracker.py`. Same content, correct dependency direction. While there, check whether `EDGE_CATEGORY_MAP` is the right shape — it currently has the orphan `"rsi_mean_reversion"` entry referenced in the HIGH finding above.
 
-### [MEDIUM] Soft-paused edges with high alpha_settings weights still dominate signal ensemble
+### [MEDIUM → RESOLVED 2026-04-28] Soft-paused edges with high alpha_settings weights still dominate signal ensemble
 - Engine: A (AlphaEngine / SignalProcessor) + F (lifecycle soft-pause design)
 - First flagged: 2026-04-28
 - Status: **resolved 2026-04-28** — `PAUSED_MAX_WEIGHT = 0.5` cap added (commit 93411be)
 - Description: The soft-pause 0.25x multiplier is applied to the edge's pre-pause alpha_settings weight. `atr_breakout_v1` at weight 2.5 → 0.625 after soft-pause, still above most active edges at 0.5-1.0. Caused atr_breakout to generate 2371 trades in the 2026-04-28 in-sample run (vs 51 for volume_anomaly at weight 1.0) and drive "Unknown" exit losses to -$11K. Fix: added `PAUSED_MAX_WEIGHT = 0.5` cap in `mode_controller.py` after the multiplier — paused edges can now be at most `min(weight × 0.25, 0.5)`. For atr_breakout: min(0.625, 0.5) = 0.5, below active edges at 1.0. Does not affect edges whose pre-pause weight was ≤ 2.0 (they stay below 0.5 after multiplier).
 
-### [MEDIUM] Governor learned-affinity from OOS runs contaminates subsequent in-sample backtests
+### [MEDIUM → RESOLVED 2026-04-28] Governor learned-affinity from OOS runs contaminates subsequent in-sample backtests
 - Engine: F (Governor — `data/governor/edge_weights.json` persistence)
 - First flagged: 2026-04-28
 - Status: **resolved 2026-04-28** — `--reset-governor` flag shipped
 - Description: `edge_weights.json` (the governor's learned SR-based affinity per edge) persists across runs. When OOS backtests run first (especially on adversarial windows like 2025 data), the governor downgrades edge weights that underperform in OOS. Loading those downgraded weights into a subsequent in-sample run injects forward-looking signal: the governor "knows" which edges struggled in 2025 and suppresses them in the 2021-2024 window where they were profitable. Observed 2026-04-28: governor-enabled in-sample run got Sharpe 0.161 vs 0.264 with `--no-governor` — the difference is -0.103 Sharpe from stale/wrong affinity. Resetting to neutral (all weights = 1.0) before in-sample runs restores correct behavior.
 - Fix: `StrategyGovernor.reset_weights()` clears `_weights` and `_regime_weights` to empty (→ all edges default to 1.0 in `get_edge_weights()`). Does NOT write to disk — persisted production state is unchanged. Exposed as `--reset-governor` flag in `scripts/run_backtest.py` and `reset_governor=True` parameter in `run_backtest_logic()`. 4 tests in `tests/test_governor_reset.py` cover: clears in-memory weights, does not touch disk, clears regime weights, idempotent. Use: `PYTHONHASHSEED=0 python -m scripts.run_backtest --reset-governor` for clean in-sample measurement.
 
-### [MEDIUM] Soft-paused edges at 0.25x are primary driver of 2025 OOS underperformance
+### [MEDIUM → PARTIALLY RESOLVED 2026-04-28] Soft-paused edges at 0.25x are primary driver of 2025 OOS underperformance
 - Engine: F (Governance — lifecycle soft-pause weight policy)
 - First flagged: 2026-04-28
 - Status: **partially resolved 2026-04-28** — paused→retired path added (commit 1dca4a5)
@@ -275,7 +275,7 @@ then LOW. Within each severity, list newest at the top.
 - Recommended next step: monitor — yfinance scraping has known reliability issues; if it degrades, the manager already falls back to cache so backtests stay reproducible. No further action unless cache rebuilds start failing.
 - See: `memory/project_finnhub_free_tier_no_historical_2026_04_25.md`, `tests/test_earnings_data.py`.
 
-### [MEDIUM] signal_processor lacks conditional-weight composition for regime-conditional edges
+### [MEDIUM → RESOLVED 2026-04-27] signal_processor lacks conditional-weight composition for regime-conditional edges
 - Engine: A (signal_processor)
 - First flagged: 2026-04-25
 - Status: **resolved 2026-04-27** — regime_gate primitive shipped (commit aa1cb65)
@@ -284,7 +284,7 @@ then LOW. Within each severity, list newest at the top.
 
 ### LOW
 
-### [LOW] Lifecycle must not modify edge statuses during OOS backtesting
+### [LOW → RESOLVED 2026-04-28] Lifecycle must not modify edge statuses during OOS backtesting
 - Engine: F (Governance) + backtesting methodology
 - First flagged: 2026-04-28
 - Status: **resolved 2026-04-28** — `lifecycle_readonly` mode shipped
@@ -295,13 +295,13 @@ then LOW. Within each severity, list newest at the top.
 
 ## Resolved (last 90 days)
 
-### [MEDIUM] Lifecycle audit-trail / registry-state divergence detection missing (2026-04-25)
+### [MEDIUM → RESOLVED 2026-04-27] Lifecycle audit-trail / registry-state divergence detection missing (2026-04-25)
 - Engine: F (Governance)
 - Resolved: 2026-04-27
 - Description: `LifecycleManager._audit_registry_divergence_check()` was shipped as part of "Phase α v3" (committed before 2026-04-27 session). At the top of `evaluate()`, it reads `lifecycle_history.csv`, extracts the most recent `new_status` per edge via `groupby("edge_id").last()`, then compares against the current registry status in `edges.yml`. Any disagreement logs a `WARNING` with edge_id, audit_trail value, registry value, and a bug-class label (`status_reverted` or `missing_from_registry`). The check is wrapped in `try/except` so it cannot break the lifecycle loop — observability only, not gating. 6 unit tests in `tests/test_lifecycle_manager.py` cover: no-op on empty history, no-op when audit and registry agree, flags status_reverted, flags missing_from_registry, uses most-recent-event correctly, runs silently when evaluate() is called with divergence present.
 - See: `engines/engine_f_governance/lifecycle_manager.py::_audit_registry_divergence_check` (lines 357-449), `tests/test_lifecycle_manager.py` lines 292-420.
 
-### [MEDIUM] Engine D's GA gene vocabulary searches a strip-mined space (2026-04-24)
+### [MEDIUM → RESOLVED 2026-04-27] Engine D's GA gene vocabulary searches a strip-mined space (2026-04-24)
 - Engine: D (Discovery)
 - Resolved: 2026-04-27
 - Description: `CompositeEdge` now evaluates `"macro"` (10% probability — T10Y2Y yield curve, VIX level, UNRATE unemployment delta) and `"earnings"` (5% — EPS surprise % look-back) gene types. Both use lazy instance-level caching. Gene vocabulary weights: technical 40%→35%, regime 10%→5%, fundamental 15%→10%. GA now discovers macro-conditional and earnings-event combinations.
