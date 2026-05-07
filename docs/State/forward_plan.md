@@ -105,19 +105,31 @@
 > Edge code is intact; what's invalidated is the headline narrative
 > around it.
 >
+> **C-collapses-1 result (2026-05-09 night).** Per-edge attribution lands. **Substrate-honest mean lifts from 0.5074 (9-edge) to 0.9154 (6-edge surviving) on the same window** — the 9-edge collapse is a 2-edge story (`quality_roic_v1`, `quality_gross_profitability_v1` both FALSIFIED with Δ Sharpe +1.358 / +0.503; `herding_v1` DEGRADED at +0.411). 4 of 9 edges (`gap_fill_v1`, `volume_anomaly_v1`, `value_earnings_yield_v1`, `value_book_to_market_v1`) are STRONGER on the wider universe. 2 (`accruals_inv_sloan_v1`, `accruals_inv_asset_growth_v1`) within ±0.2 noise.
+>
+> But — the surviving 6-edge set is **regime-conditional**: 2021/2023/2024 (bull / Mag-7) all materially better than the 9-edge ensemble; 2022 bear (−0.508) and 2025 chop (−0.107) are *worse*. The 2 falsified quality edges were apparently providing a defensive hedge the surviving set lacks.
+>
+> **Does this undo the kill-thesis trigger?** No. The trigger criterion was 2025 OOS Sharpe < 0.4 net of all costs (incl. taxes + borrow). Surviving-set 2025 = −0.107 (pre-tax), even worse than the 9-edge 0.436 that triggered. Engine completion remains the structural review's deliverable; the per-edge audit narrows down which edges are worth carrying THROUGH the engine-completion work, not whether to do it.
+>
+> Independently, the 6-names hypothesis was inverted by my isolation test (removing the 6 names from static-109 *improves* Sharpe by +1.30) — consistent with the evening trade-log decomposition's finding that the 6 names contributed only 1.7% of static-109's 2024 PnL.
+>
+> `data/governor/edges.yml` updated: `herding_v1` → `paused`, `quality_roic_v1` + `quality_gross_profitability_v1` → `failed`, all with `failure_reason='universe_too_small'`. Active count 9 → 6.
+>
+> Docs: `docs/Measurements/2026-05/six_names_isolation_2026_05_09.md`, `substrate_collapse_edge_audit_2026_05_09.md`, `surviving_edges_multi_year_2026_05_09.md`. Memory: `project_substrate_audit_2_edge_overfit_2026_05_09.md`.
+>
 > **What's queued (engine-completion structural review):**
 >
 > | Step | Dispatch | What it produces |
 > |---|---|---|
-> | C-collapses-1 (running) | Per-edge audit on substrate-honest universe | Per-edge CONFIRMED/DEGRADED/FALSIFIED ladder on broken-engine-substrate baseline (diagnostic) |
-> | C-collapses-1.25 | Factor decomp on volume_anomaly + herding under substrate-honest | Whether the two t > 4 alphas survive at t > 2 (4-bucket verdict) |
+> | ~~C-collapses-1 (running)~~ → **DONE 2026-05-09 night** | Per-edge audit on substrate-honest universe | 6 surviving / 1 paused / 2 failed; substrate-honest mean 0.9154 PARTIAL but bull-conditional. See result block above. |
+> | C-collapses-1.25 | Factor decomp on volume_anomaly + herding under substrate-honest | Whether the two t > 4 alphas survive at t > 2 (4-bucket verdict). Note: herding_v1 is now paused per audit; rescope as needed. |
 > | C-collapses-1.5 | Concentration-equivalent capital test | Does any per-name signal exist independent of concentration? |
 > | **C-engines-1** | **Engine C activation** — wire `compute_target_allocations` into backtest loop; move HRP+Turnover OUT of signal_processor (closes F4); make Engine C a real portfolio composition layer | Engine C operating per charter |
 > | **C-engines-2** | **Engine B portfolio vol-targeting + correlation-aware sizing** | Engine B operating per charter |
-> | **C-engines-3** | **Engine E minimal-HMM on leading FRED features** + wire into Engine B de-grossing | Engine E operating per charter |
+> | **C-engines-3** | **Engine E minimal-HMM on leading FRED features** + wire into Engine B de-grossing | Engine E operating per charter (also addresses the bull-conditionality of the surviving 6-edge set — see C-collapses-1 result) |
 > | **C-engines-4** | **Engine D Bayesian opt scaffolding** (replaces GA noise factory) | Engine D producing real candidates |
 > | **C-engines-5** | **Engine A pure-signals refactor** — charter restored | Engine A operating per charter |
-> | C-remeasure | Re-run multi-year on substrate-honest universe with completed engines | The honest baseline. The next pre-commit gate gets defined here. |
+> | C-remeasure | Re-run multi-year on substrate-honest universe with completed engines AND the 6-edge surviving set | The honest baseline. The next pre-commit gate gets defined here. |
 >
 > Goal C / Moonshot Sleeve stays parked until C-remeasure verdict. As
 > the user framed it: "if we can't get the bones working properly we

@@ -1,0 +1,81 @@
+{
+  "metadata": {
+    "edges": [
+      "gap_fill_v1",
+      "volume_anomaly_v1",
+      "value_earnings_yield_v1",
+      "value_book_to_market_v1",
+      "accruals_inv_sloan_v1",
+      "accruals_inv_asset_growth_v1"
+    ],
+    "use_historical_universe": true,
+    "generated_at": "2026-05-07T01:39:51"
+  },
+  "results": [
+    {
+      "year": 2021,
+      "rep": 1,
+      "run_id": "22dafe52-a5cb-4845-a2dd-e6ef85ddc95e",
+      "sharpe": 2.811,
+      "cagr_pct": 13.34,
+      "max_drawdown_pct": -2.35,
+      "win_rate_pct": 60.09,
+      "total_trades": null,
+      "trades_canon_md5": "911bb40fccc3ce749e8ac3c008fe50ba",
+      "wall_time_seconds": 851.0,
+      "ok": true
+    },
+    {
+      "year": 2022,
+      "rep": 1,
+      "run_id": "cff81341-b91a-4a3e-9a85-f209249d7912",
+      "sharpe": -0.508,
+      "cagr_pct": -4.29,
+      "max_drawdown_pct": -9.11,
+      "win_rate_pct": 37.61,
+      "total_trades": null,
+      "trades_canon_md5": "05f4017ad7724114153bd0cdc20077bc",
+      "wall_time_seconds": 1105.8,
+      "ok": true
+    },
+    {
+      "year": 2023,
+      "rep": 1,
+      "run_id": "7cb1ba09-7d7e-4175-b69e-77263a747b41",
+      "sharpe": 1.799,
+      "cagr_pct": 8.0,
+      "max_drawdown_pct": -3.78,
+      "win_rate_pct": 58.96,
+      "total_trades": null,
+      "trades_canon_md5": "72f42af43da04927569d0f32d774749d",
+      "wall_time_seconds": 735.4,
+      "ok": true
+    },
+    {
+      "year": 2024,
+      "rep": 1,
+      "run_id": "e2276077-7dac-442c-ba2b-8d48e57890fb",
+      "sharpe": 0.582,
+      "cagr_pct": 2.24,
+      "max_drawdown_pct": -2.31,
+      "win_rate_pct": 45.76,
+      "total_trades": null,
+      "trades_canon_md5": "0e6679455f7fa77552324eb3068c8249",
+      "wall_time_seconds": 731.5,
+      "ok": true
+    },
+    {
+      "year": 2025,
+      "rep": 1,
+      "run_id": "35e2f3dd-49e9-45bd-b72f-828efba624a7",
+      "sharpe": -0.107,
+      "cagr_pct": -0.85,
+      "max_drawdown_pct": -7.79,
+      "win_rate_pct": 46.81,
+      "total_trades": null,
+      "trades_canon_md5": "47a2d04dcd9b2fb7790ddbe8f54bef08",
+      "wall_time_seconds": 711.5,
+      "ok": true
+    }
+  ]
+}

@@ -1,0 +1,381 @@
+{
+  "metadata": {
+    "years": [
+      2024
+    ],
+    "edges": [
+      "gap_fill_v1",
+      "volume_anomaly_v1",
+      "herding_v1",
+      "value_earnings_yield_v1",
+      "value_book_to_market_v1",
+      "quality_roic_v1",
+      "quality_gross_profitability_v1",
+      "accruals_inv_sloan_v1",
+      "accruals_inv_asset_growth_v1"
+    ],
+    "universes": [
+      "static",
+      "historical"
+    ],
+    "generated_at": "2026-05-07T00:03:05",
+    "wall_time_seconds": 5283.2
+  },
+  "results": [
+    {
+      "edge_id": "gap_fill_v1",
+      "year": 2024,
+      "universe": "static",
+      "use_historical_universe": false,
+      "run_id": "35026022-4413-401b-a556-a05a0eb7d79b",
+      "sharpe": 0.462,
+      "cagr_pct": 2.43,
+      "max_drawdown_pct": -5.36,
+      "win_rate_pct": 58.98,
+      "total_trades": null,
+      "trades_canon_md5": "81b17897cfd9e5df7ead339515b47ed4",
+      "wall_time_seconds": 110.0,
+      "ok": true
+    },
+    {
+      "edge_id": "volume_anomaly_v1",
+      "year": 2024,
+      "universe": "static",
+      "use_historical_universe": false,
+      "run_id": "7f03cd5a-6f52-45f1-9621-459944ecb2e6",
+      "sharpe": 0.207,
+      "cagr_pct": 1.24,
+      "max_drawdown_pct": -6.28,
+      "win_rate_pct": 55.94,
+      "total_trades": null,
+      "trades_canon_md5": "1402f45d30aa895edd700089bec31e09",
+      "wall_time_seconds": 86.2,
+      "ok": true
+    },
+    {
+      "edge_id": "herding_v1",
+      "year": 2024,
+      "universe": "static",
+      "use_historical_universe": false,
+      "run_id": "444c489b-376a-46d6-9618-b8c00f2c6f58",
+      "sharpe": 0.731,
+      "cagr_pct": 1.4,
+      "max_drawdown_pct": -1.66,
+      "win_rate_pct": 61.98,
+      "total_trades": null,
+      "trades_canon_md5": "3921c57f0569ec571ccc5df0001f720e",
+      "wall_time_seconds": 140.3,
+      "ok": true
+    },
+    {
+      "edge_id": "value_earnings_yield_v1",
+      "year": 2024,
+      "universe": "static",
+      "use_historical_universe": false,
+      "run_id": "1ea0e9db-7c99-4b2a-bff8-b58b34dcf9e8",
+      "sharpe": 0.983,
+      "cagr_pct": 7.59,
+      "max_drawdown_pct": -5.28,
+      "win_rate_pct": 53.16,
+      "total_trades": null,
+      "trades_canon_md5": "2fac838ca857446634523f07e5c971be",
+      "wall_time_seconds": 108.0,
+      "ok": true
+    },
+    {
+      "edge_id": "value_book_to_market_v1",
+      "year": 2024,
+      "universe": "static",
+      "use_historical_universe": false,
+      "run_id": "6d5b6f91-bd61-4f07-b42d-1b85fab292cf",
+      "sharpe": 0.888,
+      "cagr_pct": 7.27,
+      "max_drawdown_pct": -5.43,
+      "win_rate_pct": 54.94,
+      "total_trades": null,
+      "trades_canon_md5": "a83cac7ad1dba9436df407406a7bae26",
+      "wall_time_seconds": 101.0,
+      "ok": true
+    },
+    {
+      "edge_id": "quality_roic_v1",
+      "year": 2024,
+      "universe": "static",
+      "use_historical_universe": false,
+      "run_id": "ce654b76-4488-425c-910a-8f583a7f434e",
+      "sharpe": 2.183,
+      "cagr_pct": 14.83,
+      "max_drawdown_pct": -3.75,
+      "win_rate_pct": 59.56,
+      "total_trades": null,
+      "trades_canon_md5": "fd14b4e4ce30a8d863681b433feca758",
+      "wall_time_seconds": 95.0,
+      "ok": true
+    },
+    {
+      "edge_id": "quality_gross_profitability_v1",
+      "year": 2024,
+      "universe": "static",
+      "use_historical_universe": false,
+      "run_id": "1a70f75e-b2e5-4d69-91ac-4ae864df173b",
+      "sharpe": 1.54,
+      "cagr_pct": 10.99,
+      "max_drawdown_pct": -5.71,
+      "win_rate_pct": 55.9,
+      "total_trades": null,
+      "trades_canon_md5": "8d7b45cc5fed3d2d5f76b775a5be5abe",
+      "wall_time_seconds": 82.8,
+      "ok": true
+    },
+    {
+      "edge_id": "accruals_inv_sloan_v1",
+      "year": 2024,
+      "universe": "static",
+      "use_historical_universe": false,
+      "run_id": "22655379-4674-4fc8-8dfd-e5171ee3bfcc",
+      "sharpe": 1.953,
+      "cagr_pct": 13.28,
+      "max_drawdown_pct": -3.21,
+      "win_rate_pct": 58.86,
+      "total_trades": null,
+      "trades_canon_md5": "a4925f530ccaf746236169bd073538db",
+      "wall_time_seconds": 95.6,
+      "ok": true
+    },
+    {
+      "edge_id": "accruals_inv_asset_growth_v1",
+      "year": 2024,
+      "universe": "static",
+      "use_historical_universe": false,
+      "run_id": "bb03867f-1a6f-45cc-b89c-26f5cb24aa4c",
+      "sharpe": 1.317,
+      "cagr_pct": 8.42,
+      "max_drawdown_pct": -3.84,
+      "win_rate_pct": 56.27,
+      "total_trades": null,
+      "trades_canon_md5": "ff3d54003ff86934387eeb0ce8f83246",
+      "wall_time_seconds": 132.8,
+      "ok": true
+    },
+    {
+      "edge_id": "gap_fill_v1",
+      "year": 2024,
+      "universe": "historical",
+      "use_historical_universe": true,
+      "run_id": "3b6de42c-6993-4008-a139-ff245bae9aaa",
+      "sharpe": 1.082,
+      "cagr_pct": 8.87,
+      "max_drawdown_pct": -4.63,
+      "win_rate_pct": 55.94,
+      "total_trades": null,
+      "trades_canon_md5": "58e39ebb4c02cb9e82e0566482a99c78",
+      "wall_time_seconds": 504.4,
+      "ok": true
+    },
+    {
+      "edge_id": "volume_anomaly_v1",
+      "year": 2024,
+      "universe": "historical",
+      "use_historical_universe": true,
+      "run_id": "02dfb6c0-3e50-4c8b-b2d8-e0db43f973fb",
+      "sharpe": 1.475,
+      "cagr_pct": 12.98,
+      "max_drawdown_pct": -4.31,
+      "win_rate_pct": 61.52,
+      "total_trades": null,
+      "trades_canon_md5": "e8b085050126df3253e8cc700e7f82d2",
+      "wall_time_seconds": 335.6,
+      "ok": true
+    },
+    {
+      "edge_id": "herding_v1",
+      "year": 2024,
+      "universe": "historical",
+      "use_historical_universe": true,
+      "run_id": "d6f711ae-bcd1-4e57-a26f-baded2dec31b",
+      "sharpe": 0.32,
+      "cagr_pct": 0.51,
+      "max_drawdown_pct": -1.72,
+      "win_rate_pct": 53.1,
+      "total_trades": null,
+      "trades_canon_md5": "9afe13037447d7e68b7705a684ce9169",
+      "wall_time_seconds": 481.0,
+      "ok": true
+    },
+    {
+      "edge_id": "value_earnings_yield_v1",
+      "year": 2024,
+      "universe": "historical",
+      "use_historical_universe": true,
+      "run_id": "974b708f-3734-435d-af7a-5c0b05fed271",
+      "sharpe": 1.283,
+      "cagr_pct": 6.22,
+      "max_drawdown_pct": -3.41,
+      "win_rate_pct": 50.73,
+      "total_trades": null,
+      "trades_canon_md5": "68174143de76d7d4bd9e2edda6adeb3c",
+      "wall_time_seconds": 453.2,
+      "ok": true
+    },
+    {
+      "edge_id": "value_book_to_market_v1",
+      "year": 2024,
+      "universe": "historical",
+      "use_historical_universe": true,
+      "run_id": "3be962dc-a653-4531-86c7-0c51b9be4633",
+      "sharpe": 1.108,
+      "cagr_pct": 5.58,
+      "max_drawdown_pct": -2.73,
+      "win_rate_pct": 50.5,
+      "total_trades": null,
+      "trades_canon_md5": "7bc976020485c19256891edf766209fa",
+      "wall_time_seconds": 525.8,
+      "ok": true
+    },
+    {
+      "edge_id": "quality_roic_v1",
+      "year": 2024,
+      "universe": "historical",
+      "use_historical_universe": true,
+      "run_id": "f4005382-bcf6-4b9c-a536-4fe2b4b2b879",
+      "sharpe": 0.825,
+      "cagr_pct": 4.31,
+      "max_drawdown_pct": -6.05,
+      "win_rate_pct": 49.86,
+      "total_trades": null,
+      "trades_canon_md5": "61f74ce781fda06d40d7d6bd2f7769fe",
+      "wall_time_seconds": 514.7,
+      "ok": true
+    },
+    {
+      "edge_id": "quality_gross_profitability_v1",
+      "year": 2024,
+      "universe": "historical",
+      "use_historical_universe": true,
+      "run_id": "3c91e14c-f23b-4a8f-8cbb-f81891343e9d",
+      "sharpe": 1.037,
+      "cagr_pct": 5.56,
+      "max_drawdown_pct": -4.41,
+      "win_rate_pct": 47.21,
+      "total_trades": null,
+      "trades_canon_md5": "6ff3278691395c5fcbc12e5c41d3f774",
+      "wall_time_seconds": 422.9,
+      "ok": true
+    },
+    {
+      "edge_id": "accruals_inv_sloan_v1",
+      "year": 2024,
+      "universe": "historical",
+      "use_historical_universe": true,
+      "run_id": "e7fa0100-d491-4620-956d-145573bab22d",
+      "sharpe": 1.994,
+      "cagr_pct": 10.0,
+      "max_drawdown_pct": -2.22,
+      "win_rate_pct": 55.97,
+      "total_trades": null,
+      "trades_canon_md5": "530503938f0af20e11ae6bc5f0b559a9",
+      "wall_time_seconds": 392.8,
+      "ok": true
+    },
+    {
+      "edge_id": "accruals_inv_asset_growth_v1",
+      "year": 2024,
+      "universe": "historical",
+      "use_historical_universe": true,
+      "run_id": "cf7741f7-c405-4710-98a7-2367df84be29",
+      "sharpe": 1.317,
+      "cagr_pct": 6.62,
+      "max_drawdown_pct": -2.96,
+      "win_rate_pct": 51.61,
+      "total_trades": null,
+      "trades_canon_md5": "9b4f9fc6954700d556cd6577cd6840ea",
+      "wall_time_seconds": 701.0,
+      "ok": true
+    }
+  ],
+  "summary": {
+    "per_edge": {
+      "gap_fill_v1": {
+        "ok": true,
+        "static_mean_sharpe": 0.462,
+        "historical_mean_sharpe": 1.082,
+        "delta_sharpe_static_minus_historical": -0.6200000000000001,
+        "verdict": "DEGRADED"
+      },
+      "volume_anomaly_v1": {
+        "ok": true,
+        "static_mean_sharpe": 0.207,
+        "historical_mean_sharpe": 1.475,
+        "delta_sharpe_static_minus_historical": -1.268,
+        "verdict": "DEGRADED"
+      },
+      "herding_v1": {
+        "ok": true,
+        "static_mean_sharpe": 0.731,
+        "historical_mean_sharpe": 0.32,
+        "delta_sharpe_static_minus_historical": 0.411,
+        "verdict": "DEGRADED"
+      },
+      "value_earnings_yield_v1": {
+        "ok": true,
+        "static_mean_sharpe": 0.983,
+        "historical_mean_sharpe": 1.283,
+        "delta_sharpe_static_minus_historical": -0.29999999999999993,
+        "verdict": "DEGRADED"
+      },
+      "value_book_to_market_v1": {
+        "ok": true,
+        "static_mean_sharpe": 0.888,
+        "historical_mean_sharpe": 1.108,
+        "delta_sharpe_static_minus_historical": -0.22000000000000008,
+        "verdict": "DEGRADED"
+      },
+      "quality_roic_v1": {
+        "ok": true,
+        "static_mean_sharpe": 2.183,
+        "historical_mean_sharpe": 0.825,
+        "delta_sharpe_static_minus_historical": 1.3579999999999999,
+        "verdict": "FALSIFIED"
+      },
+      "quality_gross_profitability_v1": {
+        "ok": true,
+        "static_mean_sharpe": 1.54,
+        "historical_mean_sharpe": 1.037,
+        "delta_sharpe_static_minus_historical": 0.5030000000000001,
+        "verdict": "FALSIFIED"
+      },
+      "accruals_inv_sloan_v1": {
+        "ok": true,
+        "static_mean_sharpe": 1.953,
+        "historical_mean_sharpe": 1.994,
+        "delta_sharpe_static_minus_historical": -0.040999999999999925,
+        "verdict": "CONFIRMED"
+      },
+      "accruals_inv_asset_growth_v1": {
+        "ok": true,
+        "static_mean_sharpe": 1.317,
+        "historical_mean_sharpe": 1.317,
+        "delta_sharpe_static_minus_historical": 0.0,
+        "verdict": "CONFIRMED"
+      }
+    },
+    "n_confirmed": 2,
+    "n_degraded": 5,
+    "n_falsified": 2,
+    "confirmed_edges": [
+      "accruals_inv_sloan_v1",
+      "accruals_inv_asset_growth_v1"
+    ],
+    "degraded_edges": [
+      "gap_fill_v1",
+      "volume_anomaly_v1",
+      "herding_v1",
+      "value_earnings_yield_v1",
+      "value_book_to_market_v1"
+    ],
+    "falsified_edges": [
+      "quality_roic_v1",
+      "quality_gross_profitability_v1"
+    ]
+  }
+}
