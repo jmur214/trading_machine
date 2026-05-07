@@ -671,3 +671,28 @@ For ~6 weeks the team treated the static-109 config as a fixed, neutral input �
 **Cost / outcome:** ~30 days of measurement narrative now needs reframing. No live capital lost (the discipline framework caught the bias before deployment, which is what the framework is FOR). Approximately 6-8 hours of audit work queued (C-collapses-1) to determine what survives. The infrastructure investment was the right bet — without it, you'd be paper-trading a strategy that loses on representative universes.
 
 **What this enables:** The substrate-honest substrate is now the default research substrate. Future edge construction can be honest from day 1. The framework that produced this finding is the framework that protects future findings from the same trap.
+
+
+## 2026-05-09 — Verify charter-drift claims empirically before building project narratives on them
+
+**Context:** Same evening as the F6 COLLAPSES verdict, the engine-charter drift inventory (`docs/Measurements/2026-05/engine_charter_drift_inventory_2026_05_09.md`) was produced as input to the engine-completion structural review. It claimed Engine C.2 (Allocation Layer) was the most severe drift — "defined but never called in production." The whole "the engines are not operating as engines" reframe was built on this finding.
+
+**The empirical refutation (2026-05-09 night, C-engines-1 commit `cae2002`):** the dispatch agent verified that `backtester/backtest_controller.py:508` was already calling `self.portfolio.compute_target_allocations(...)` and threading the result into `risk.prepare_order(target_weights=...)`. Engine C.2 was active all along. The drift inventory traced `mode_controller.run_backtest` (which doesn't call it) but missed `BacktestController._prepare_orders` (which does — and is the actual production path).
+
+**Two paths existed; only one was audited; the wrong one became the headline finding.**
+
+**What was actually misplaced (and is now closed):** the HRP and TurnoverPenalty machinery inside `signal_processor.py:228-242` (charter inversion F4). C-engines-1 closed it cleanly — signal_processor LOC 715 → 522, zero `HRPOptimizer\|TurnoverPenalty` hits in `engines/engine_a_alpha/`. That's a real charter-restoration win.
+
+**The framing damage:**
+
+The substrate-honest 0.5074 (B1's 9-edge mean) and 0.9154 (C-collapses-1's 6-edge surviving) results were measured on a system with Engine C.2 active. They are honest Engine-C-active baselines, not "system without portfolio management" results. Engine completion's expected lift from the remaining engine drift (A/B/D/E) is more measured than the original framing implied. The kill-thesis trigger still holds (2025 OOS criterion is independent of Engine C status), but the magnitude of "how much room engine completion gives us" was overstated.
+
+**The structural lesson (added to procedural rules):**
+
+13. **Charter-drift claims must be empirically verified at every entry point before becoming load-bearing project narratives.** When a finding asserts "X is defined but never called," check ALL plausible call sites — not just the most obvious one. For the ArchonDEX architecture specifically: `mode_controller.run_backtest`, `backtester/backtest_controller.py`, `live_trader/`, and `scripts/run_oos_validation.py` are all entry points that exercise different production paths. Future audit prompts should specify which paths were checked.
+
+**This is a discipline-framework parallel to F6's lesson.** The substrate bias was real because the project measured against a hidden assumption. The Engine-C drift framing was wrong because the audit measured against a partial entry-point trace. Both are the same anti-pattern — "fitting to a partial view of what's there." The fix is the same shape: enumerate all paths/substrates explicitly before claiming a finding.
+
+**Cost / outcome:** the engine-completion narrative needs reframing — magnitude of expected lift more measured than implied — but the engine-completion direction is unchanged. Engines A, B, D, E still have remaining drift. The kill-thesis trigger holds. C-engines-3 (Engine E minimal-HMM) elevates per the C-collapses-1 regime-conditional finding.
+
+**What this didn't change:** the discipline framework still works. The error was caught (by the dispatch agent reading the actual code rather than the inventory's narrative), the correction landed in the same session, and the project's structural-review path remains correct in shape. Three hypotheses falsified by data in 36 hours: 6-names, Engine-C-uncalled, and (last week) HMM-leading. The framework is doing exactly what it's for.

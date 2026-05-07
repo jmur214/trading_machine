@@ -1,5 +1,67 @@
-# Forward Plan — live (last substantive update 2026-05-09 evening)
+# Forward Plan — live (last substantive update 2026-05-09 night)
 
+> **2026-05-09 NIGHT — C-engines-1 RETURNED + CORRECTION TO ENGINE-C NARRATIVE.**
+>
+> The C-engines-1 dispatch (commit `cae2002`, merged + pushed) closed F4
+> charter inversion: HRPOptimizer + TurnoverPenalty moved out of
+> `engines/engine_a_alpha/signal_processor.py` into a new
+> `engines/engine_c_portfolio/composer.py`. signal_processor LOC dropped
+> 715 → 522 (−193 / −27%). Charter check (`grep -rn
+> "HRPOptimizer\|TurnoverPenalty" engines/engine_a_alpha/`) returns zero
+> hits — was 7 hits pre-fix.
+>
+> **But the dispatch's premise was empirically wrong.** The brief asserted
+> Engine C's `compute_target_allocations` was "defined but never called in
+> the backtest loop." The agent verified that
+> `backtester/backtest_controller.py:508` was already calling
+> `self.portfolio.compute_target_allocations(...)` and threading the result
+> into `risk.prepare_order(target_weights=...)`. **Engine C.2 was active
+> all along.**
+>
+> **The correction:** the substrate-honest 0.5074 (B1's 9-edge mean) and
+> 0.9154 (C-collapses-1's 6-edge surviving) results were measured on a
+> system with Engine C.2 active — not on a "system without portfolio
+> management" as the previous framing implied. Engine completion's
+> expected lift from the remaining engine drift (Engine A's
+> EDGE_CATEGORY_MAP import; Engine B's per-trade-only vol-targeting;
+> Engine D's 0 promoted edges; Engine E's coincident HMM) is more measured
+> than originally framed.
+>
+> **What this does NOT change:**
+>
+> - The kill thesis trigger HOLDS. The 2025 OOS criterion (< 0.4 net of
+>   all costs) was net-of-tax negative on the 9-edge run and is even worse
+>   on the 6-edge surviving set (2025 = −0.107 pre-tax). Engine C
+>   activation status doesn't unwind that.
+> - The structural review = engine completion direction is unchanged. The
+>   remaining 4-of-6 engine charter drift is real (just not as headline-
+>   severe as the inventory claimed).
+> - The 6-names hypothesis remains refuted three independent ways.
+>
+> **Determinism caveat from the agent:** the C-engines-1 worktree had
+> incomplete governor state, so the dispatch's 3-rep determinism check
+> ran on zero-trade backtests (canon md5 bitwise-identical, but Sharpes
+> all 0.0). Recommended follow-on: re-run determinism harness on main
+> (post-merge) with full governor state to verify the relocated HRP code
+> is still bitwise-equivalent to the in-place version under a non-
+> degenerate path.
+>
+> **Updated dispatch sequence (Engine C done; remaining engines):**
+>
+> ```
+> ✓ C-engines-1   (Engine C — F4 closure, HRP/Turnover relocated; cae2002)
+>   C-engines-3   (Engine E minimal-HMM — ELEVATED priority per
+>                  C-collapses-1's regime-conditional finding)
+>   C-engines-5   (Engine A pure-signals — calibrated strength, holding
+>                  period metadata; sequenced after C-engines-1)
+>   C-engines-4   (Engine D Bayesian opt — substrate-independent infra)
+>   C-engines-2   (Engine B portfolio vol-target — propose-first, awaiting
+>                  Q1-Q5)
+>   C-remeasure   (engine-complete substrate-honest multi-year)
+> ```
+>
+> ---
+>
 > **2026-05-09 EVENING — KILL THESIS TRIGGERED. Structural review = engine completion.**
 >
 > Pre-committed kill thesis (this file, line ~228 below):

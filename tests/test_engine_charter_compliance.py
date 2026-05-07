@@ -86,17 +86,49 @@ def test_engine_a_does_not_import_from_engine_b():
 
 
 @pytest.mark.xfail(
-    reason="HRPOptimizer + TurnoverPenalty currently live in signal_processor.py:228-242. "
-           "Closed by C-engines-1 (Engine C activation). Until then, this asserts the documented drift.",
+    reason="C-engines-1 (cae2002) closed the F4 inversion FORM that mattered (HRPOptimizer + "
+           "TurnoverPenalty no longer in signal_processor — `grep -rn 'HRPOptimizer\\|TurnoverPenalty' "
+           "engines/engine_a_alpha/` returns zero hits). What remains is alpha_engine.py importing "
+           "PortfolioComposer from engines.engine_c_portfolio.composer to ORCHESTRATE composition "
+           "(Engine A asks Engine C for target weights as a service). Whether this counts as "
+           "remaining charter inversion depends on whether A's orchestration role is allowed to "
+           "import C as a service. Tightening this further is sub-finding for C-engines-5 + a "
+           "broader A-vs-orchestrator scoping decision.",
     strict=True,
 )
 def test_engine_a_does_not_import_from_engine_c():
-    """Engine A must not consume Engine C optimizers — F4 charter inversion.
-    Closed by C-engines-1."""
+    """Engine A must not consume Engine C internals — F4 charter inversion.
+    Partially closed by C-engines-1; remaining work in C-engines-5."""
     matches = _grep_imports_in_engine("A", "from engines.engine_c_portfolio")
     assert not matches, (
         "Engine A imports from Engine C — F4 charter inversion. "
         f"Hits:\n  " + "\n  ".join(matches)
+    )
+
+
+def test_engine_a_no_longer_imports_hrp_or_turnover():
+    """Strict-form F4 closure verification — the *specific* inversion the
+    C-engines-1 dispatch closed (HRP/Turnover machinery in signal_processor)
+    must stay closed. Stronger than the broader A→C test above; this is the
+    regression guard."""
+    import subprocess
+    result = subprocess.run(
+        ["grep", "-rn", "--include=*.py",
+         r"HRPOptimizer\|TurnoverPenalty",
+         str(REPO_ROOT / "engines" / "engine_a_alpha")],
+        capture_output=True, text=True, timeout=10,
+    )
+    # Filter to actual code references (skip docstrings/comments mentioning the names)
+    real_refs = [
+        line for line in result.stdout.splitlines()
+        if line and not (
+            line.split(":", 2)[2].strip().startswith("#") if line.count(":") >= 2 else False
+        )
+    ]
+    assert not real_refs, (
+        "F4 regression: HRPOptimizer or TurnoverPenalty re-introduced into Engine A. "
+        "Per C-engines-1 (commit cae2002), these must live in Engine C only. "
+        f"Hits:\n  " + "\n  ".join(real_refs)
     )
 
 
