@@ -49,7 +49,7 @@ def _reexec_if_hashseed_unset() -> None:
         os.execv(sys.executable, [sys.executable, "-m", "scripts.run_multi_year", *sys.argv[1:]])
 
 
-def _run_year(year: int) -> dict:
+def _run_year(year: int, use_historical_universe: bool = False) -> dict:
     """Run a single full-calendar-year backtest under prod config."""
     from orchestration.mode_controller import ModeController
     mc = ModeController(ROOT, env="prod")
@@ -61,10 +61,15 @@ def _run_year(year: int) -> dict:
         alpha_debug=False,
         override_start=f"{year}-01-01",
         override_end=f"{year}-12-31",
+        use_historical_universe=use_historical_universe,
     )
 
 
-def _format_markdown_report(results: list[dict], output_path: Path) -> None:
+def _format_markdown_report(
+    results: list[dict],
+    output_path: Path,
+    use_historical_universe: bool = False,
+) -> None:
     """Write a human-readable summary to docs/Measurements/<year-month>/."""
     by_year: dict[int, list[dict]] = {}
     for r in results:
@@ -74,6 +79,8 @@ def _format_markdown_report(results: list[dict], output_path: Path) -> None:
     lines.append("# Multi-Year Foundation Measurement")
     lines.append("")
     lines.append(f"Generated: {datetime.now().isoformat(timespec='seconds')}")
+    lines.append(f"Universe mode: "
+                 f"{'historical (survivorship-aware S&P 500)' if use_historical_universe else 'static (config/backtest_settings.json tickers)'}")
     lines.append(f"Total runs: {len(results)} ({len(by_year)} years × {len(next(iter(by_year.values())))} reps)")
     lines.append("")
     lines.append("## Per-year results")
@@ -158,6 +165,11 @@ def main() -> int:
     parser.add_argument("--json-output", type=str,
                         default="docs/Measurements/2026-05/multi_year_foundation_measurement.json",
                         help="Raw JSON results path.")
+    parser.add_argument("--use-historical-universe", action="store_true",
+                        help="Resolve survivorship-bias-aware S&P 500 union "
+                             "for the backtest window instead of the static "
+                             "ticker list. Requires "
+                             "data/universe/sp500_membership.parquet.")
     args = parser.parse_args()
 
     years = [int(y.strip()) for y in args.years.split(",") if y.strip()]
@@ -188,7 +200,7 @@ def main() -> int:
             t_run = time.time()
             try:
                 with isolated():
-                    summary = _run_year(year)
+                    summary = _run_year(year, use_historical_universe=args.use_historical_universe)
                 run_id = _find_run_id(before) or "?"
                 record = {
                     "year": year,
@@ -219,7 +231,11 @@ def main() -> int:
             json_path.write_text(json.dumps(results, indent=2, default=str))
 
     md_path = ROOT / args.output
-    _format_markdown_report([r for r in results if r.get("ok")], md_path)
+    _format_markdown_report(
+        [r for r in results if r.get("ok")],
+        md_path,
+        use_historical_universe=args.use_historical_universe,
+    )
     print(f"\n[MULTI-YEAR] Done in {(time.time()-t_start)/60:.1f}m")
     print(f"[MULTI-YEAR] JSON: {ROOT / args.json_output}")
     print(f"[MULTI-YEAR] Markdown summary: {md_path}")
