@@ -843,9 +843,39 @@ Recommendation: 12% as default, configurable per fitness profile (`config/fitnes
 
 **Q5 — Branch + safety.** This is Engine B work. CLAUDE.md says: stop and propose first for "Engine B / live_trader/." This scoping doc IS the proposal. The user's explicit approval is required before any code lands.
 
-### What to surface back to the user before firing
+### Recommended defaults — the user just approves/rejects each
 
-A scoping decision that pins down: chosen scope (a/b/c), backward compat (hard / flag-gated), vol target (8/12/15%), branch name. Once those four decisions land, this section gets rewritten as an actionable dispatch and the user fires it.
+Updated 2026-05-07 to reduce the user's decision surface from open-ended scoping to four yes/no-or-pick-one questions. Recommended defaults shown first; the rationale flags what would tip the recommendation the other way.
+
+#### Q1 — Scope: **(a) MV portfolio vol-target only**
+
+**Recommendation:** start with (a). The minimum-viable test of "does portfolio vol-targeting matter for the substrate-honest Sharpe at all?" If (a) materially helps, escalate to (b). If (a) doesn't help, the engine isn't the bottleneck and (b)/(c) would be wasted scope. ~150 LOC, ~2 days.
+
+Tip the other way if: you have direct evidence that correlation-aware sizing is the load-bearing fix (we don't, currently — we have evidence that something is wrong with portfolio composition, but not the specific shape).
+
+#### Q2 — Backward compat: **flag-gated (`engine_b_portfolio_vol_target: false` default)**
+
+**Recommendation:** flag-gated. Same pattern as Phase A (`use_historical_universe`) and B1's universe-loader wire. Preserves prior measurement reproducibility. Hard-cutover wins are illusory because pre-fix measurements remain in the project's measurement history; flag-gated keeps them comparable.
+
+Tip the other way if: you decide the prior measurements are so substrate-conditional that reproducing them isn't valuable (likely true for some, but the discipline of "default false → opt-in" costs nothing).
+
+#### Q3 — Vol target value: **12% annualized as default, profile-conditional**
+
+**Recommendation:** 12% as default. Matches typical balanced-fund vol; below SPY's ~15% so it's net-conservative; above the strategy's current ~4% realized vol so it would meaningfully scale up positions. Profile-aware override: `retiree` profile → 8%, `growth` profile → 15%, `balanced` → 12% (the architecture in `config/fitness_profiles.yml` already supports profile-conditional behavior).
+
+Tip the other way if: your account is genuinely retirement-only (then 8%) or you're explicitly building a growth sleeve (then 15% — though this contradicts Goal A compounding behaviour).
+
+#### Q4 — Sequence: **AFTER C-engines-1 (fixed)**
+
+**Recommendation:** confirmed. Engine B's portfolio-vol-target needs the COMPOSED portfolio's vol, which requires Engine C's allocation layer to be wired (C-engines-1 deliverable). No alternative sequencing.
+
+#### Q5 — Branch + safety: **propose-first acknowledged**
+
+**Recommendation:** branch `c-engines-2-portfolio-vol-target`. CLAUDE.md propose-first explicitly satisfied by user approving Q1-Q3 above before this section gets rewritten as an actionable dispatch.
+
+### How to approve
+
+Reply with `Q1: a / Q2: flag-gated / Q3: 12% default / Q4: confirmed / Q5: approved` (or any divergent answer). When all five land, this section gets rewritten as a fully-fleshed actionable dispatch in the same shape as C-engines-1 / C-engines-3, and you fire it after C-engines-1 lands.
 
 ### Time budget when fired
 
