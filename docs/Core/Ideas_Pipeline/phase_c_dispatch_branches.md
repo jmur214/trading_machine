@@ -434,16 +434,146 @@ Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
 Per-edge classification (CONFIRMED/DEGRADED/FALSIFIED), surviving-edges multi-year Sharpe, forward_plan update summary, final main commit hash.
 ```
 
-## C-collapses-2 — Substrate-honest edge construction kickoff
+## C-collapses-1.5 — Concentration-equivalent capital test (LOAD-BEARING follow-on)
 
-(Skeleton — flesh out after C-collapses-1)
+**Why this is the load-bearing test (added 2026-05-09 per multi-year-dilution analysis):** The C-collapses-1 audit will find that most edges produce near-zero or negative Sharpe at substrate-honest universe with normal capital. That's expected — `docs/Measurements/2026-05/multi_year_dilution_decomposition_2026_05_09.md` showed ~91% of the 2024 substrate gap was pure dilution on shared mega-caps. The tiny per-trade signals (~$1/trade on each name) drown when capital allocation drops 4.4×.
+
+The right next test is: **do the same edges produce signal on substrate-honest universe at concentration-equivalent capital?** Two outcomes possible, both informative:
+
+1. **Sharpe recovers under scaled capital** → edges have small per-name signal that needs concentration to surface. The path forward is **deliberate small-universe construction** with explicit rationale (an asymmetric-upside or concentrated-quality sleeve). The 109-name list's curation was accidental; build it intentionally.
+2. **Sharpe stays low under scaled capital** → the system has no per-name alpha; the static-109 result was 100% concentration accident. The path forward is **genuine new alpha generation** (substrate-honest edge construction per C-collapses-2), not portfolio-construction tweaks.
+
+This test alone doesn't tell us whether to ship — it tells us which workstream to fund. It's the cheapest path to that decision.
+
+### SETUP
+
+```bash
+cd /Users/jacksonmurphy/Dev/trading_machine-2
+git worktree add .claude/worktrees/ccoll1-5-cap-equiv -b c-collapses-cap-equiv
+cd .claude/worktrees/ccoll1-5-cap-equiv
+claude
+```
+
+### PROMPT
 
 ```
-After C-collapses-1 establishes the surviving-edge baseline on substrate-honest universe, kick off the next-round edge construction. Focus: edges that exploit small-cap inefficiencies, sector rotation, or factors that work on representative universes (not mega-cap-tilted by selection).
+You are working on the ArchonDEX trading system. Read CLAUDE.md first. Full autonomous cycle.
 
-Reference: project_thematic_conviction_gap_2026_05_01.md flagged that the system can't do narrative picks. Combined with substrate honesty, the path forward is edges that work where mega-cap edges fail.
+## Setup
+
+```bash
+git worktree add .claude/worktrees/ccoll1-5-cap-equiv -b c-collapses-cap-equiv
+cd .claude/worktrees/ccoll1-5-cap-equiv
+```
+
+## Background
+
+C-collapses-1 (just merged) established the substrate-honest per-edge baseline at NORMAL capital. As expected, most edges produce near-zero or negative Sharpe — confirmed by the multi-year-dilution decomposition (`docs/Measurements/2026-05/multi_year_dilution_decomposition_2026_05_09.md`): the strategy's per-trade signal is too small to survive 4.4× position-size dilution.
+
+The load-bearing question now: do those same edges produce signal at concentration-equivalent capital on substrate-honest universe?
+
+## Goal
+
+Run a controlled test: SAME edges, SAME substrate-honest universe, but CAPITAL scaled to keep average per-name position size equal to the static-109 baseline.
+
+The static-109 baseline allocates ~$1.83k average position. The substrate-honest universe with the same total capital allocates ~$420 average position (4.4× smaller). To make positions comparable, the test multiplies total capital by ~4.4 (or equivalently scales position-sizing parameters).
+
+### Implementation options
+
+Pick the cleanest:
+
+OPTION A — scale starting equity 4.4× and `risk_per_trade` 1× (per-trade dollar risk scales with equity). Simplest implementation; preserves all other parameters.
+
+OPTION B — scale `risk_per_trade` 4.4× while keeping starting equity constant. Mathematically equivalent but might trip volatility guards.
+
+OPTION C — scale `fill_share_cap` (currently 0.20) and the per-trade dollar caps. More surgical but needs careful trace through the position-sizing pipeline.
+
+Recommend Option A unless it breaks an unrelated invariant (e.g., risk_engine assumes max_drawdown_pct against starting equity — fine because it's a percent).
+
+### Two tests
+
+#### Test 1: 2024 only (the largest collapse year)
+
+```bash
+PYTHONHASHSEED=0 python -m scripts.run_multi_year --years 2024 --runs 3 \
+  --use-historical-universe --starting-equity-multiplier 4.4 \
+  --output docs/Measurements/2026-05/cap_equiv_2024_<date>.md
+```
+
+(May need to add `--starting-equity-multiplier` CLI flag — implement if absent.)
+
+Compare to:
+- Static-109 2024 baseline (Sharpe 1.890)
+- Universe-aware 2024 normal capital (Sharpe 0.268)
+
+Expected outcomes:
+- Sharpe recovers to ≥1.4 → concentration was the alpha; small-universe construction is the path forward
+- Sharpe stays at 0.2-0.6 → no per-name signal; need genuine new alpha
+- Sharpe in 0.7-1.3 range → ambiguous; both effects present
+
+#### Test 2: 2023 (the year that already worked at normal capital)
+
+Same setup, year 2023. Expected: Sharpe stays roughly the same (1.292 → 1.4 with scaled capital, modest improvement). 2023 had broad-participation; concentration-equivalent shouldn't swing it much.
+
+If Test 2 swings dramatically, that contradicts the dilution-decomposition finding and is itself important data.
+
+### Acceptance
+
+- Audit doc at `docs/Measurements/2026-05/cap_equiv_test_2026_05_<date>.md` with:
+  - Sharpe under scaled capital, both tests
+  - Per-edge contribution under scaled capital (use the same per-edge harness from C-collapses-1)
+  - Verdict: which of the 3 outcomes (above)
+  - Recommendation for next workstream
+
+### Hard constraints
+
+- DO NOT modify Engine B / live_trader/
+- DO NOT touch `data/governor/` outside the harness's snapshot scope
+- The `--starting-equity-multiplier` flag (or equivalent) MUST default to 1.0 (no regression on existing measurements)
+- Branch: `c-collapses-cap-equiv`
+- Time budget: 3-4 hours
+
+### Honest interpretation guidance
+
+This test is a fork in the road. If concentration-equivalent recovers Sharpe, the project pivots to deliberate small-universe construction (asymmetric-upside framing per `project_retail_capital_constraint_2026_05_01.md`). If it stays low, the project pivots to genuine new alpha generation. Don't soften the verdict — both outcomes are real workstreams; the difference is which one funds.
+
+### End-of-cycle
+
+```bash
+cd /Users/jacksonmurphy/Dev/trading_machine-2
+git checkout main
+git merge --no-ff c-collapses-cap-equiv -m "Merge branch 'c-collapses-cap-equiv' — concentration-equivalent capital test, verdict: <SIGNAL_NEEDS_CONCENTRATION|NO_PER_NAME_ALPHA|AMBIGUOUS>"
+git push origin main
+git worktree remove .claude/worktrees/ccoll1-5-cap-equiv
+```
+
+Co-Authored-By in commit(s): Claude Opus 4.7 (1M context) <noreply@anthropic.com>
+
+### Report
+
+2024 + 2023 Sharpes under scaled capital, per-edge contribution table, verdict bucket, primary recommendation.
+```
+
+---
+
+## C-collapses-2 — Substrate-honest edge construction kickoff (after C-collapses-1.5)
+
+**Why this is conditional:** Whether C-collapses-2 fires depends on C-collapses-1.5's verdict.
+
+- If **SIGNAL_NEEDS_CONCENTRATION**: C-collapses-2 reframes as "deliberate small-universe construction" — building an explicit asymmetric-upside or concentrated-quality sleeve with intentional name selection. Different work than below.
+- If **NO_PER_NAME_ALPHA**: C-collapses-2 is "substrate-honest edge construction" — genuine new alpha generation. The skeleton below applies.
+- If **AMBIGUOUS**: Re-run with finer-grain capital scaling (1×, 2×, 3×, 4.4×, 6×) to map the curve. Workstream definition deferred until the curve is read.
+
+(Skeleton — flesh out after C-collapses-1.5)
+
+```
+After C-collapses-1.5 confirms (verdict: NO_PER_NAME_ALPHA) that the system has no per-name alpha at any capital scaling, kick off substrate-honest edge construction.
+
+Focus: edges that exploit small-cap inefficiencies, sector rotation, or factors that work on representative universes (not mega-cap-tilted by selection). Reference: project_thematic_conviction_gap_2026_05_01.md flagged the narrative-picks gap. Combined with substrate honesty, the path forward is edges that work where mega-cap edges fail.
 
 This is a multi-week workstream, not a single dispatch. The first dispatch identifies 1-2 candidate edges and proves them out on the substrate-honest universe.
+
+(Detailed prompt to be drafted at activation time, using C-collapses-1.5's verdict to set the framing.)
 ```
 
 ---
