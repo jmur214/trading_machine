@@ -84,10 +84,24 @@ def _format_markdown_report(
     output_path: Path,
     use_historical_universe: bool = False,
 ) -> None:
-    """Write a human-readable summary to docs/Measurements/<year-month>/."""
+    """Write a human-readable summary to docs/Measurements/<year-month>/.
+
+    Defensive against heterogeneous failures: a results list mixing
+    successful runs (record has sharpe/cagr_pct/canon) with failed runs
+    (record has ok=False / error only) used to raise KeyError on the
+    first failed record's `r["sharpe"]` access. Now uses `.get()`
+    everywhere and filters non-OK records into a separate failures
+    section so the report is always written.
+    """
     by_year: dict[int, list[dict]] = {}
+    failed: list[dict] = []
     for r in results:
-        by_year.setdefault(r["year"], []).append(r)
+        if not r.get("ok", True):
+            failed.append(r)
+            continue
+        by_year.setdefault(r.get("year"), []).append(r)
+    # Drop the None-keyed bucket if a record without a year somehow snuck through
+    by_year.pop(None, None)
 
     # Compute extended metrics (PSR / IR / Calmar / Sortino / Tail / Skew /
     # Kurt / Ulcer) per (year, rep) using the first rep as the
@@ -109,7 +123,30 @@ def _format_markdown_report(
     lines.append(f"Generated: {datetime.now().isoformat(timespec='seconds')}")
     lines.append(f"Universe mode: "
                  f"{'historical (survivorship-aware S&P 500)' if use_historical_universe else 'static (config/backtest_settings.json tickers)'}")
-    lines.append(f"Total runs: {len(results)} ({len(by_year)} years × {len(next(iter(by_year.values())))} reps)")
+    # Heterogeneous-rep-count handling — pre-fix this used
+    # len(next(iter(by_year.values()))) which (a) raised StopIteration if
+    # by_year was empty and (b) misreported when years had different rep
+    # counts (one year with 1 rep + others with 3 reps reported as "3 reps").
+    if by_year:
+        rep_counts = sorted({len(v) for v in by_year.values()})
+        rep_counts_str = (
+            f"{rep_counts[0]} reps" if len(rep_counts) == 1
+            else f"reps={rep_counts} (heterogeneous)"
+        )
+    else:
+        rep_counts_str = "0 reps"
+    n_successful = sum(len(v) for v in by_year.values())
+    lines.append(
+        f"Total runs: {n_successful} successful + {len(failed)} failed "
+        f"across {len(by_year)} years; {rep_counts_str}"
+    )
+    if failed:
+        lines.append("")
+        lines.append(
+            f"⚠ {len(failed)} run(s) failed. See `## Failed runs` section "
+            f"below for the per-record error trail. Per-year metrics below "
+            f"are computed on successful runs only."
+        )
     lines.append("")
     lines.append("## Per-year results")
     lines.append("")
@@ -123,9 +160,14 @@ def _format_markdown_report(
     year_means: list[tuple[int, float]] = []
     for year in sorted(by_year.keys()):
         reps = by_year[year]
-        sharpes = [r["sharpe"] for r in reps if r["sharpe"] is not None]
-        canons = [r["trades_canon_md5"] for r in reps]
-        cagrs = [r["cagr_pct"] for r in reps if r["cagr_pct"] is not None]
+        # Defensive .get() — pre-fix used r["sharpe"] which raised
+        # KeyError when a record from a failed run leaked into reps. Now
+        # failed records are filtered upstream into `failed`, but we
+        # keep .get() defensive for forward compatibility (e.g., if a
+        # rep dict ever ships without a sharpe key for an unrelated reason).
+        sharpes = [r.get("sharpe") for r in reps if r.get("sharpe") is not None]
+        canons = [r.get("trades_canon_md5", "(missing)") for r in reps]
+        cagrs = [r.get("cagr_pct") for r in reps if r.get("cagr_pct") is not None]
         if not sharpes:
             lines.append(f"| {year} | {len(reps)} | (all None) | — | — | — | FAIL |")
             continue
@@ -190,10 +232,12 @@ def _format_markdown_report(
         lines.append("")
         lines.append("## Extended metric framework (2026-05-09 upgrade)")
         lines.append("")
-        psrs = [ext["PSR"] for ext in extended_by_year.values()]
-        irs = [ext["Information Ratio"] for ext in extended_by_year.values()]
-        calmars = [ext["Calmar"] for ext in extended_by_year.values()]
-        skews = [ext["Skewness"] for ext in extended_by_year.values()]
+        # Defensive .get() — if a metric calc failed for any year, render
+        # the rest rather than crash the whole report.
+        psrs = [ext.get("PSR") for ext in extended_by_year.values() if ext.get("PSR") is not None]
+        irs = [ext.get("Information Ratio") for ext in extended_by_year.values() if ext.get("Information Ratio") is not None]
+        calmars = [ext.get("Calmar") for ext in extended_by_year.values() if ext.get("Calmar") is not None]
+        skews = [ext.get("Skewness") for ext in extended_by_year.values() if ext.get("Skewness") is not None]
         if psrs:
             lines.append(f"- **PSR(SR>0) median across years: {statistics.median(psrs):.3f}** "
                          f"(min {min(psrs):.3f}, max {max(psrs):.3f})")
@@ -212,6 +256,19 @@ def _format_markdown_report(
         lines.append("")
         lines.append("**Headline metric (per 2026-05-09 framework upgrade):** PSR median, not Sharpe mean. "
                      "Sharpe mean kept above for backward compatibility.")
+
+    if failed:
+        lines.append("")
+        lines.append("## Failed runs")
+        lines.append("")
+        lines.append("| Year | Rep | Wall (s) | Error |")
+        lines.append("|---:|---:|---:|---|")
+        for r in failed:
+            err = str(r.get("error", "?")).replace("|", "\\|")
+            lines.append(
+                f"| {r.get('year', '?')} | {r.get('rep', '?')} | "
+                f"{r.get('wall_time_seconds', '?')} | {err} |"
+            )
 
     lines.append("")
     lines.append("## Raw run records")
