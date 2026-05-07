@@ -687,6 +687,26 @@ class DiscoveryEngine:
         portfolio_settings: Optional[Dict[str, Any]] = None,
         start_date: Optional[str] = None,
         end_date: Optional[str] = None,
+        # ---- Substrate-transfer gate (Gate 7) — added 2026-05-09 evening ----
+        # If provided, Gate 7 runs the candidate on the historical-S&P 500
+        # substrate and fails if its contribution does not survive substrate
+        # transfer. Caller is responsible for pre-loading the substrate-B
+        # data_map (typically once per Discovery cycle, reused across all
+        # candidates). When None, Gate 7 is skipped (default; preserves
+        # current behavior). The expected use is `Discovery cycle preloads
+        # historical universe via UniverseLoader.historical_constituents
+        # then passes the resulting data_map here`. See B1's wire pattern
+        # at orchestration/mode_controller.py for the loader integration.
+        data_map_substrate_b: Optional[Dict[str, pd.DataFrame]] = None,
+        gate7_max_substrate_drift: float = 0.5,
+        # ---- Multiple-testing-corrected gate (Gate 8 / DSR) ----
+        # When n_trials_for_dsr > 1, the candidate's attribution Sharpe is
+        # checked against the expected-max-of-N-trials null. This protects
+        # against curve-fitting in cycles where the GA / Bayesian optimizer
+        # generates dozens of candidates. Default n_trials_for_dsr=1 = no
+        # selection-bias correction, identical to legacy behavior.
+        n_trials_for_dsr: int = 1,
+        gate8_dsr_threshold: float = 0.95,
     ) -> Dict[str, float]:
         """Production-equivalent multi-gate validation (architectural-fix v2).
 
@@ -763,6 +783,10 @@ class DiscoveryEngine:
             "gate_4_passed": False,
             "gate_5_passed": False,
             "gate_6_passed": False,
+            "gate_7_passed": True,   # Default True = SKIPPED (no substrate B provided)
+            "gate_7_evaluated": False,
+            "gate_8_passed": True,   # Default True = SKIPPED (n_trials_for_dsr=1)
+            "gate_8_evaluated": False,
         }
 
         def _emit_diag() -> None:
@@ -777,6 +801,10 @@ class DiscoveryEngine:
                     ("gate_4", bool(result.get("gate_4_passed", False))),
                     ("gate_5", bool(result.get("gate_5_passed", False))),
                     ("gate_6", bool(result.get("gate_6_passed", False))),
+                    # Gate 7 / Gate 8 default-passed when skipped; appear
+                    # in kill-attribution only when actually evaluated.
+                    ("gate_7", bool(result.get("gate_7_passed", True))),
+                    ("gate_8", bool(result.get("gate_8_passed", True))),
                 ]
                 first_failed = None
                 for name, passed in gate_pass_order:
@@ -827,6 +855,10 @@ class DiscoveryEngine:
                         "gate_4": bool(result.get("gate_4_passed", False)),
                         "gate_5": bool(result.get("gate_5_passed", False)),
                         "gate_6": bool(result.get("gate_6_passed", False)),
+                        "gate_7": bool(result.get("gate_7_passed", True)),
+                        "gate_7_evaluated": bool(result.get("gate_7_evaluated", False)),
+                        "gate_8": bool(result.get("gate_8_passed", True)),
+                        "gate_8_evaluated": bool(result.get("gate_8_evaluated", False)),
                     },
                     "passed_all_gates": bool(result.get("passed_all_gates", False)),
                 }
@@ -1147,6 +1179,145 @@ class DiscoveryEngine:
             if not factor_alpha_passed:
                 print(f"[DISCOVERY] {cand_id} failed Gate 6 ({factor_alpha_reason})")
 
+            # ---- Gate 7: Substrate-transfer (historical-S&P 500 universe) ----
+            # Added 2026-05-09 evening per F6 audit-machinery gap. Catches
+            # substrate-conditional alpha BEFORE promotion. The gate runs the
+            # production-equivalent ensemble on the substrate-B data_map
+            # (typically the historical-S&P 500 union via
+            # UniverseLoader.historical_constituents) and compares the
+            # candidate's contribution Sharpe across the two substrates.
+            #
+            # If substrate-B contribution Sharpe < 0 → FAIL (substrate-
+            # conditional drag).
+            # If |substrate-A contribution - substrate-B contribution|
+            #   > gate7_max_substrate_drift → FAIL (substrate-conditional
+            #   alpha; survives one substrate but not the other).
+            #
+            # Default skipped (data_map_substrate_b=None) so existing
+            # measurement reproducibility is preserved.
+            if data_map_substrate_b is not None and len(data_map_substrate_b) > 0:
+                _g7_t0 = _time.time()
+                substrate_b_contribution: float = float("nan")
+                substrate_b_sharpe: float = float("nan")
+                substrate_b_drift: float = float("nan")
+                gate_7_reason = "not run"
+                try:
+                    sb_start = list(data_map_substrate_b.values())[0].index[0].isoformat()
+                    sb_end = list(data_map_substrate_b.values())[0].index[-1].isoformat()
+                    sb_run_kwargs = dict(
+                        data_map=data_map_substrate_b,
+                        start_date=sb_start,
+                        end_date=sb_end,
+                        exec_params=_exec_params,
+                        initial_capital=100_000.0,
+                        alpha_config=alpha_config,
+                        risk_settings=risk_settings,
+                        portfolio_settings=portfolio_settings,
+                    )
+                    sb_baseline = run_backtest_pure(
+                        edges=baseline_edges,
+                        edge_weights=baseline_weights,
+                        **sb_run_kwargs,
+                    )
+                    sb_with = run_backtest_pure(
+                        edges=with_edges,
+                        edge_weights=with_weights,
+                        **sb_run_kwargs,
+                    )
+                    substrate_b_contribution = (
+                        float(sb_with.metrics.get("Sharpe Ratio", 0.0))
+                        - float(sb_baseline.metrics.get("Sharpe Ratio", 0.0))
+                    )
+                    sb_attribution = treatment_effect_returns(
+                        sb_with.daily_returns, sb_baseline.daily_returns,
+                    )
+                    substrate_b_sharpe = stream_sharpe(sb_attribution)
+                    substrate_b_drift = abs(
+                        contribution - substrate_b_contribution
+                    )
+                    # Two failure conditions: negative on substrate B, OR
+                    # too much drift between substrates
+                    if math.isnan(substrate_b_sharpe):
+                        gate_7_passed = False
+                        gate_7_reason = "failed: NaN substrate-B sharpe"
+                    elif substrate_b_contribution < 0:
+                        gate_7_passed = False
+                        gate_7_reason = (
+                            f"failed: substrate-B contribution {substrate_b_contribution:+.3f} < 0"
+                        )
+                    elif substrate_b_drift > gate7_max_substrate_drift:
+                        gate_7_passed = False
+                        gate_7_reason = (
+                            f"failed: substrate drift {substrate_b_drift:.3f} > "
+                            f"{gate7_max_substrate_drift}"
+                        )
+                    else:
+                        gate_7_passed = True
+                        gate_7_reason = (
+                            f"passed: drift {substrate_b_drift:.3f}, "
+                            f"sb_contrib {substrate_b_contribution:+.3f}"
+                        )
+                except Exception as e:
+                    if isinstance(e, (TypeError, AttributeError, NameError, AssertionError, ImportError)):
+                        raise
+                    gate_7_passed = False
+                    gate_7_reason = f"failed: {type(e).__name__}: {e}"
+                    print(f"[Gate 7] {type(e).__name__}: {e}")
+                result["gate_7_passed"] = bool(gate_7_passed)
+                result["gate_7_evaluated"] = True
+                result["gate_7_reason"] = gate_7_reason
+                result["substrate_b_sharpe"] = substrate_b_sharpe
+                result["substrate_b_contribution"] = substrate_b_contribution
+                result["substrate_b_drift"] = substrate_b_drift
+                _stamp("gate_7", _g7_t0)
+                if not gate_7_passed:
+                    print(f"[DISCOVERY] {cand_id} failed Gate 7 ({gate_7_reason})")
+
+            # ---- Gate 8: DSR multiple-testing correction ----
+            # Added 2026-05-09 evening per outside-reviewer recommendation.
+            # When the Discovery cycle generates n_trials_for_dsr > 1
+            # candidates, raw Sharpe gates are too lax — testing 50 things
+            # at p<0.05 is expected to find ~2.5 false positives. DSR
+            # (Bailey & Lopez de Prado 2014) corrects: PSR with the
+            # benchmark set to E[max SR_i] under the null of N independent
+            # trials. Default n_trials_for_dsr=1 disables (legacy behavior).
+            if n_trials_for_dsr > 1:
+                _g8_t0 = _time.time()
+                dsr_value: float = 0.0
+                gate_8_reason = "not run"
+                try:
+                    from core.metrics_engine import MetricsEngine
+                    if attribution is not None and len(attribution) >= 4:
+                        dsr_value = MetricsEngine.deflated_sharpe_ratio(
+                            attribution, n_trials=n_trials_for_dsr,
+                        )
+                        if dsr_value >= gate8_dsr_threshold:
+                            gate_8_passed = True
+                            gate_8_reason = f"passed: DSR {dsr_value:.3f} ≥ {gate8_dsr_threshold}"
+                        else:
+                            gate_8_passed = False
+                            gate_8_reason = (
+                                f"failed: DSR {dsr_value:.3f} < {gate8_dsr_threshold} "
+                                f"(n_trials={n_trials_for_dsr})"
+                            )
+                    else:
+                        gate_8_passed = False
+                        gate_8_reason = "failed: attribution stream too short for DSR"
+                except Exception as e:
+                    if isinstance(e, (TypeError, AttributeError, NameError, AssertionError, ImportError)):
+                        raise
+                    gate_8_passed = False
+                    gate_8_reason = f"failed: {type(e).__name__}: {e}"
+                    print(f"[Gate 8] {type(e).__name__}: {e}")
+                result["gate_8_passed"] = bool(gate_8_passed)
+                result["gate_8_evaluated"] = True
+                result["gate_8_reason"] = gate_8_reason
+                result["dsr_value"] = dsr_value
+                result["n_trials_for_dsr"] = n_trials_for_dsr
+                _stamp("gate_8", _g8_t0)
+                if not gate_8_passed:
+                    print(f"[DISCOVERY] {cand_id} failed Gate 8 ({gate_8_reason})")
+
             # ---- Final pass check ----
             # Fail-closed: a None threshold or NaN universe-B reading both
             # mean the gate could not be evaluated, which is not the same
@@ -1162,12 +1333,17 @@ class DiscoveryEngine:
                 not math.isnan(universe_b_sharpe) and universe_b_sharpe > 0
             )
 
+            # Gate 7 (substrate-transfer) and Gate 8 (DSR) default to
+            # passed=True when not evaluated (skipped path), so multiplying
+            # them into the final-pass check is safe even when disabled.
             passed = (
                 contribution > gate1_contribution_threshold
                 and survival_rate >= gate2_survival_threshold
                 and sig_passed
                 and universe_b_passed
                 and factor_alpha_passed
+                and bool(result.get("gate_7_passed", True))
+                and bool(result.get("gate_8_passed", True))
             )
             result["passed_all_gates"] = passed
             result["significance_threshold"] = sig_threshold_for_log
@@ -1176,6 +1352,14 @@ class DiscoveryEngine:
                 "skipped" if math.isnan(universe_b_sharpe)
                 else f"{universe_b_sharpe:.2f}"
             )
+            g7_str = (
+                "skipped" if not result.get("gate_7_evaluated", False)
+                else f"drift={result.get('substrate_b_drift', float('nan')):.2f}"
+            )
+            g8_str = (
+                "skipped" if not result.get("gate_8_evaluated", False)
+                else f"DSR={result.get('dsr_value', 0.0):.2f}"
+            )
             gate_summary = (
                 f"contrib={contribution:+.3f}, "
                 f"attr_sh={attribution_sharpe:.2f}, "
@@ -1183,7 +1367,9 @@ class DiscoveryEngine:
                 f"wfo_cons={wfo_consistency:.2f}, "
                 f"p={sig_p:.3f}, "
                 f"univ_b={b_sharpe_str}({universe_b_n_tickers}t), "
-                f"alpha={factor_alpha_reason}"
+                f"alpha={factor_alpha_reason}, "
+                f"substrate_xfer={g7_str}, "
+                f"dsr={g8_str}"
             )
             if passed:
                 print(f"[DISCOVERY] {cand_id} PASSED all gates: {gate_summary}")
