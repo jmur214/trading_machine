@@ -243,8 +243,22 @@ def _run_q1_inside_context() -> dict:
 
 
 def _trades_canon_md5(run_id: str) -> str:
-    p = TRADES_DIR / run_id / f"trades_{run_id}.csv"
-    if not p.exists():
+    """Compute canonical md5 over the run's trades, ignoring run_id/meta columns.
+
+    The cockpit logger writes the trade log under either ``trades.csv`` (always)
+    or ``trades_<run_id>.csv`` (when the prefixed-name path was active in older
+    code). Pre-2026-05-07 this helper looked for the prefixed name only and
+    returned "(missing)" for runs that wrote `trades.csv` only — caller saw
+    canon mismatches that were actually filename-pattern bugs, not real
+    data drift. Now checks both names; canonical name is `trades.csv`.
+    """
+    run_dir = TRADES_DIR / run_id
+    candidates = [
+        run_dir / "trades.csv",
+        run_dir / f"trades_{run_id}.csv",  # legacy prefixed name; some runs ship both
+    ]
+    p = next((c for c in candidates if c.exists()), None)
+    if p is None:
         return "(missing)"
     try:
         import pandas as pd
