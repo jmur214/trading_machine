@@ -894,6 +894,9 @@ Depends on scope choice. (a) = 2 days. (b) = 3 days. (c) = 4-5 days.
 
 ## C-engines-3 — Engine E minimal-HMM on leading FRED features + Engine B de-grossing wire
 
+> **Framing update 2026-05-07 (post-audit):** R2's audit argued regime-prediction is "structurally unfixable at retail scale." User pushed back: regime detection isn't load-bearing for any single decision; used as one signal among many it's defensible. Decision: **build the regime-rebuild work as background feature-engineering; don't ship into Engine B sizing until it falsifies-cleanly.** Same shape as universe-loader (built, parked, fired with clean falsification surface). Same shape as MetaLearner. The dispatch below is correctly scoped: produce wire-readiness assessment, do NOT wire into Engine B in this dispatch (separate propose-first if signal clears AUC > 0.55 + coincident-leading flip).
+>
+
 **Why this works substrate-independently:** The HMM model itself is universe-independent. Engine E reads macro features (yield_curve_spread, credit_spread_baa_aaa, dollar_ret_63d, spy_vol_20d), trains an HMM, outputs a regime label. The wire-into-Engine-B step does require Engine B work, so this dispatch's deliverable #2 needs to be carefully scoped (it could be flag-gated or the dispatch could just produce the signal stream and Engine B integration stays a separate propose-first decision).
 
 The 2026-05-06 cheap-validation Branch 3 finding (memory `project_cheap_input_validation_branch3_2026_05_06`) showed that VIX term structure is decisively coincident; the FRED features above carry forward signal but get drowned by coincident features when mixed in. This dispatch isolates the leading subset and tests whether they predict drawdowns.
