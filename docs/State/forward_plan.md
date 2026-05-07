@@ -1,5 +1,67 @@
-# Forward Plan — live (last substantive update 2026-05-09)
+# Forward Plan — live (last substantive update 2026-05-09 — C-collapses-1)
 
+> **2026-05-09 (later) — C-collapses-1 audit lands. Verdict: substrate-honest mean Sharpe is 0.915 (PARTIAL), not 0.507 (COLLAPSES).**
+>
+> The follow-on per-edge audit ran in 3 stages:
+>
+> 1. **6-names isolation test.** Hypothesis from F6: COIN/MARA/RIOT/DKNG/PLTR/SNOW were the asymmetric-upside engine inside static-109 that the historical S&P 500 lacks. **Inverted.** On 2024, removing those 6 names from static-109 *improves* Sharpe by +1.30 (0.855 → 2.150). They're net-negative under realistic slippage on current code, not asymmetric-upside picks. Substrate bias is **diffuse** — it lives in the 367+ S&P 500 names omitted from the static config (defensive sectors, smaller financials, real estate, healthcare cyclicals), not in those 6.
+>
+>    Doc: `docs/Measurements/2026-05/six_names_isolation_2026_05_09.md`.
+>
+> 2. **Per-edge substrate audit (single-edge × static + historical, 2024).** Inverts the F6 ensemble narrative for individual edges:
+>
+>    | edge | static | historical | Δ | verdict |
+>    |---|---:|---:|---:|---|
+>    | gap_fill_v1 | 0.462 | 1.082 | −0.620 | STRONGER on historical |
+>    | volume_anomaly_v1 | 0.207 | 1.475 | −1.268 | STRONGER on historical |
+>    | herding_v1 | 0.731 | 0.320 | +0.411 | DEGRADED → paused |
+>    | value_earnings_yield_v1 | 0.983 | 1.283 | −0.300 | STRONGER on historical |
+>    | value_book_to_market_v1 | 0.888 | 1.108 | −0.220 | STRONGER on historical |
+>    | quality_roic_v1 | 2.183 | 0.825 | +1.358 | FALSIFIED → failed |
+>    | quality_gross_profitability_v1 | 1.540 | 1.037 | +0.503 | FALSIFIED → failed |
+>    | accruals_inv_sloan_v1 | 1.953 | 1.994 | −0.041 | CONFIRMED |
+>    | accruals_inv_asset_growth_v1 | 1.317 | 1.317 | 0.000 | CONFIRMED |
+>
+>    **6 of 9 edges survive the substrate-honesty test on 2024**, and 4 of those are *materially better* on the wider universe than on static-109. The F6 ensemble's collapse traces to 2 quality edges that overfit the curated mega-cap quality skew. `data/governor/edges.yml` updated: 1 paused, 2 failed, all with `failure_reason='universe_too_small'`. Active count 9 → 6.
+>
+>    Doc: `docs/Measurements/2026-05/substrate_collapse_edge_audit_2026_05_09.md`.
+>
+> 3. **Surviving-edges multi-year (6 edges, historical S&P 500, 2021-2025):**
+>
+>    | Year | F6 9-edge | Surviving 6 | Δ | regime |
+>    |---|---:|---:|---:|---|
+>    | 2021 | 0.862 | 2.811 | +1.949 | bull |
+>    | 2022 | −0.321 | **−0.508** | −0.187 | bear |
+>    | 2023 | 1.292 | 1.799 | +0.507 | bull/Mag-7 |
+>    | 2024 | 0.268 | 0.582 | +0.314 | Mag-7 dominance |
+>    | 2025 | 0.436 | **−0.107** | −0.543 | chop |
+>    | **Mean** | **0.5074** | **0.9154** | **+0.408** | |
+>
+>    Mean lifts from COLLAPSES (0.5074) to PARTIAL (0.9154) — verdict moves from "reset directive" to "recalibrate." But the surviving set is **strongly regime-conditional**: 2022 bear and 2025 chop are *worse* than the 9-edge ensemble. The 2 falsified quality edges were apparently providing a defensive hedge.
+>
+>    Doc: `docs/Measurements/2026-05/surviving_edges_multi_year_2026_05_09.md`.
+>
+> **Recommendation: continue substrate-honest path with surviving 6 edges + add a regime-conditional defensive layer.** The asymmetric-upside-sleeve pivot is NOT the right next move (6-names finding falsified its candidate names). The next workstream is bear/chop hedging on substrate-honest universe, NOT a universe rebuild. Engine E HMM work (currently blocked on input-panel rebuild per `regime_signal_falsified_2026_05_06.md`) becomes higher-priority.
+>
+> **What this changes about earlier doc claims:**
+>
+> - The F6 documented ΔSharpe of −1.622 on 2024 should be re-stated as −0.587 on current code. The static-109 baseline of 1.890 was on pre-V/Q/A code; current code returns 0.855 on the same configuration. **All Sharpe headlines below this section that pre-date 2026-05-09 are anchor-conditional in a way the project memory hasn't fully reflected.**
+> - The COLLAPSES verdict on the 9-edge ensemble is correct as stated; the IMPLICATION (that the strategy is broken on substrate-honest) is wrong. With the 2 falsified edges removed, the strategy clears the 0.5 gate by 0.4154 on substrate-honest.
+>
+> **Forward plan changes:**
+>
+> | Was queued | Now |
+> |---|---|
+> | C-collapses-2 = "asymmetric-upside small-universe sleeve" | **CANCELLED** (6-names hypothesis inverted; the candidate names hurt static-109) |
+> | Path 1 ship gated on >1.296 substrate-honest | New gate: substrate-honest mean ≥ 1.0 with all 5 years ≥ 0 (i.e., fix 2022/2025 negatives) |
+> | (no slot) | **C-collapses-2-revised:** substrate-honest defensive layer (regime-conditional gating OR new bear/chop edge) |
+> | (no slot) | **C-collapses-3:** Engine E HMM input-panel rebuild (unblock regime gate) |
+> | (no slot) | **C-collapses-4:** investigate why quality_roic / quality_gross_profitability fail to generalize. The academic Quality factor IS supposed to work cross-sectionally; this implementation's substrate-failure may be a coding/calibration issue worth re-running on a corrected version. |
+>
+> ---
+>
+> ## OLDER (2026-05-09 morning) — F6 verdict, pre-edge-audit reading
+>
 > **2026-05-09 VERDICT: F6 returns COLLAPSES.** Multi-year mean Sharpe
 > 1.296 → **0.5074** on substrate-honest universe (476-503 historical S&P
 > 500 union). −0.789 Sharpe / −61%. Audit doc:
