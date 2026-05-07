@@ -113,10 +113,10 @@ then LOW. Within each severity, list newest at the top.
 - Recommended next step: implement during Session N of the meta-learner build (foundation phase). `MetricsEngine.calculate_all` already returns Calmar (commit fb1ba13 era); just add Sortino and Sortino-coverage tests, then add the `FitnessConfig` config layer. The `TierClassifier` rule and Lifecycle objective gates are already designed in the meta-learner design doc.
 - See: `docs/Core/phase1_metalearner_design.md` ("Three-layer architecture" section), `docs/Audit/realistic_cost_backtest_result.md` (the empirical observation that triggered this finding).
 
-### [MEDIUM] validate_candidate uses full data_map extent instead of configured backtest window — Gate 1 takes ~35 min/candidate
+### [MEDIUM → PARTIALLY RESOLVED 2026-05-07] validate_candidate uses full data_map extent instead of configured backtest window — Gate 1 takes ~35 min/candidate
 - Engine: D
 - First flagged: 2026-04-28
-- Status: not started
+- Status: PARTIALLY RESOLVED — `discovery.py::validate_candidate` now accepts `start_date` / `end_date` kwargs (lines 688-689; landed via the 2026-05-02 gauntlet architectural rewrite, commit `2451076`). When provided, the gauntlet runs Gate 1 over the specified window instead of the full ~6yr data_map. **Remaining:** the call site `orchestration/mode_controller.py::_run_discovery_cycle:1169` does NOT pass either parameter, so default behavior still uses the full extent. Closing this fully = a ~10-LOC call-site fix that defaults to a 24-month validation window. Latent — Discovery cycle is paused per the 2026-05-09 kill-thesis-trigger structural review, so the ~30min/candidate impact isn't currently load-bearing. Closes when the call-site fix lands or when the autonomous Discovery cycle resumes (whichever comes first).
 - Description: `discovery.py::validate_candidate` lines 631-632 derive `start_date` and `end_date` from `data_map[first_ticker].index[0]` and `[-1]`. The data_map fed by `mode_controller._run_discovery_cycle` is the full price-history parquet (2020-04 → 2026-04, ~6 years for current cache) including the 1-year warmup window. So Gate 1's "quick backtest" runs 6 years of data on 109 tickers per candidate — observed empirically at ~30-35 min per Gate 1. Combined with Gates 2-5, each candidate takes ~2 hours. With the cycle cap of 10 candidates this is ~20 hours per discovery run, making the autonomous loop impractical.
 - Recommended next step: Have validate_candidate accept (or look up) a "validation window" — e.g. last 12-24 months — for Gate 1's quick filter. Gate 3 (WFO) already does proper multi-window OOS via train_months/test_months params, so a short Gate 1 window is fine for the cheap pass/fail filter. Either honor `cfg_bt["start_date"]`/`end_date` from backtest_settings, or expose `validation_start_date`/`validation_end_date` parameters to the mode_controller call site.
 
@@ -179,10 +179,10 @@ then LOW. Within each severity, list newest at the top.
 - Charter reference: engine_charters.md Engine F Forbidden Inputs: "Edge discovery, parameter optimization, or walk-forward testing (that's D's job)."
 - Recommended next step: User decision required — moving the file is a charter-boundary change which CLAUDE.md classifies as propose-first. Recommend archiving to `Archive/engine_f_governance/evolution_controller.py` since validate_candidate is now the canonical path. Alternative: keep evolution_controller as a future migration target if you want a more structured WFO orchestrator separate from validate_candidate.
 
-### [MEDIUM] Engine D bare `except Exception` blocks routinely mask interface-drift bugs
+### [MEDIUM → PARTIALLY RESOLVED 2026-05-07] Engine D bare `except Exception` blocks routinely mask interface-drift bugs
 - Engine: D
 - First flagged: 2026-04-28
-- Status: not started
+- Status: PARTIALLY RESOLVED via Phase A task A3 (commit `2513676`) — discovery.py Gates 2/4/5/outer narrowed to re-raise `(TypeError, AttributeError, NameError, AssertionError, ImportError)`; NaN-passes-Gate-5 fail-closed; Gate 6 default-True-on-exception flipped to False; Gate 4 None-threshold-bypass eliminated. **Remaining:** `tree_scanner.py:178, 233, 257` + `wfo.py:48-53` still use the same bare-except pattern; an Engine D-side codebase sweep would close them. Tracked separately for future work.
 - Description: `discovery.py::validate_candidate` contains 6 bare `except Exception as e: print(...)` blocks at lines 680, 727, 758, 769, 812, 871 — one for each gate plus the outer wrapper. Each catches programmer errors (TypeError, AttributeError, missing-method) on equal footing with legitimate runtime issues (data unavailability, file IO). This pattern is what hid all three bugs the user just fixed in commit dda474c, AND it is hiding the two HIGH findings above (Gate 3 and Gate 5). The print messages do not include exception type or traceback, so the user cannot distinguish "Gate 3 had no data this run" from "Gate 3 has been broken for weeks." `tree_scanner.py:178, 233, 257` and `wfo.py:48-53` (also `try: get_loc(method='nearest') except: start_idx = 0`) follow the same pattern — bare except, default value, silent continuation.
 - Charter reference: Charter Invariant 5 (Engine D): "D's research is fully reproducible given the same data and random seeds." Silent gate-skip violates reproducibility — outcome depends on whether the masked exception fires.
 - Recommended next step: Replace each bare `except Exception` with `except (RuntimeError, KeyError, FileNotFoundError) as e:` (or a similar narrow set), and add a final `except Exception:` at the top level that logs the traceback. Programmer errors should propagate; data errors should fail the gate explicitly with `result["gate_X_passed"] = False` not silently default to a passing value. Also, `wfo.py:49` uses the deprecated `get_loc(method='nearest')` API which has been removed in pandas ≥1.4 — the bare except masks an `InvalidIndexError` and falls back to `start_idx = 0`, meaning every WFO run starts from bar 0 regardless of `start_date`.
@@ -203,7 +203,7 @@ then LOW. Within each severity, list newest at the top.
 - Charter reference: Engine D index.md: "JSONL audit logging of all discovery activity" (`discovery_logger.py` purpose).
 - Recommended next step: Route gate-result diagnostics through `DiscoveryLogger.log_validation` (extend the schema with `gate_skipped_reason: Optional[str]`), or at minimum through `logger.warning(...)` so it lands in `evolution.log`. Stop printing.
 
-### [HIGH] System Sharpe 0.4 on 109-ticker universe vs SPY 0.88 in-sample
+### [HIGH → SUPERSEDED 2026-05-09] System Sharpe 0.4 on 109-ticker universe vs SPY 0.88 in-sample
 - Engine: System-level (Alpha + Risk + Portfolio composition)
 - First flagged: 2026-04-25
 - Status: **superseded 2026-05-09 by the universe-aware verdict above** — the 109-ticker universe was itself a substrate artifact, so this entry's "SPY benchmark gap" framing is no longer the right lens. The universe-aware substrate produces mean Sharpe 0.507 across 2021-2025 with worst year −0.321; SPY benchmarks shift on the broader universe and the head-to-head needs to be recomputed. Earlier 0.855 / 0.161 / 0.264 figures were all conditioned on the static substrate.
@@ -237,7 +237,7 @@ then LOW. Within each severity, list newest at the top.
 - Files: `engines/engine_a_alpha/signal_collector.py:23-103`, `engines/engine_a_alpha/edges/xsec_momentum.py:31, 139, 181` (triple-defined `compute_signals` — module-level convenience function shadows the class method).
 - Recommended next step: At AlphaEngine startup, validate every registered edge has exactly one of `compute_signals` or `generate_signals` callable, and log a `WARNING` for any edge that has neither. Make the bare-excepts in `_call_edge` re-raise `AttributeError` and `TypeError` so a typo manifests as a startup failure, not a silent zero-signal day. Separately, resolve the `xsec_momentum.py` triple-define: either delete the module-level `compute_signals` (lines 173-187) or document why it exists.
 
-### [MEDIUM] Charter inversion: Engine A signal_processor imports EDGE_CATEGORY_MAP from Engine F's regime_tracker
+### [MEDIUM → RESOLVED 2026-05-07] Charter inversion: Engine A signal_processor imports EDGE_CATEGORY_MAP from Engine F's regime_tracker
 - Engine: A (with import dependency on F)
 - First flagged: 2026-04-28
 - Status: not started
@@ -591,7 +591,7 @@ Severity counts: HIGH 3 | MEDIUM 6 | LOW 4. Top-3 highest-impact below.
   `engine_charters.md` that "optimizer interfaces are charter-neutral
   utilities, not C-owned" if that's the desired contract.
 
-### [MEDIUM] Engine A signal_processor approaching god-class threshold (715 LOC); fundamentals_helpers global cache adds another mutable singleton
+### [MEDIUM → PARTIALLY RESOLVED 2026-05-07] Engine A signal_processor approaching god-class threshold (715 LOC); fundamentals_helpers global cache adds another mutable singleton
 - Category: god-class / mutable singleton
 - Files: `engines/engine_a_alpha/signal_processor.py` (715 LOC),
   `engines/engine_a_alpha/edges/_fundamentals_helpers.py:43-44, 47-66`
