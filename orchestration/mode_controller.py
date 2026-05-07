@@ -903,6 +903,26 @@ class ModeController:
         # AlphaEngine when the per-ticker logger is enabled.
         cockpit = CockpitLogger(out_dir=str(self.root / "data" / "trade_logs"))
 
+        # Per-run engine-version snapshot (audit recommendation, 2026-05-09).
+        # Writes engine_versions.json alongside the trade log so every run
+        # is forensically reconstructable: run_id → engine versions used at
+        # decision time → diff vs current code state. Best-effort: a write
+        # failure must NOT crash the backtest; log + continue.
+        try:
+            from core.engine_versions import write_engine_versions_for_run
+            write_engine_versions_for_run(
+                cockpit.run_id,
+                trade_logs_dir=self.root / "data" / "trade_logs",
+            )
+        except FileExistsError as _ev_exists:
+            print(f"[RUN_BACKTEST] engine_versions.json already exists for "
+                  f"run_id={cockpit.run_id} (rare run-id collision); continuing")
+        except Exception as _ev_err:
+            # Don't tag any specific exception class — versioning is purely
+            # informational; never block a backtest because it failed
+            print(f"[RUN_BACKTEST] engine_versions snapshot failed: "
+                  f"{type(_ev_err).__name__}: {_ev_err}")
+
         # Phase 2.11 prep — optional per-bar score logger for meta-learner
         # training. Off by default; the --log-per-ticker-scores CLI flag
         # threads through ModeController.run_backtest's parameter.
