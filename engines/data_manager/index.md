@@ -220,4 +220,11 @@ integration test gated behind `UNIVERSE_LIVE_TEST=1`.
 - **Function `parse_membership_html()`**: Convert raw Wikipedia HTML into the canonical membership frame.
 - **Function `current_tickers()`**: Tickers whose most recent spell is still open (included_until NaT).
 - **Function `active_at()`**: Tickers active on ``as_of``.
+- **Function `annual_anchor_dates()`**: Return one anchor per calendar year in ``[start, end]``, on Jan 1.
+- **Function `union_active_over_window()`**: Union of ``active_at`` results over a list of anchor dates.
 - **Function `normalize_ticker()`**: Trim, uppercase, and strip Wikipedia footnote markers like '[1]'.
+
+### `universe_resolver.py`
+**Module Docstring:** engines/data_manager/universe_resolver.py
+- **Function `resolve_universe()`**: Return the (tickers, debug_info) tuple for a backtest run.
+- **Function `discover_cached_tickers()`**: Return the set of tickers with a cached price CSV under ``cache_dir/processed/``.

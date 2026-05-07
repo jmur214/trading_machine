@@ -87,6 +87,19 @@ All tunable parameters in `config/regime_settings.json`.
   - `def __init__()`
   - `def generate()`: Generate advisory hints and macro regime info.
 
+### `hmm_classifier.py`
+**Module Docstring:** HMMRegimeClassifier — Engine E confidence-aware regime detection.
+- **Class `HMMTrainingArtifact`**: Persisted HMM model + metadata. Pickled for production inference.
+- **Class `HMMRegimeClassifier`**: 3-state Gaussian HMM regime classifier.
+  - `def __init__()`
+  - `def fit()`: Fit Gaussian HMM on a feature DataFrame.
+  - `def predict_proba_at()`: Posterior P(state | features at row) — temporally smoothed.
+  - `def predict_proba_sequence()`: Posterior P(state | x_{1..T}) for a full feature sequence.
+  - `def score()`: Log-likelihood of X_df under the fitted model.
+  - `def confidence_from_proba()`: Map a posterior dict to a [0, 1] confidence scalar.
+  - `def save()`: Pickle full state to disk.
+  - `def load()`: Load pickled model from disk.
+
 ### `hysteresis.py`
 **Module Docstring:** HysteresisFilter — prevents single-bar regime flips.
 - **Class `HysteresisFilter`**: State machine that stabilizes raw detector outputs.
@@ -94,6 +107,27 @@ All tunable parameters in `config/regime_settings.json`.
   - `def is_transitioning()`: True if there is an unconfirmed pending state.
   - `def transition_progress()`: Fraction of confirmation bars accumulated (0.0 – 1.0).
   - `def reset()`: Clear all state. Called between backtest runs.
+
+### `macro_features.py`
+**Module Docstring:** macro_features — regime-input features for HMMRegimeClassifier.
+- **Function `build_feature_panel()`**: Build the daily feature panel for HMM regime detection.
+- **Function `latest_feature_row()`**: Return the feature row at or before `as_of` (no look-ahead).
+- **Function `resample_feature_panel()`**: Aggregate a daily feature panel to a slower cadence.
+- **Function `build_multires_panels()`**: Build daily, weekly, and monthly feature panels.
+
+### `multires_hmm.py`
+**Module Docstring:** MultiResolutionHMM — runs daily / weekly / monthly HMM regime classifiers
+- **Class `CadenceResult`**: Per-cadence regime read at a single point in time.
+  - `def to_dict()`
+- **Class `MultiResHMMArtifacts`**: Paths to the three persisted HMM models for this multi-res ensemble.
+  - `def default()`
+- **Class `MultiResolutionHMM`**: Orchestrator for daily / weekly / monthly HMM classifiers.
+  - `def __init__()`
+  - `def classify_at()`: Classify the regime at `timestamp` across all three resolutions.
+  - `def to_advisory_dict()`: Serialize classify_at output to the advisory output schema.
+  - `def loaded_cadences()`: Tuple of cadence names whose classifiers loaded successfully.
+  - `def panel()`: Expose a panel for testing / backtest scripts.
+  - `def classifier()`: Expose the underlying classifier for the given cadence.
 
 ### `regime_config.py`
 **Module Docstring:** RegimeConfig — typed configuration for Engine E.
@@ -103,6 +137,9 @@ All tunable parameters in `config/regime_settings.json`.
 - **Class `BreadthConfig`**: No docstring
 - **Class `ForwardStressConfig`**: No docstring
 - **Class `AdvisoryConfig`**: No docstring
+- **Class `HMMConfig`**: Confidence-aware HMM regime classifier (additive to 5-axis detector).
+- **Class `MultiResHMMConfig`**: Multi-resolution HMM (Workstream C slice 2 — 2026-05).
+- **Class `TransitionWarningConfig`**: Transition-warning detector (Workstream C slice 2 — 2026-05).
 - **Class `RegimeConfig`**: No docstring
   - `def from_json()`: Load config from JSON file. Falls back to defaults if file missing.
 
@@ -125,3 +162,13 @@ All tunable parameters in `config/regime_settings.json`.
   - `def to_dataframe()`: Export history as a DataFrame for analysis or persistence.
   - `def save_csv()`: Save history to CSV.
   - `def reset()`: Clear all state. Called between backtest runs.
+
+### `transition_warning.py`
+**Module Docstring:** TransitionWarningDetector — fires when an HMM regime is *transitioning*,
+- **Class `TransitionWarningConfig`**: Hyperparameters for the transition-warning detector.
+- **Class `TransitionWarningRead`**: Per-bar transition-warning diagnostic + binary fire.
+  - `def to_dict()`
+- **Class `TransitionWarningDetector`**: Streaming + batch transition warning detector.
+  - `def __init__()`
+  - `def detect_at()`: Detect transition warning at a single bar.
+  - `def detect_sequence()`: Stream the detector through a full posterior sequence.

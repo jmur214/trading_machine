@@ -39,6 +39,8 @@
   - `def __init__()`
   - `def set_params()`
   - `def compute_signals()`
+  - `def get_adv_skip_summary()`: Return a copy of per-ticker ADV-floor skip counts.
+  - `def reset_adv_skip_summary()`: Clear the per-ticker skip counter.
 
 ### `edge_registry.py`
 - **Class `EdgeSpec`**: No docstring
@@ -46,6 +48,7 @@
   - `def __init__()`
   - `def register()`
   - `def set_status()`
+  - `def set_failure_metadata()`: Tag a failed edge with structured graveyard metadata.
   - `def list()`: List edges filtered by status. Pass `status="active"` for single
   - `def list_tradeable()`: Return edges that should be loaded into the alpha pipeline: active
   - `def list_modules()`: Returns module names for edges with the specified status.
@@ -59,11 +62,37 @@
   - `def get_hyperparameter_space()`: Returns a dictionary defining the parameter space.
   - `def sample_params()`: Generates a valid random parameter set based on the space.
 
+### `fill_share_capper.py`
+**Module Docstring:** engines/engine_a_alpha/fill_share_capper.py
+- **Class `FillShareCapSettings`**: Configuration for the per-bar fill-share ceiling.
+- **Class `FillShareCapper`**: Apply per-bar single-edge attribution share ceiling.
+  - `def __init__()`
+  - `def apply()`: Scale strength of over-budget edges' signals in-place; return
+  - `def diagnose()`: Return per-edge share + would-trigger-cap diagnostic dict.
+
+### `metalearner.py`
+**Module Docstring:** engines/engine_a_alpha/metalearner.py
+- **Class `MetaLearner`**: A per-profile meta-learner that combines tier=feature edge scores
+  - `def is_trained()`: True iff ``fit()`` has been called (or a trained model loaded).
+  - `def fit()`: Train on (X, y).
+  - `def predict()`: Predict the profile-aware score for one or more rows.
+  - `def model_path()`: Canonical path for this profile's trained model file.
+  - `def save()`: Serialize self to disk via joblib. Returns the written path.
+  - `def load()`: Load a trained MetaLearner from disk. Cold-start safe: if no
+
 ### `ml_predictor.py`
 - **Class `MLPredictor`**: Tier 1 Feature: Machine Learning based signal generation.
   - `def __init__()`
   - `def train()`: Train the model on historical data.
   - `def predict()`: Predict probability of Up move for the latest bar.
+
+### `per_ticker_score_logger.py`
+**Module Docstring:** engines/engine_a_alpha/per_ticker_score_logger.py
+- **Class `PerTickerScoreLogger`**: Buffers per-bar score rows in memory and flushes a parquet at run end.
+  - `def __init__()`
+  - `def log_bar()`: Append rows for one bar.
+  - `def n_rows()`: Current buffered row count — useful for tests + smoke checks.
+  - `def flush()`: Write the buffer to parquet at <out_dir>/<run_uuid>.parquet.
 
 ### `signal_collector.py`
 - **Class `SignalCollector`**: No docstring
@@ -84,6 +113,16 @@
 - **Class `RegimeSettings`**: No docstring
 - **Class `HygieneSettings`**: No docstring
 - **Class `EnsembleSettings`**: No docstring
+- **Class `PortfolioOptimizerSettings`**: Cross-ticker portfolio construction layer.
+- **Class `MetaLearnerSettings`**: Layer 3 (allocation) meta-learner integration.
 - **Class `SignalProcessor`**: No docstring
   - `def __init__()`
   - `def process()`: Returns a dict per ticker with normalized & aggregated score and details.
+
+### `tier_classifier.py`
+**Module Docstring:** engines/engine_a_alpha/tier_classifier.py
+- **Class `TierDecision`**: Result of classifying one edge.
+  - `def changed()`
+- **Class `TierClassifier`**: Classifies every edge in the registry into alpha / feature / context.
+  - `def __init__()`
+  - `def classify_from_trades()`: End-to-end: read a trade log → compute factor decomps →

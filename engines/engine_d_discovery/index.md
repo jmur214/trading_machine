@@ -24,6 +24,13 @@
 
 *This section is automatically built by `scripts/sync_docs.py`. Do not edit manually.*
 
+### `attribution.py`
+**Module Docstring:** engines/engine_d_discovery/attribution.py
+- **Function `treatment_effect_returns()`**: Daily attribution stream = with_candidate - baseline.
+- **Function `per_edge_realized_pnl_returns()`**: Daily realized PnL for one edge, normalized to per-day return.
+- **Function `stream_sharpe()`**: Annualized Sharpe of a per-day return stream.
+- **Function `attribution_diagnostics()`**: Summary stats for the attribution stream — for audit logging.
+
 ### `discovery.py`
 - **Class `DiscoveryEngine`**: Engine D (Discovery): The Evolutionary Lab.
   - `def __init__()`
@@ -31,7 +38,7 @@
   - `def generate_candidates()`: Produce candidate specs via two paths:
   - `def get_queued_candidates()`: Retrieve candidates from registry that are ready for validation.
   - `def save_candidates()`: Append candidates to the active edges.yml (or a separate staging registry).
-  - `def validate_candidate()`: Multi-gate validation pipeline for edge candidates.
+  - `def validate_candidate()`: Production-equivalent multi-gate validation (architectural-fix v2).
 
 ### `discovery_logger.py`
 **Module Docstring:** Discovery activity logger.
@@ -65,7 +72,10 @@
 ### `robustness.py`
 - **Class `RobustnessTester`**: Tier 1 Research Tool: Robustness & Overfitting Check.
   - `def generate_bootstrap_paths()`: Generate N synthetic price histories using Circular Block Bootstrap.
+  - `def generate_cross_section_bootstrap()`: Synchronized cross-section block bootstrap.
+  - `def bootstrap_returns_stream()`: Circular-block bootstrap of a 1-D returns stream.
   - `def calculate_pbo()`: Probability of Backtest Overfitting (PBO).
+  - `def calculate_pbo_returns_stream()`: PBO survival on a per-day attribution stream (post-fix gauntlet).
 
 ### `significance.py`
 **Module Docstring:** Statistical significance testing for edge discovery validation.

@@ -41,3 +41,20 @@
 - **Class `CachedCSVLiveFeed`**: Minimal live-like feed that reads cached CSVs produced by DataManager.ensure_data().
   - `def __init__()`
   - `def latest_map()`
+
+### `run_backtest_pure.py`
+**Module Docstring:** orchestration/run_backtest_pure.py
+- **Class `PureBacktestResult`**: Return value of `run_backtest_pure`.
+- **Class `_MemoryCockpitLogger`**: Drop-in cockpit logger that captures fills + snapshots in memory.
+  - `def __init__()`
+  - `def set_portfolio()`
+  - `def log_fill()`
+  - `def log_trade()`
+  - `def log_snapshot()`
+  - `def flush()`
+  - `def close()`
+- **Class `PureBacktestCache`**: In-memory cache keyed by `_fingerprint_inputs`.
+  - `def __init__()`
+  - `def get_or_run()`
+  - `def clear()`
+- **Function `run_backtest_pure()`**: Run a production-equivalent backtest without governance side-effects.

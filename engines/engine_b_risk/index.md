@@ -24,18 +24,32 @@
   - `def __init__()`
   - `def compute_exposures()`: Returns a DataFrame of factor loadings (Tickers x Factors).
 
+### `lt_hold_preference.py`
+**Module Docstring:** Long-term hold preference — defer signal-driven exits past 365 days
+- **Class `LTHoldPreferenceConfig`**: No docstring
+- **Class `LTHoldPreference`**: Defer signal-driven exits when long-term tax saving > alpha-lift.
+  - `def __init__()`
+  - `def reset()`
+  - `def stats()`
+  - `def record_fill()`: Update the entry-date ledger from a fill.
+  - `def get_entry_dt()`
+  - `def should_defer_exit()`: Decide whether to defer a signal-driven exit.
+
 ### `risk_engine.py`
 - **Class `RiskConfig`**: Risk and constraint configuration (config-driven).
 - **Class `RiskEngine`**: Engine B — Risk / Sizing / Constraints.
   - `def __init__()`
+  - `def record_fill()`
   - `def prepare_order()`
   - `def manage_positions()`: Check all open positions and generate 'update' orders (e.g. moving stops).
   - `def prepare_order()`: Build an order dict or return None if constraints block it.
 
-### `risk_engine_bak.py`
-- **Class `RiskConfig`**: Risk and constraint configuration (config-driven).
-- **Class `RiskEngine`**: Engine B — Risk / Sizing / Constraints.
+### `wash_sale_avoidance.py`
+**Module Docstring:** Wash-sale avoidance — refuse buys within 30 days of a loss-realizing exit.
+- **Class `WashSaleAvoidanceConfig`**: No docstring
+- **Class `WashSaleAvoidance`**: Per-ticker recent-loss ledger consulted at order-entry time.
   - `def __init__()`
-  - `def prepare_order()`
-  - `def manage_positions()`: Check all open positions and generate 'update' orders (e.g. moving stops).
-  - `def prepare_order()`: Build an order dict or return None if constraints block it.
+  - `def reset()`
+  - `def stats()`
+  - `def record_fill()`: Push a fill into the ledger. Only loss-realizing closes register.
+  - `def should_block_buy()`: True iff `ticker` had a loss-realizing close within window_days of `now`.
