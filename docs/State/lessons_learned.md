@@ -592,7 +592,18 @@ Whenever a significant bug is fixed, a new operational paradigm is adopted, or a
 - Edge code itself (it computes correctly; the issue is what it computed against)
 - The 2023 hold (-0.095 within noise) — this is itself a falsifiable hypothesis worth running down
 
-**The 2023 anomaly's smoking gun:** The static-109 config carries 6 non-S&P 500 ultra-volatility names — **COIN, MARA, RIOT, DKNG, PLTR, SNOW**. The historical S&P 500 universe excludes them by definition. Trading-system + momentum/volatility edges happily concentrated capital into these names during their explosive periods (2021 crypto IPOs, 2024 PLTR/COIN rallies). 2023 was the one year these 6 names were dormant — both substrates captured 2023's NVDA + Mag-7 rally equivalently, hence the small Δ.
+**Initial hypothesis (refuted by trade-log analysis later same day):** The static-109 config carries 6 non-S&P 500 ultra-volatility names (COIN, MARA, RIOT, DKNG, PLTR, SNOW) which the historical S&P 500 universe excludes. Hypothesis was that these 6 names accounted for 80%+ of the static-109 advantage via asymmetric upside in their explosive periods.
+
+**Empirical refutation (2026-05-09 trade-log analysis):** The 6 names contributed $108 of static-109's $6,241 in 2024 — only **1.7%** of total PnL. The actual explanation is **capital dilution, not concentration in 6 lottery names**:
+
+- Static-109 (Sharpe 1.890): 5,894 trades on 109 tickers, $6,241 PnL ($1.06/trade avg)
+- Universe-aware (Sharpe 0.268): 13,047 trades on 475 tickers, -$895 PnL (-$0.07/trade avg)
+- The 103 names that exist in BOTH substrates produced **91.8% of the $7,136 gap** — same names, different position sizes
+- Top gap contributors are mega-caps in BOTH universes: RTX, SO, GILD, LOW, IBM, BKNG, ADP, LIN, META, SCHW
+
+The strategy's edges produce small per-name signals. Concentrating capital across 109 hand-picked names scales those signals into 1.890 Sharpe; diluting the same capital across 475 names drowns the signals in transaction costs and noise. **The "alpha" was capital concentration, not stock selection.**
+
+This is a bigger structural finding than the 6-names hypothesis would have been. The 6-names finding would say "don't include non-S&P lottery names." The dilution finding says "the strategy has no per-name signal independent of how concentrated the universe is." That is a deeper architectural problem.
 
 **The deeper lesson — substrate selection is part of strategy, not a precondition:**
 
@@ -600,10 +611,11 @@ For ~6 weeks the team treated the static-109 config as a fixed, neutral input �
 
 **Procedural update going forward:**
 
-1. **No headline measurement on a hand-curated universe.** Default substrate is `use_historical_universe=true`. The static config is for diagnostic comparisons only (e.g., "what's the alpha-attribution to the 6 names").
+1. **No headline measurement on a hand-curated universe.** Default substrate is `use_historical_universe=true`. The static config is for diagnostic comparisons only.
 2. **Per-year volatility checks before reporting a multi-year mean.** The 2024 1.890 and 2024 0.268 are 1.6 Sharpe apart on the same edges with different substrates. If per-year sigma is comparable to the mean, the mean is uninformative. Standard going forward: report per-year + sigma alongside any multi-year mean.
-3. **Universe additions by default-false flags.** When the static substrate is being used (research / diagnostics), the user should have to explicitly add non-S&P names (like the 6 in the current config). Anything not in the historical S&P 500 universe should be a deliberate choice with a rationale, not a config-list inclusion.
-4. **Honest about kill-thesis state.** Foundation Gate at 0.507 is nominally a pass (≥0.5) but the per-year volatility is high enough that the threshold is meaningless on this substrate. Honest restatement of kill criteria on the substrate-honest universe is owed before the next commitment cycle.
+3. **Universe additions by default-false flags.** When the static substrate is being used (research / diagnostics), the user should have to explicitly add non-S&P names. Anything not in the historical S&P 500 universe should be a deliberate choice with a rationale.
+4. **Capital allocation must be tested independent of universe size.** This was the meta-bias: the strategy was implicitly assumed to scale linearly with universe expansion, but its per-name signal is too small to survive 4× dilution. Tests of the form "static-109 with 25% of normal capital" vs "universe-aware with 100% of normal capital" should be baseline diagnostics, not afterthoughts.
+5. **Honest about kill-thesis state.** Foundation Gate at 0.507 is nominally a pass (≥0.5) but the per-year volatility is high enough that the threshold is meaningless on this substrate. Honest restatement of kill criteria on the substrate-honest universe is owed before the next commitment cycle.
 
 **Cost / outcome:** ~30 days of measurement narrative now needs reframing. No live capital lost (the discipline framework caught the bias before deployment, which is what the framework is FOR). Approximately 6-8 hours of audit work queued (C-collapses-1) to determine what survives. The infrastructure investment was the right bet — without it, you'd be paper-trading a strategy that loses on representative universes.
 
