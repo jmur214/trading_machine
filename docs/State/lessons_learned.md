@@ -572,3 +572,39 @@ Whenever a significant bug is fixed, a new operational paradigm is adopted, or a
 **Cost saved by catching it early:** ~65 minutes of wasted backtest compute. 1 rep was enough evidence (canon md5 match = no behavior change at all).
 
 **What this didn't change:** WS-C (3 cross-asset features + confirmation function + tests) is still valid groundwork for the regime-conditional wash-sale gate when tax-drag work unfreezes. Don't revert. The alpha contribution is just structurally unmeasurable until someone scopes the Engine-B integration as separate work.
+
+## 2026-05-09 — The substrate was the alpha (universe COLLAPSES verdict)
+
+**Context:** F6 from the 2026-05-06 audit identified that every Sharpe quoted to date — including the 1.296 Foundation Gate baseline that suspended the kill thesis — was conditional on a static 115-name S&P 500 mega-cap config (`config/universe.json`). The UniverseLoader (`engines/data_manager/universe.py:226-240`) had been built 2026-04-24 but never wired. B1 wired it and re-ran multi-year on the 476-503 historical S&P 500 union.
+
+**Verdict: COLLAPSES.** Mean Sharpe 1.296 → 0.507 (−61%). 4 of 5 years collapse 3-11× outside the noise band. Only 2023 holds within ±0.15.
+
+**What's specifically falsified:**
+- The 1.296 Foundation Gate "kill thesis SUSPENDED" framing
+- The 1.666 / 1.890 / 0.954 per-year baselines that V/Q/A and HRP slice work measured against
+- The "Path 1 ship" deployment narrative
+- ~30 days of measurement campaign comparisons that all used the static-109 substrate
+- The interpretation that V/Q/A's sustained-scores fix "closes the drag" — the FIX is software-correct, but the magnitudes are unknown on substrate-honest universe
+
+**What's NOT falsified:**
+- Infrastructure investments: Foundry, determinism harness, decision diary, gauntlet, lifecycle automation, edge graveyard, code-health, doc lifecycle. All catch-the-system-lying machinery worked correctly today.
+- The discipline framework. Today is its highest-value moment. No live capital was risked on the biased measurement.
+- Edge code itself (it computes correctly; the issue is what it computed against)
+- The 2023 hold (-0.095 within noise) — this is itself a falsifiable hypothesis worth running down
+
+**The 2023 anomaly's smoking gun:** The static-109 config carries 6 non-S&P 500 ultra-volatility names — **COIN, MARA, RIOT, DKNG, PLTR, SNOW**. The historical S&P 500 universe excludes them by definition. Trading-system + momentum/volatility edges happily concentrated capital into these names during their explosive periods (2021 crypto IPOs, 2024 PLTR/COIN rallies). 2023 was the one year these 6 names were dormant — both substrates captured 2023's NVDA + Mag-7 rally equivalently, hence the small Δ.
+
+**The deeper lesson — substrate selection is part of strategy, not a precondition:**
+
+For ~6 weeks the team treated the static-109 config as a fixed, neutral input — "this is the universe; the strategy is what we build on top." The substrate-honest finding shows that **picking the universe IS strategy**: a 6-name asymmetric-upside lottery dressed up as 109 mega-caps was a different system than what the documentation described. When you measure performance on the same substrate that defines the system's opportunity set, you measure how well the strategy exploits its own assumptions, not whether those assumptions are honest.
+
+**Procedural update going forward:**
+
+1. **No headline measurement on a hand-curated universe.** Default substrate is `use_historical_universe=true`. The static config is for diagnostic comparisons only (e.g., "what's the alpha-attribution to the 6 names").
+2. **Per-year volatility checks before reporting a multi-year mean.** The 2024 1.890 and 2024 0.268 are 1.6 Sharpe apart on the same edges with different substrates. If per-year sigma is comparable to the mean, the mean is uninformative. Standard going forward: report per-year + sigma alongside any multi-year mean.
+3. **Universe additions by default-false flags.** When the static substrate is being used (research / diagnostics), the user should have to explicitly add non-S&P names (like the 6 in the current config). Anything not in the historical S&P 500 universe should be a deliberate choice with a rationale, not a config-list inclusion.
+4. **Honest about kill-thesis state.** Foundation Gate at 0.507 is nominally a pass (≥0.5) but the per-year volatility is high enough that the threshold is meaningless on this substrate. Honest restatement of kill criteria on the substrate-honest universe is owed before the next commitment cycle.
+
+**Cost / outcome:** ~30 days of measurement narrative now needs reframing. No live capital lost (the discipline framework caught the bias before deployment, which is what the framework is FOR). Approximately 6-8 hours of audit work queued (C-collapses-1) to determine what survives. The infrastructure investment was the right bet — without it, you'd be paper-trading a strategy that loses on representative universes.
+
+**What this enables:** The substrate-honest substrate is now the default research substrate. Future edge construction can be honest from day 1. The framework that produced this finding is the framework that protects future findings from the same trap.
