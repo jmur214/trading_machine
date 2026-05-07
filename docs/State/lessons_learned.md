@@ -617,6 +617,57 @@ For ~6 weeks the team treated the static-109 config as a fixed, neutral input �
 4. **Capital allocation must be tested independent of universe size.** This was the meta-bias: the strategy was implicitly assumed to scale linearly with universe expansion, but its per-name signal is too small to survive 4× dilution. Tests of the form "static-109 with 25% of normal capital" vs "universe-aware with 100% of normal capital" should be baseline diagnostics, not afterthoughts.
 5. **Honest about kill-thesis state.** Foundation Gate at 0.507 is nominally a pass (≥0.5) but the per-year volatility is high enough that the threshold is meaningless on this substrate. Honest restatement of kill criteria on the substrate-honest universe is owed before the next commitment cycle.
 
+## 2026-05-09 — Hand-tuning was the meta-bias the audit machinery didn't catch
+
+**Context:** Surfaced by an outside reviewer the same day F6 returned COLLAPSES. The audit framework caught substrate bias (F6 verdict). It didn't catch the operational pattern that produced the result: every load-bearing parameter was hand-swept by a human against a biased target.
+
+**Specific instances of hand-tuning on biased data:**
+
+- `fill_share_cap = 0.20` — human-swept against 2025 OOS (biased substrate)
+- `PAUSED_MAX_WEIGHT = 0.5` — human-inspected from 2026-04 atr_breakout fill counts
+- ADV floors $200M / $300M — human-swept under biased gauntlet
+- `sustained_score = 0.3` — human-picked to fit 2021 single-year smoke
+
+**Meanwhile, the autonomous machinery sat idle:**
+
+- MetaLearner (the actual machine-tuner) defaulted OFF because it didn't help under deterministic measurement
+- Engine D's discovery cycle has produced ZERO promoted edges that survive the gauntlet
+- Every "win" — volume_anomaly, herding, V/Q/A — came from human-curated additions, not autonomous discoveries
+- Engine D's GA gene vocabulary searches a documented "strip-mined space" (2026-04-24 finding, still open)
+
+**The structural error:** The architecture *aspires* to autonomous discovery + multi-method confirmation. The operation has been **humans hand-curating edges and parameters, with the autonomous machinery acting as watchdog rather than originator.** F6 falsified the substrate; the operational pattern falsifies itself once you ask "what proportion of wins came from autonomous discovery vs manual curation?" The answer is approximately zero.
+
+**Substrate bias and operational hand-tuning are the SAME anti-pattern, different surface area:** *fitting to biased targets*. Substrate bias = data that's pre-selected for the strategy. Hand-tuning = parameters chosen by inspection of target performance. Both produce confident wrong answers; both pass the existing gauntlet because the gauntlet checks signal quality, not target honesty.
+
+**Procedural updates going forward:**
+
+6. **Parameters set via Discovery / MetaLearner output, not human inspection of Sharpe traces.** When a parameter sweep is needed, encode the search as a Discovery candidate (genome) and let the gauntlet evaluate. If the parameter survives gauntlet under substrate-honest universe, it's adopted; otherwise, it's not. No human eyeballing.
+7. **Audit prompt template gains a "fitting-to-biased-target" question.** Future periodic audits (quarterly) ask not just "is the substrate honest?" but also "what proportion of decisions were made on autonomous-discovery output vs human curation?" and "what proportion of wins survived a substrate-transfer gate before promotion?" These are operational-pattern audits, complementary to data-pattern audits.
+8. **Sequence: substrate honesty before autonomous tuning investment.** Better autonomous tuning on biased data still produces confident wrong answers, just faster. Establish substrate-honest baseline first, then invest in autonomous discovery infrastructure (Bayesian opt, symbolic regression, multi-method agreement). Fund Engine D upgrades AFTER substrate-aware Foundation Gate is real, not before.
+
+**Meta-finding worth capturing for future audit design:** The audit framework's blind spot was operational pattern. Every individual finding (substrate bias, hand-tuning, Sharpe-only metrics) is a different surface of the same underlying anti-pattern: *fitting to biased targets without realizing it*. Tomorrow's audit framework should explicitly look for this anti-pattern at three levels — data substrate, parameter selection, metric framework — not just data substrate.
+
+## 2026-05-09 — Sharpe-only metric framework was complicit in the trap
+
+**Context:** Same day as the F6 COLLAPSES verdict. Outside reviewer specifically called out that the Sharpe-only headline-metric pattern made multiple downstream decisions less honest than they should have been.
+
+**Specific instances Sharpe-as-sole-metric misled the project:**
+
+- **Wash-sale +0.670 lift (2026-05-02)** — was actually a *distribution-shape* change (cutting losses, reshaping skewness). A skewness-aware metric (Sortino + skewness ladder) would have flagged it as fragile to regime change immediately.
+- **"V/Q/A 2021 = 1.607 vs baseline 1.666 = -0.06 within noise band" (2026-05-07)** — what's the noise band? Vibes, not statistics. PSR (Probabilistic Sharpe Ratio) would have given a probability that the true Sharpe was below baseline. Without it, the activation decision was on intuition.
+- **"Foundation Gate mean Sharpe 1.296 PASS" (2026-05-04)** — hides per-year range 0.583-1.890. Reporting only the mean buries regime sensitivity. Calmar per year would have shown 2022 had Calmar 0.81 (excellent defensive profile) — the defensive 2022 result was one of the most impressive things in the project; Sharpe alone undersold it.
+- **Discovery promotion gates** — Engine D produces dozens of candidates per cycle. Standard Sharpe-based gates don't correct for "we tested 50 things." The Deflated Sharpe Ratio (DSR — Bailey & López de Prado 2014) does this rigorously. Without DSR, promotions used a too-lax significance threshold.
+
+**Procedural updates (2026-05-09 metric framework upgrade — `core/metrics_engine.py` extended):**
+
+9. **PSR is the headline metric for any "is this Sharpe real" claim.** Sharpe stays as a secondary reference. PSR > 0.95 is a far stronger statement than Sharpe > 0.5. PSR threshold in `calculate_all`: ≥ 0.95 for production-ready, ≥ 0.80 for Foundation-Gate-equivalent, < 0.50 for "no statistical evidence of skill at all."
+10. **Calmar reported per year + Information Ratio reported vs SPY.** Goal A (compound) cares about drawdown-adjusted returns; Goal B (significantly outperform) cares about active-return / tracking-error vs SPY, not raw Sharpe.
+11. **Sortino + tail ratio + skewness for any asymmetric strategy.** Goal C (Moonshot Sleeve) is intentionally asymmetric; Sharpe actively punishes the asymmetry that makes it desirable. Sortino + tail ratio + skewness ladder is the right metric set.
+12. **DSR as Discovery promotion gate.** When Engine D promotes a candidate, check DSR (with `n_trials` = the cycle's candidate count) before adopting. Closes the multiple-testing hole.
+13. **Stop saying "within noise band" without statistics.** Use PSR or bootstrap. Vibes-based noise bands are the same thing as rationalizing a result.
+
+**Implementation:** All five metrics (PSR, DSR, Information Ratio, Tail Ratio, Skewness, Excess Kurtosis, Ulcer Index) shipped 2026-05-09 in `core/metrics_engine.py`. 18 new tests in `tests/test_metrics_engine.py` (all passing). `calculate_all` now surfaces PSR, Information Ratio, Calmar, Ulcer Index, Tail Ratio, Skewness, Excess Kurtosis alongside the existing Sharpe / Sortino. Reporting discipline upgrade is the remaining work — measurement docs going forward should lead with PSR + Calmar + IR, not Sharpe.
+
 **Cost / outcome:** ~30 days of measurement narrative now needs reframing. No live capital lost (the discipline framework caught the bias before deployment, which is what the framework is FOR). Approximately 6-8 hours of audit work queued (C-collapses-1) to determine what survives. The infrastructure investment was the right bet — without it, you'd be paper-trading a strategy that loses on representative universes.
 
 **What this enables:** The substrate-honest substrate is now the default research substrate. Future edge construction can be honest from day 1. The framework that produced this finding is the framework that protects future findings from the same trap.

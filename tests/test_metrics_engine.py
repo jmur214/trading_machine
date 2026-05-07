@@ -120,9 +120,10 @@ def test_calculate_all_returns_expected_keys():
     curve = _random_walk_curve()
     metrics = MetricsEngine.calculate_all(curve)
     expected_keys = {
-        "Total Return %", "CAGR %", "Sharpe", "Sortino",
-        "Max Drawdown %", "Calmar", "Volatility %", "VaR 95%",
-        "Beta", "Alpha",
+        "Total Return %", "CAGR %", "Sharpe", "Sortino", "PSR",
+        "Max Drawdown %", "Calmar", "Ulcer Index", "Volatility %", "VaR 95%",
+        "Skewness", "Excess Kurtosis", "Tail Ratio",
+        "Beta", "Alpha", "Information Ratio",
     }
     assert set(metrics.keys()) == expected_keys
 
@@ -452,3 +453,156 @@ def test_history_to_metrics_pipeline_without_datetime_index_raises():
     bad_equity_curve = pd.Series([h["equity"] for h in history])  # int index
     with pytest.raises(AttributeError, match="'int' object has no attribute 'days'"):
         MetricsEngine.calculate_all(bad_equity_curve)
+
+
+# ============================================================
+# PSR / DSR / Information Ratio / Tail / Skewness / Ulcer
+# ----- New metrics added 2026-05-09 per outside-reviewer F8 -----
+# ============================================================
+
+
+def test_psr_above_zero_for_strong_positive_returns():
+    """A 252-day series with mean 0.001 / std 0.015 has Sharpe ~1.0 — PSR
+    that the true Sharpe > 0 should be high (>0.7)."""
+    np.random.seed(42)
+    rets = pd.Series(np.random.normal(0.001, 0.015, 252))
+    psr = MetricsEngine.probabilistic_sharpe_ratio(rets, sr_benchmark_annualized=0.0)
+    assert 0.7 < psr < 1.0
+
+
+def test_psr_near_50pct_when_benchmark_equals_sample():
+    """PSR(SR_benchmark = sample annualized SR) should be close to 0.5
+    by construction — uncertainty centered on the observed value."""
+    np.random.seed(7)
+    rets = pd.Series(np.random.normal(0.001, 0.015, 252))
+    sample_sr_annual = MetricsEngine.sharpe_ratio(rets)
+    psr = MetricsEngine.probabilistic_sharpe_ratio(rets, sr_benchmark_annualized=sample_sr_annual)
+    assert 0.4 < psr < 0.6
+
+
+def test_psr_returns_zero_for_too_short_series():
+    rets = pd.Series([0.01, -0.005, 0.002])
+    assert MetricsEngine.probabilistic_sharpe_ratio(rets) == 0.0
+
+
+def test_psr_returns_zero_for_constant_returns():
+    rets = pd.Series([0.001] * 50)
+    assert MetricsEngine.probabilistic_sharpe_ratio(rets) == 0.0
+
+
+def test_dsr_equals_psr_when_n_trials_is_one():
+    """No selection bias correction needed; DSR(N=1) reduces to PSR(SR=0)."""
+    np.random.seed(11)
+    rets = pd.Series(np.random.normal(0.001, 0.015, 252))
+    psr_zero = MetricsEngine.probabilistic_sharpe_ratio(rets, 0.0)
+    dsr_one = MetricsEngine.deflated_sharpe_ratio(rets, n_trials=1)
+    assert dsr_one == pytest.approx(psr_zero, abs=1e-9)
+
+
+def test_dsr_drops_below_psr_under_multiple_testing():
+    """50 trials forces DSR < PSR(0) because the 'beat the max-of-50' bar
+    is higher than 'beat zero' — the multiple-testing correction kicks in."""
+    np.random.seed(13)
+    rets = pd.Series(np.random.normal(0.001, 0.015, 252))
+    psr_zero = MetricsEngine.probabilistic_sharpe_ratio(rets, 0.0)
+    dsr_50 = MetricsEngine.deflated_sharpe_ratio(rets, n_trials=50)
+    assert dsr_50 < psr_zero
+
+
+def test_information_ratio_positive_when_strategy_beats_benchmark():
+    np.random.seed(17)
+    bench = pd.Series(np.random.normal(0.0005, 0.010, 252))
+    strat = bench + np.random.normal(0.0003, 0.002, 252)  # adds tiny alpha + noise
+    ir = MetricsEngine.information_ratio(strat, bench)
+    assert ir > 0
+
+
+def test_information_ratio_zero_when_perfect_index_replication():
+    """If strategy is identical to benchmark, IR is undefined (zero tracking
+    error). We return 0.0 rather than NaN/inf."""
+    np.random.seed(19)
+    bench = pd.Series(np.random.normal(0.0005, 0.010, 252))
+    assert MetricsEngine.information_ratio(bench, bench) == 0.0
+
+
+def test_tail_ratio_above_one_for_right_skewed_returns():
+    """Mostly small returns with occasional big positive jumps — top 5%
+    avg should exceed bottom 5% avg in magnitude."""
+    np.random.seed(23)
+    rets = pd.Series(np.r_[np.random.normal(0.001, 0.005, 247), [0.10, 0.12, 0.15, 0.08, 0.09]])
+    tr = MetricsEngine.tail_ratio(rets)
+    assert tr > 1.5
+
+
+def test_tail_ratio_below_one_for_left_skewed_returns():
+    """Big losses sprinkled into otherwise-tame returns — bottom tail should
+    dominate top tail."""
+    np.random.seed(29)
+    rets = pd.Series(np.r_[np.random.normal(0.001, 0.005, 247), [-0.10, -0.12, -0.15, -0.08, -0.09]])
+    tr = MetricsEngine.tail_ratio(rets)
+    assert tr < 0.7
+
+
+def test_skewness_positive_for_right_skewed_distribution():
+    np.random.seed(31)
+    rets = pd.Series(np.r_[np.random.normal(0.001, 0.005, 247), [0.10] * 5])
+    assert MetricsEngine.skewness(rets) > 0.5
+
+
+def test_skewness_negative_for_left_skewed_distribution():
+    np.random.seed(37)
+    rets = pd.Series(np.r_[np.random.normal(0.001, 0.005, 247), [-0.10] * 5])
+    assert MetricsEngine.skewness(rets) < -0.5
+
+
+def test_excess_kurtosis_zero_for_normal_distribution():
+    """A clean normal sample should have excess kurtosis near 0 (Fisher convention)."""
+    np.random.seed(41)
+    rets = pd.Series(np.random.normal(0, 1, 5000))
+    assert abs(MetricsEngine.excess_kurtosis(rets)) < 0.2
+
+
+def test_excess_kurtosis_positive_for_fat_tailed_distribution():
+    """Fat tails (e.g., t-distribution with df=5) → positive excess kurtosis."""
+    np.random.seed(43)
+    rets = pd.Series(np.random.standard_t(5, 1000))
+    assert MetricsEngine.excess_kurtosis(rets) > 0.5
+
+
+def test_ulcer_index_zero_for_monotone_uptrend():
+    eq = pd.Series(range(100, 200, 1), index=pd.date_range("2024-01-01", periods=100))
+    assert MetricsEngine.ulcer_index(eq) == pytest.approx(0.0, abs=1e-9)
+
+
+def test_ulcer_index_positive_for_drawdown_path():
+    eq = pd.Series([100, 95, 90, 85, 90, 95, 100], index=pd.date_range("2024-01-01", periods=7))
+    ui = MetricsEngine.ulcer_index(eq)
+    assert ui > 0
+    # Sanity: max single-bar drawdown was 15% so RMS should land in low double digits
+    assert 5 < ui < 15
+
+
+def test_calculate_all_includes_new_metric_keys():
+    """calculate_all must surface the new metrics for downstream consumers."""
+    np.random.seed(47)
+    rets = pd.Series(np.random.normal(0.001, 0.012, 200))
+    eq = (1 + rets).cumprod() * 100000
+    eq.index = pd.date_range("2024-01-01", periods=200, freq="B")
+    metrics = MetricsEngine.calculate_all(eq)
+    # New metric keys
+    for key in ("PSR", "Ulcer Index", "Skewness", "Excess Kurtosis",
+                "Tail Ratio", "Information Ratio"):
+        assert key in metrics
+    # Existing metric keys preserved (no regression)
+    for key in ("Sharpe", "Sortino", "Calmar", "Max Drawdown %", "CAGR %"):
+        assert key in metrics
+
+
+def test_calculate_all_information_ratio_zero_when_no_benchmark():
+    """Without a benchmark, IR is 0.0 (not present-but-NaN)."""
+    np.random.seed(53)
+    rets = pd.Series(np.random.normal(0.001, 0.012, 200))
+    eq = (1 + rets).cumprod() * 100000
+    eq.index = pd.date_range("2024-01-01", periods=200, freq="B")
+    metrics = MetricsEngine.calculate_all(eq)
+    assert metrics["Information Ratio"] == 0.0

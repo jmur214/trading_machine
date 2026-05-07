@@ -434,6 +434,97 @@ Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
 Per-edge classification (CONFIRMED/DEGRADED/FALSIFIED), surviving-edges multi-year Sharpe, forward_plan update summary, final main commit hash.
 ```
 
+## C-collapses-1.25 — Factor decomposition on volume_anomaly + herding under substrate-honest universe
+
+**Why this is added (2026-05-09 outside-reviewer dev recommendation):** The outside-reviewer dev specifically flagged that two edges were factor-decomposed against benchmark factors and produced t-stats > 4 (volume_anomaly t=4.36, herding t=4.49 — see `docs/Measurements/2026-04/oos_2025_decomposition_2026_04.md` and `project_ensemble_alpha_paradox_2026_04_30.md`). Those decompositions were on the static-109 substrate. **The cleanest single test of whether ANY genuine alpha survives F6 is to re-run the factor decomposition on the substrate-honest universe and check whether t-stats hold above 2.**
+
+This is more surgical than C-collapses-1's per-edge audit (which produces a CONFIRMED/DEGRADED/FALSIFIED ladder for ALL active edges); this targets the two specific names that previously produced statistically-significant alpha. ~2 hr budget.
+
+If both t-stats hold up at >2: those are 2 genuine real edges to build on, just at smaller scale than thought. If both collapse below 2: the factor decomposition was substrate-dependent and the alpha thesis is in deeper question. **This is the result that decides the project's framing for the next quarter.**
+
+### SETUP
+
+```bash
+cd /Users/jacksonmurphy/Dev/trading_machine-2
+git worktree add .claude/worktrees/ccoll1-25-factor-decomp -b c-collapses-factor-decomp
+cd .claude/worktrees/ccoll1-25-factor-decomp
+claude
+```
+
+### PROMPT
+
+```
+You are working on the ArchonDEX trading system. Read CLAUDE.md first. Full autonomous cycle.
+
+## Setup
+
+```bash
+git worktree add .claude/worktrees/ccoll1-25-factor-decomp -b c-collapses-factor-decomp
+cd .claude/worktrees/ccoll1-25-factor-decomp
+```
+
+## Background
+
+The 2026-04 oos_2025_decomposition (`docs/Measurements/2026-04/oos_2025_decomposition_2026_04.md`) ran factor decomposition (FF5 + momentum) on each edge's per-bar return contribution. Two edges produced statistically-significant intercept (alpha) AFTER controlling for known factors:
+- volume_anomaly_v1: t=4.36, alpha ≈ 0.0006/day
+- herding_v1: t=4.49, alpha ≈ 0.0007/day
+
+Memory: `project_ensemble_alpha_paradox_2026_04_30.md` reframes these results — they're real ensemble contributors despite Gate 1 standalone failures.
+
+The F6 verdict (2026-05-09) showed those decompositions were measured on the static-109 substrate. If the alpha is substrate-dependent (i.e., comes from concentrated mega-cap positioning rather than genuine factor-orthogonal signal), the t-stats will collapse on substrate-honest universe.
+
+## Goal
+
+Re-run the factor decomposition on volume_anomaly_v1 and herding_v1 under `use_historical_universe=true`, on a multi-year window (2021-2024 inclusive — leave 2025 as semi-OOS).
+
+### Steps
+
+1. Generate per-bar attribution streams for both edges on substrate-honest universe (similar to how the per-edge audit is done; the C-collapses-1 audit's machinery may already produce these — reuse if available)
+2. Run `core/factor_decomposition.py` (or wherever the FF5+mom regression lives) on each edge's stream
+3. Report:
+   - Intercept (alpha) point estimate + 95% CI
+   - t-stat on the intercept
+   - Adjusted R² of the factor model
+   - Per-year breakdown (2021/2022/2023/2024) — does the alpha persist or is it 2023-only?
+4. Compare to the 2026-04 baseline (which had t=4.36 and 4.49 on static-109)
+
+### Acceptance criteria
+
+- Audit doc at `docs/Measurements/2026-05/factor_decomp_substrate_honest_2026_05_<date>.md`
+- Per-edge t-stat with 4 different verdict buckets:
+  - **HOLD UP** (t > 2.0 on substrate-honest, both edges): 2 real edges to build on
+  - **PARTIAL** (one holds, one collapses): 1 real edge; investigate why the other was substrate-dependent
+  - **REGIME-CONDITIONAL** (t > 2.0 in 2023 only, < 2 elsewhere): edges work in broad-participation regimes only — this overlaps with the multi-year-dilution-decomposition's finding
+  - **COLLAPSE** (t < 2.0 both): factor decomposition itself was substrate-dependent; alpha thesis in question
+- Per-year breakdown to identify whether the 2023 hold-up reflects genuine factor exposure or artifact
+
+### Hard constraints
+
+- DO NOT modify Engine B / live_trader/
+- DO NOT touch `data/governor/` outside the harness's snapshot scope
+- DO NOT promote any edges based on this dispatch (it's a diagnostic, not a decision)
+- Branch: `c-collapses-factor-decomp`
+- Time budget: 2-3 hours
+
+### End-of-cycle
+
+```bash
+cd /Users/jacksonmurphy/Dev/trading_machine-2
+git checkout main
+git merge --no-ff c-collapses-factor-decomp -m "Merge branch 'c-collapses-factor-decomp' — factor decomp on substrate-honest universe, verdict: <HOLD_UP|PARTIAL|REGIME_CONDITIONAL|COLLAPSE>"
+git push origin main
+git worktree remove .claude/worktrees/ccoll1-25-factor-decomp
+```
+
+Co-Authored-By in commit(s): Claude Opus 4.7 (1M context) <noreply@anthropic.com>
+
+### Report
+
+Per-edge t-stat (substrate-honest), per-year breakdown, verdict bucket, comparison to 2026-04 baseline (t=4.36 and 4.49 on static-109), final main commit hash.
+```
+
+---
+
 ## C-collapses-1.5 — Concentration-equivalent capital test (LOAD-BEARING follow-on)
 
 **Why this is the load-bearing test (added 2026-05-09 per multi-year-dilution analysis):** The C-collapses-1 audit will find that most edges produce near-zero or negative Sharpe at substrate-honest universe with normal capital. That's expected — `docs/Measurements/2026-05/multi_year_dilution_decomposition_2026_05_09.md` showed ~91% of the 2024 substrate gap was pure dilution on shared mega-caps. The tiny per-trade signals (~$1/trade on each name) drown when capital allocation drops 4.4×.
