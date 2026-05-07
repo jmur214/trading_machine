@@ -696,3 +696,33 @@ The substrate-honest 0.5074 (B1's 9-edge mean) and 0.9154 (C-collapses-1's 6-edg
 **Cost / outcome:** the engine-completion narrative needs reframing — magnitude of expected lift more measured than implied — but the engine-completion direction is unchanged. Engines A, B, D, E still have remaining drift. The kill-thesis trigger holds. C-engines-3 (Engine E minimal-HMM) elevates per the C-collapses-1 regime-conditional finding.
 
 **What this didn't change:** the discipline framework still works. The error was caught (by the dispatch agent reading the actual code rather than the inventory's narrative), the correction landed in the same session, and the project's structural-review path remains correct in shape. Three hypotheses falsified by data in 36 hours: 6-names, Engine-C-uncalled, and (last week) HMM-leading. The framework is doing exactly what it's for.
+
+
+## 2026-05-07 — "Substrate" definition + the multi-component substrate-honesty test
+
+**Context:** The F6 verdict + R1/R2 audits exposed that the project's "substrate-honest measurement" framing was only partially defined. The F6 finding fixed the universe component; the auditors flagged that two other substrate components (date range + validation geometry) were still implicitly optimistic.
+
+**Definition:** "Substrate" = the complete set of inputs that define a measurement's context. Specifically:
+
+| Component | Example |
+|---|---|
+| Universe | Static-109 mega-caps vs historical S&P 500 union of 476-503 names |
+| Date range | 2021-2025 (N=5) vs 2010-2025 (N=15) vs 1962-2025 (N=63) |
+| Data quality | Delisted names included? Missing CSVs? PIT fundamentals or restated? |
+| Governor state | Which edges active, which paused, what weights at run start |
+| Code state | Which version of feature engineering + edge implementations |
+| Cost model | Slippage, fees, tax assumptions |
+| Validation geometry | Embargo length, n_trials_for_dsr, which gates active, fold structure |
+
+**A measurement is substrate-conditional when its result depends on any of these being chosen optimistically.**
+
+F6 fixed (1) — universe. The 2026-05-07 R1 audit found (7) — validation geometry — is still structurally optimistic: `wfo.py:98` is gapless (no embargo); `discovery.py:708` defaults `n_trials_for_dsr=1` (DSR sees n=1 trivially passes). The 2026-05-07 R2 audit found (2) — date range — N=5 is too small for the headline claims to hold; CRSP/Compustat 1962+ extension is the medium-term fix.
+
+**The discipline rule:** substrate-honesty is not a single check. It's an enumeration of every component above and a verification that each is honest INDEPENDENTLY. Two ways the project failed this:
+
+1. F6 verified universe → declared "substrate-honest" → false. The other components were still optimistic.
+2. The audit-geometry finding 2026-05-07 night (commit `0eb142b`) showed a SUBSET of substrate (production-default vs `exact_edge_ids` mode) was producing different results — meaning even the universe component had a sub-component (call-site path) that was inconsistent.
+
+**Procedural rule (added):** every measurement claim must enumerate which substrate components were honest at measurement time. Future audit prompts should ask: "show me each substrate component you verified, what you tested it against, what would have invalidated the result." A measurement that says "Sharpe X on universe Y" without naming the other 6 components is incomplete.
+
+**The phrase "every Sharpe in the project has been measured under conditions that systematically inflate it"** (from synthesis-by-primary-dev) reduces to: at least one of the 7 substrate components is still optimistic on every measurement to date. F6 closed one. R1's embargo+DSR fix would close another. R2's 1962+ extension closes a third. **Four remain to be addressed** (data quality, governor state, code state, cost model — though cost model is closer to honest than the others post-realistic-cost-layer work).
