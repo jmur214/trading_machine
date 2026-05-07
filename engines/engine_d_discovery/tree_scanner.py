@@ -176,6 +176,12 @@ class DecisionTreeScanner:
         try:
             self.model.fit(X_screened, y)
         except Exception as e:
+            # Narrowed-catch (2026-05-07; mirrors gauntlet remediation 2513676):
+            # programmer errors propagate so a typo in feature names or a
+            # missing import surfaces immediately. Runtime/data errors
+            # (ValueError on single-class, etc.) are caught + logged.
+            if isinstance(e, (TypeError, AttributeError, NameError, AssertionError, ImportError)):
+                raise
             logger.error(f"[TreeScanner] Decision tree fit failed: {e}")
             return []
 
@@ -231,6 +237,8 @@ class DecisionTreeScanner:
             try:
                 screener.fit(X, y)
             except Exception as e:
+                if isinstance(e, (TypeError, AttributeError, NameError, AssertionError, ImportError)):
+                    raise
                 logger.error(f"[TreeScanner] Screener fit failed: {e}")
                 return all_features[:n_features]
 
@@ -246,7 +254,12 @@ class DecisionTreeScanner:
                     screener.fit(X_train, y_train)
                     score = screener.score(X_test, y_test)
                     cv_scores.append(score)
-                except Exception:
+                except Exception as e:
+                    if isinstance(e, (TypeError, AttributeError, NameError, AssertionError, ImportError)):
+                        raise
+                    # Per-fold runtime errors (ValueError on single-class
+                    # fold, etc.) — skip this fold and continue averaging
+                    # over the remaining folds.
                     pass
 
             self.cv_score = float(np.mean(cv_scores)) if cv_scores else 0.0
@@ -255,6 +268,8 @@ class DecisionTreeScanner:
             try:
                 screener.fit(X, y)
             except Exception as e:
+                if isinstance(e, (TypeError, AttributeError, NameError, AssertionError, ImportError)):
+                    raise
                 logger.error(f"[TreeScanner] Final screener fit failed: {e}")
                 return all_features[:n_features]
 

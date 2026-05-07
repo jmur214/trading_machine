@@ -45,10 +45,14 @@ class WalkForwardOptimizer:
         
         # Align start — find closest index.  pandas 2.0 removed the
         # `method='nearest'` kwarg from Index.get_loc; use get_indexer instead.
+        # Narrow the catch (2026-05-07): TypeError from a future API
+        # break would be a programmer error worth surfacing, but
+        # ValueError on an out-of-range start_dt is a legitimate runtime
+        # condition that defaulting to 0 handles gracefully.
         try:
             indexer = full_timeline.get_indexer([start_dt], method="nearest")
             start_idx = int(indexer[0]) if len(indexer) and indexer[0] != -1 else 0
-        except Exception:
+        except (ValueError, KeyError, IndexError):
             start_idx = 0
              
         current_idx = start_idx
