@@ -1,6 +1,47 @@
-# Forward Plan — live (last substantive update 2026-05-09)
+# Forward Plan — live (last substantive update 2026-05-09 evening)
 
-> **2026-05-09 VERDICT: F6 returns COLLAPSES.** Multi-year mean Sharpe
+> **2026-05-09 EVENING — KILL THESIS TRIGGERED. Structural review = engine completion.**
+>
+> Pre-committed kill thesis (this file, line ~228 below):
+>
+> > "If post-Foundation 2025 OOS Sharpe < 0.4 net of all costs (incl. taxes
+> > + borrow), stop and run structural review."
+>
+> The data:
+>
+> | Measure | Value | Status vs 0.4 |
+> |---|---:|---|
+> | 2025 universe-aware Sharpe (pre-tax) | 0.436 | passes by 0.036 (cosmetic) |
+> | After-tax adjustment (per `project_tax_drag_kills_after_tax_2026_05_02.md`) | est. negative | **fails** |
+> | Plus 36-name missing-CSV upper-bound | pushes lower | **fails** |
+>
+> Strict reading of "net of all costs incl. taxes + borrow": **TRIGGERED.**
+>
+> **Trigger decision (2026-05-09):** treat as triggered. Don't move goalposts. The discipline framework only works if pre-commits are respected even when inconvenient.
+>
+> **What "triggered" means concretely:**
+>
+> - The project is NOT shut down. Pre-commit said "stop and run structural review" — not "abandon."
+> - Forward feature work that claims Sharpe pauses for the duration of structural review.
+> - Substrate-independent infrastructure work continues (engine completion is the structural review's main vehicle).
+>
+> **The structural review = engine completion.**
+>
+> The user surfaced the deeper finding the same evening: **the engines are not operating as engines.** Empirical confirmation:
+>
+> - Engine C's `compute_target_allocations` is defined but **never called** in the backtest loop (`orchestration/mode_controller.py`)
+> - HRPOptimizer + TurnoverPenalty live at `engines/engine_a_alpha/signal_processor.py:228-242` (charter inversion F4)
+> - No portfolio-level diversification, correlation-aware sizing, factor exposure caps, sector budgets — what actually runs is "Engine A produces edge votes → RiskEngine sizes per-ticker → PortfolioEngine books fills"
+> - Engine D's discovery cycle has produced 0 promoted edges
+> - Engine E's HMM is empirically coincident, not leading
+>
+> **The 0.507 substrate-honest Sharpe isn't "the strategy doesn't work" — it's "the strategy operating without portfolio management doesn't survive substrate honesty."**
+>
+> **The structural review's deliverable:** complete the engines per their charters, then re-measure on substrate-honest universe. The result becomes the new pre-commit baseline.
+>
+> ---
+>
+> **2026-05-09 AFTERNOON — F6 verdict COLLAPSES.** Multi-year mean Sharpe
 > 1.296 → **0.5074** on substrate-honest universe (476-503 historical S&P
 > 500 union). −0.789 Sharpe / −61%. Audit doc:
 > `docs/Measurements/2026-05/universe_aware_verdict_2026_05_09.md`. Memory:
@@ -37,37 +78,57 @@
 >   gauntlet / harness / decision-diary / external-review investment
 >   was FOR. Today is the highest-value moment of that investment.
 >   No live capital was risked on the biased measurement.
-> - **2023 is the only year that held** (-0.095 within noise band on a
->   4.5× expanded universe). Highly anomalous; almost certainly
->   reflects 2023's Magnificent-7 mega-cap concentration making the
->   static and historical universes overlap heavily on the same 8-15
->   names. The implication: existing edges aren't factor edges, they're
->   concentrated mega-cap bets that look like factor edges. Building
->   edges that work on a representative universe is genuinely different
->   work from "tune the existing edges harder."
+> - **2023 is the only year that held** (−0.095 within noise band on a
+>   4.5× expanded universe). The 2026-05-09 evening trade-log
+>   decomposition (`docs/Measurements/2026-05/multi_year_dilution_decomposition_2026_05_09.md`)
+>   showed the substrate gap is NOT a single mechanism but three regime-
+>   dependent ones:
+>   - 2024 (largest collapse): 91.8% pure dilution on shared mega-caps —
+>     same names, position size 4.4× smaller, signals drown
+>   - 2022 (bear): defensive-concentration dominant — the 109-name list
+>     dodged 331 expanded names that lost in the bear regime
+>   - 2023 (the only year that held): broad participation; the 359 added
+>     historical-S&P names contributed +$3,733; substrate didn't matter
+>   - 2025: mixed; small magnitudes
+>
+>   The 6-non-S&P names hypothesis (COIN/MARA/RIOT/DKNG/PLTR/SNOW) is
+>   refuted by data: those 6 contributed only 1.7% of static-109's
+>   2024 PnL. **The actual mechanism is capital concentration on
+>   shared mega-caps, not stock selection.**
 >
 > **What survives:**
 >
 > All infrastructure (Foundry, harness, gauntlet, decision diary,
 > code-health, doc lifecycle, lifecycle automation, edge graveyard,
-> V/Q/A integration, falsification framework). The 2023 anomaly itself
-> is a falsifiable hypothesis worth running down. Edge code is intact;
-> what's invalidated is the headline narrative around it.
+> V/Q/A integration, falsification framework, and the 2026-05-09
+> metric-framework upgrade adding PSR + DSR + IR + tail/skew/kurt/ulcer).
+> Edge code is intact; what's invalidated is the headline narrative
+> around it.
 >
-> **What's queued (Phase C-collapses path):**
+> **What's queued (engine-completion structural review):**
 >
 > | Step | Dispatch | What it produces |
 > |---|---|---|
-> | Pre-audit | 2023-anomaly investigation (~1-2 hr) | Why does 2023 hold? Hypothesis test before edge audit |
-> | C-collapses-1 | Per-edge audit on substrate-honest universe (~6-8 hr) | CONFIRMED / DEGRADED / FALSIFIED classification per edge; surviving-edges multi-year; honest forward_plan reset |
-> | C-collapses-2 | Substrate-honest edge construction kickoff | Edges that exploit small-cap inefficiencies, sector rotation, factors that work on representative universes (multi-week workstream) |
+> | C-collapses-1 (running) | Per-edge audit on substrate-honest universe | Per-edge CONFIRMED/DEGRADED/FALSIFIED ladder on broken-engine-substrate baseline (diagnostic) |
+> | C-collapses-1.25 | Factor decomp on volume_anomaly + herding under substrate-honest | Whether the two t > 4 alphas survive at t > 2 (4-bucket verdict) |
+> | C-collapses-1.5 | Concentration-equivalent capital test | Does any per-name signal exist independent of concentration? |
+> | **C-engines-1** | **Engine C activation** — wire `compute_target_allocations` into backtest loop; move HRP+Turnover OUT of signal_processor (closes F4); make Engine C a real portfolio composition layer | Engine C operating per charter |
+> | **C-engines-2** | **Engine B portfolio vol-targeting + correlation-aware sizing** | Engine B operating per charter |
+> | **C-engines-3** | **Engine E minimal-HMM on leading FRED features** + wire into Engine B de-grossing | Engine E operating per charter |
+> | **C-engines-4** | **Engine D Bayesian opt scaffolding** (replaces GA noise factory) | Engine D producing real candidates |
+> | **C-engines-5** | **Engine A pure-signals refactor** — charter restored | Engine A operating per charter |
+> | C-remeasure | Re-run multi-year on substrate-honest universe with completed engines | The honest baseline. The next pre-commit gate gets defined here. |
+>
+> Goal C / Moonshot Sleeve stays parked until C-remeasure verdict. As
+> the user framed it: "if we can't get the bones working properly we
+> shouldn't be working on the golden apple yet."
 >
 > **All measurements citing 1.296 / 1.666 / 1.890 / 1.607 baselines below
-> this section are now KNOWN substrate-conditional.** Read with the
-> caveat that the substrate is biased; the magnitudes are upper bounds;
-> the rank ordering between configs may or may not survive substrate
-> honesty. Pending C-collapses-1, treat all those measurements as
-> "happened, but on a strawman universe."
+> this section are now KNOWN substrate-conditional AND engine-incomplete.**
+> Read with two caveats: (a) substrate was biased, magnitudes are upper
+> bounds; (b) engines weren't operating per charter, so the result is
+> "what an incomplete system did on representative substrate" — not a
+> fair test of the architecture.
 >
 > ---
 
