@@ -22,6 +22,15 @@ then LOW. Within each severity, list newest at the top.
 
 ### HIGH
 
+### [HIGH → RESOLVED 2026-05-07] F11 backtest-vs-live divergence — backtests mutated edges.yml mid-run while live can't snapshot/restore
+- Category: architectural drift / measurement fidelity
+- Files: `engines/engine_f_governance/journal.py` (NEW), `scripts/journal_apply.py` (NEW), `engines/engine_f_governance/lifecycle_manager.py:298`, `engines/engine_f_governance/governor.py:557+620`, `orchestration/mode_controller.py:1007`
+- First flagged: 2026-05-06 (R1 audit). Phase 1 shipped 2026-05-07 morning; Phase 2 shipped 2026-05-07 evening.
+- Status: RESOLVED.
+  - Phase 1: `LifecycleJournal` append-only writer + `journal_apply` CLI + 36 tests + architecture doc.
+  - Phase 2: `LifecycleManager.evaluate`, `governor.evaluate_lifecycle`, `governor.evaluate_tiers` all gain `journal: Optional[Any] = None` kwargs. When supplied, decisions append as `make_status_change` / `make_tier_change` entries instead of mutating `edges.yml`. Default `None` preserves legacy bit-for-bit. `mode_controller.run_backtest` gains `apply_journal_at_end: bool = False` kwarg. 8 wire tests verify the journal-mode-doesn't-mutate AND the legacy-mode-does-mutate invariants.
+- Backtest-vs-live fidelity: when `apply_journal_at_end=True`, no edges.yml mutation happens during the run, mirroring the future live-trading shape (decisions journal, apply at configured cadence).
+
 ### [HIGH → RESOLVED 2026-05-07] WFO geometry was gapless — every Sharpe in the falsification record was measured under no-embargo conditions
 - Category: validation geometry / leakage
 - Files: `engines/engine_d_discovery/wfo.py:98`
@@ -257,6 +266,18 @@ then LOW. Within each severity, list newest at the top.
 - See: `docs/Sessions/2026-04-27_session.md`, commits dfb0627, f06afb2-b1928c9, aa1cb65, da196b1, 1600e45, 53d5c07, 7db6625, 45abf0e, efbdf8d. Also `scripts/walk_forward_phase210.py`.
 
 ### MEDIUM
+
+### [MEDIUM] Trend-following Phase 0 sleeve gauntlet → FAIL (positive Sortino, but symmetric tails on S&P mega-caps)
+- Category: design verification result
+- Files: `engines/engine_c_portfolio/sleeves/trend_following_sleeve.py`, `docs/Measurements/2026-05/trend_phase0_verdict_2026-05-07.md`
+- First flagged: 2026-05-07 (Phase 0 verdict run)
+- Status: SHIPPED + VERDICT — sleeve scaffolding works; gauntlet bucket is FAIL (2/4 success criteria). Sortino +1.467, Skew −0.153, Tail-ratio 0.997, Upside-capture 1.082, Sharpe +1.013, MDD −23.30%. Bootstrap Sortino 95% CI [0.189, 2.913] with P(>0)=0.98 — the strategy IS positive-Sortino, just not asymmetric upside. **Diagnosis: trend-following on S&P mega-cap universe is beta-amplified; symmetric tail ratio + weakly negative skew is exactly what one expects.** To get the upside-skew property the sleeve gauntlet rewards, trend needs a more dispersion-rich universe (small-caps, futures, alt-asset classes). Not a defect — verdict is honest.
+
+### [MEDIUM] Moonshot Phase 0 sleeve gauntlet → FAIL (kill-triggered) — synthetic-options stand-in confounds the verdict
+- Category: design verification result with explicit Phase 0 caveat
+- Files: `engines/engine_c_portfolio/sleeves/moonshot_sleeve.py`, `engines/engine_a_alpha/edges/leaps_catalyst_edge.py`, `docs/Measurements/2026-05/moonshot_phase0_verdict_2026-05-07.md`
+- First flagged: 2026-05-07
+- Status: SHIPPED + VERDICT — sleeve scaffolding works; gauntlet bucket is FAIL kill-triggered (2/4 success, skew −0.028 ≤ kill-floor 0.0). Sortino +1.599, Tail-ratio 0.996, Upside-capture 0.904, Sharpe +1.158, MDD −21.28%. **Phase 0 caveat is load-bearing: leaps_catalyst_edge_v1 uses synthetic Black-Scholes pricing on the underlying close + IV proxy, NOT real OPRA options PnL. The placeholder catalyst stub flags +90d earnings on every name uniformly — so the moonshot sleeve essentially equal-weights the universe. Real OPRA + real catalyst sources (FDA / federal contracts / M&A) are Phase 1 work that fundamentally changes the signal shape.** Treat this verdict as a SLEEVE-PLUMBING signal, not a real strategy verdict.
 
 ### [MEDIUM → RESOLVED 2026-05-07] AlphaEngine auto-registered NewsSentimentEdge as the *class*, not an instance — TypeError on every backtest startup since 2026-01-27
 - Category: latent integration bug
