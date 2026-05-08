@@ -32,12 +32,23 @@ class WalkForwardOptimizer:
         self.data_map = data_map
         self.logger = logging.getLogger("WFO")
         
-    def run_optimization(self, strategy_spec: Dict[str, Any], 
-                         start_date: str, 
-                         train_months: int = 12, 
-                         test_months: int = 3) -> Dict[str, Any]:
+    def run_optimization(self, strategy_spec: Dict[str, Any],
+                         start_date: str,
+                         train_months: int = 12,
+                         test_months: int = 3,
+                         embargo_days: int = 21) -> Dict[str, Any]:
         """
         optimize parameters over rolling windows.
+
+        embargo_days: trading days inserted between train_end and test_start
+            to prevent lookback-window leakage. Default 21 (≈1 month), large
+            enough to escape the lookback of every active edge except
+            multi-month feature windows. R1 audit-week-of: prior gapless
+            geometry (test_start = full_timeline[train_end_idx]) means
+            features computed at train_end already contain ≈max-lookback
+            days of overlap with test_start's first observation. Setting
+            this to 0 reverts to gapless legacy behavior (do not use in
+            measurement; only for backwards-compat sanity checks).
         """
         # Define Timeline
         full_timeline = pd.to_datetime(list(self.data_map.values())[0].index)
@@ -95,7 +106,19 @@ class WalkForwardOptimizer:
                 
             train_start = full_timeline[current_idx]
             train_end = full_timeline[train_end_idx]
-            test_start = full_timeline[train_end_idx] # gapless
+            # Embargo: insert `embargo_days` trading days between train_end
+            # and test_start to prevent lookback-window leakage. The earlier
+            # gapless geometry (test_start = full_timeline[train_end_idx])
+            # let features computed at train_end overlap with test_start
+            # observations by up to ~max-lookback days. R1 audit-week-of
+            # punch-list item.
+            test_start_idx = min(train_end_idx + max(0, embargo_days), len(full_timeline) - 1)
+            if test_start_idx >= test_end_idx:
+                # Embargo would consume the test window; fall back to
+                # smallest viable gap (1 day) and let the train/test_months
+                # caller deal with too-short windows.
+                test_start_idx = min(train_end_idx + 1, len(full_timeline) - 1)
+            test_start = full_timeline[test_start_idx]
             test_end = full_timeline[test_end_idx]
             
             print(f"  > Train: {train_start.date()} to {train_end.date()} | Test: {test_start.date()} to {test_end.date()}")
