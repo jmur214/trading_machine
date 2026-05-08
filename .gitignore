@@ -44,3 +44,9 @@ storage/*.csv
 Archive/
 # Agent worktree isolation directories (created by Agent tool isolation:worktree)
 .claude/worktrees/
+
+# Three-session coordination protocol files live in two places:
+#   docs/Coordination/  → tracked (PROTOCOL.md, bootstraps, queue template)
+#   data/coordination/  → gitignored (already covered by `data/` rule above);
+#                         holds inbox/outbox/queue files symlinked across
+#                         agent worktrees. See docs/Coordination/PROTOCOL.md.

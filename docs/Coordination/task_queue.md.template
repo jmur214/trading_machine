@@ -1,0 +1,61 @@
+# Task Queue — Director's Ledger
+
+**This is a TEMPLATE.** The live `task_queue.md` is gitignored.
+
+The director maintains this file. Workers don't read it; they only see their inbox. This is the director's running view of what's in flight.
+
+Conventions:
+- Task-IDs follow `T-YYYY-MM-DD-NNN` (e.g., `T-2026-05-08-001`).
+- "Files-touched (hint)" is a heuristic to spot agent-vs-director conflicts before they happen. Director updates it on dispatch.
+- "In flight" should never have more than 2 entries (one per agent). If more, the queue isn't being maintained.
+
+---
+
+## In flight
+
+(Currently dispatched, waiting on agent to report.)
+
+| Task-ID | Agent | Branch | Files-touched (hint) | Dispatched | Wall-time est |
+|---|---|---|---|---|---|
+| _none_ | | | | | |
+
+## Pending
+
+(Briefable; not yet dispatched. Director picks the next from this list when an agent frees up.)
+
+| Task-ID | Priority | Briefable now? | One-line goal | Why now |
+|---|---|---|---|---|
+| _none_ | | | | |
+
+## Recent completions (last 10)
+
+(Most recent first. Older completions live in git history via the agent's commits + audit docs.)
+
+| Task-ID | Agent | Status | Branch | Audit doc | Completed |
+|---|---|---|---|---|---|
+| _none_ | | | | | |
+
+## Blocked
+
+(Stuck on something — usually a rebase conflict or a missing prerequisite.)
+
+| Task-ID | Agent | Why blocked | Director action needed |
+|---|---|---|---|
+| _none_ | | | |
+
+---
+
+## How to add a task
+
+1. Pick the next ID: today's date + next sequence number (`T-2026-05-08-007`).
+2. Add a row under "Pending" with priority + one-line goal + why-now.
+3. When dispatching, move the row to "In flight" and write the full brief to the appropriate inbox.
+4. Tell the user: "Brief T-XYZ ready in agent-A's inbox — please ping A".
+
+## When an agent reports a completion
+
+1. Read the outbox.
+2. Move the row from "In flight" → "Recent completions". Truncate to 10 rows.
+3. Review the agent's branch: `cd <main worktree> && git fetch origin && git log origin/<branch> --oneline`.
+4. If clean → merge to main, push, delete the agent branch.
+5. If issues → file follow-up tasks (new IDs in "Pending"), tell the agent in their next inbox.
