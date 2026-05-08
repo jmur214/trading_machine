@@ -72,6 +72,31 @@ VIX_TERM_FEATURES = [
     "vix_zscore_60d",           # 60d trailing z-score of VIX level
 ]
 
+# E-rebuild phase-1 features (added 2026-05-07). Three candidate leading
+# indicators behind opt-in flags so the default 7-feature HMM stays
+# bit-identical:
+#
+#   - hyg_ig_oas: HY OAS minus IG OAS (FRED BAMLH0A0HYM2 - BAMLC0A0CM).
+#     Credit-quality slope; widens before risk-off events. **Caveat:**
+#     ICE BofA shortened the freely-available FRED series in mid-2023, so
+#     this feature is bounded by ~2023-05 onward and CANNOT cover the 2022
+#     bear or earlier crises. Pre-2023 history would require a paid data
+#     source.
+#
+#   - copper_gold_ratio: Copper futures / Gold futures (HG=F / GC=F),
+#     log-transformed and 63d-changed. Industrial cycle vs monetary/risk-off;
+#     classic intermarket leading signal — inverts at growth inflection
+#     points 6-12 months ahead of equity drawdowns.
+#
+#   - xlp_xly_ratio: log(Consumer Staples ETF) / log(Consumer Discretionary
+#     ETF), 63d-changed. Defensive-vs-cyclical sector relative strength.
+#     Rotation INTO XLP precedes broader market drawdowns.
+#
+# yfinance source for HG=F / GC=F / XLP / XLY; cached via
+# scripts/fetch_leading_indicators.py.
+HYG_IG_FEATURES = ["hyg_ig_oas"]
+LEADING_RS_FEATURES = ["copper_gold_ratio", "xlp_xly_ratio"]
+
 # Optional auxiliary columns (not used by default 7-feature HMM but
 # computed and exposed for downstream consumers / multi-resolution
 # extensions).
@@ -145,6 +170,8 @@ def build_feature_panel(
     end: Optional[str] = None,
     include_aux: bool = False,
     include_vix_term: bool = False,
+    include_hyg_ig: bool = False,
+    include_leading_rs: bool = False,
 ) -> pd.DataFrame:
     """Build the daily feature panel for HMM regime detection.
 
@@ -154,16 +181,20 @@ def build_feature_panel(
         include_aux: If True, include auxiliary columns (real_rate_level,
             unemployment_momentum_3m, etc.) for downstream consumers.
         include_vix_term: If True, append VIX_TERM_FEATURES to the panel.
-            Requires data/macro/{VIX9D,VIX,VIX3M}.parquet (fetched via
-            scripts/fetch_vix_term_structure.py). Used by the panel-rebuild
-            HMM variant; the 7-feature default model leaves this False so
-            it stays bit-identical to pre-rebuild behavior.
+            Requires data/macro/{VIX9D,VIX,VIX3M}.parquet.
+        include_hyg_ig: If True, append HYG_IG_FEATURES (hyg_ig_oas) to
+            the panel. Requires BAMLH0A0HYM2 + BAMLC0A0CM in data/macro/.
+            History is ~2023-05+ only on the free FRED tier.
+        include_leading_rs: If True, append LEADING_RS_FEATURES
+            (copper_gold_ratio, xlp_xly_ratio). Requires
+            data/macro/{HG_F,GC_F,XLP,XLY}.parquet (fetched via
+            scripts/fetch_leading_indicators.py).
 
     Returns:
         DataFrame indexed by daily date. Columns = FEATURE_COLUMNS
-        [+ VIX_TERM_FEATURES] [+ AUX_COLUMNS].
-        Rows with insufficient history will contain NaN values; callers
-        (HMMRegimeClassifier) handle NaN gracefully.
+        [+ VIX_TERM_FEATURES] [+ HYG_IG_FEATURES] [+ LEADING_RS_FEATURES]
+        [+ AUX_COLUMNS]. Rows with insufficient history will contain NaN
+        values; callers (HMMRegimeClassifier) handle NaN gracefully.
     """
     if root is None:
         root = Path(__file__).resolve().parents[2]
@@ -186,6 +217,14 @@ def build_feature_panel(
     vix9d = _safe_load_fred("VIX9D") if include_vix_term else None
     vix_yf = _safe_load_fred("VIX") if include_vix_term else None
     vix3m = _safe_load_fred("VIX3M") if include_vix_term else None
+
+    # --- E-rebuild phase-1: HY-IG OAS spread + intermarket leading RS ---
+    hy_oas = _safe_load_fred("BAMLH0A0HYM2") if include_hyg_ig else None
+    ig_oas = _safe_load_fred("BAMLC0A0CM") if include_hyg_ig else None
+    copper = _safe_load_fred("HG_F") if include_leading_rs else None
+    gold = _safe_load_fred("GC_F") if include_leading_rs else None
+    xlp = _safe_load_fred("XLP") if include_leading_rs else None
+    xly = _safe_load_fred("XLY") if include_leading_rs else None
 
     # Build a daily index from SPY (the most reliable trading-day calendar)
     if spy is None or spy.empty:
@@ -276,6 +315,42 @@ def build_feature_panel(
             out["vix9d_over_vix_ratio_minus1"] = np.nan
             out["vix_zscore_60d"] = np.nan
 
+    # --- E-rebuild phase-1: HY-IG OAS spread (level + 60d z-score) ---
+    if include_hyg_ig:
+        if hy_oas is not None and ig_oas is not None and not hy_oas.empty and not ig_oas.empty:
+            joined = pd.concat(
+                [hy_oas.rename("hy"), ig_oas.rename("ig")], axis=1, join="inner"
+            ).dropna()
+            spread = (joined["hy"] - joined["ig"]).sort_index()
+            # Level (in pct, like the underlying OAS series).
+            out["hyg_ig_oas"] = spread.reindex(daily_idx, method="ffill")
+        else:
+            out["hyg_ig_oas"] = np.nan
+
+    # --- E-rebuild phase-1: copper-gold ratio + XLP/XLY ratio ---
+    # We expose 63d log-changes (3-month change) so the HMM consumes a
+    # MOMENTUM signal rather than a level. Levels carry secular drift
+    # (gold price doubling 2020-2024) that contaminates Gaussian emissions;
+    # 63d log-changes are stationary and have the lead-time interpretation
+    # required ("rotation INTO defensives over the past quarter precedes
+    # broader-market drawdown").
+    if include_leading_rs:
+        if copper is not None and gold is not None and not copper.empty and not gold.empty:
+            cu_aligned = copper.reindex(daily_idx, method="ffill")
+            au_aligned = gold.reindex(daily_idx, method="ffill")
+            cg_ratio = cu_aligned / au_aligned.replace(0.0, np.nan)
+            out["copper_gold_ratio"] = np.log(cg_ratio).diff(63)
+        else:
+            out["copper_gold_ratio"] = np.nan
+
+        if xlp is not None and xly is not None and not xlp.empty and not xly.empty:
+            xlp_aligned = xlp.reindex(daily_idx, method="ffill")
+            xly_aligned = xly.reindex(daily_idx, method="ffill")
+            rs = xlp_aligned / xly_aligned.replace(0.0, np.nan)
+            out["xlp_xly_ratio"] = np.log(rs).diff(63)
+        else:
+            out["xlp_xly_ratio"] = np.nan
+
     # --- Auxiliary columns ---
     if include_aux:
         # real_rate_level (DFII10)
@@ -300,10 +375,14 @@ def build_feature_panel(
         else:
             out["credit_spread_z_5y"] = np.nan
 
-    # --- Return only canonical columns (or canonical + vix-term + aux) ---
+    # --- Return only canonical columns (or canonical + extras) ---
     cols = list(FEATURE_COLUMNS)
     if include_vix_term:
         cols += [c for c in VIX_TERM_FEATURES if c in out.columns]
+    if include_hyg_ig:
+        cols += [c for c in HYG_IG_FEATURES if c in out.columns]
+    if include_leading_rs:
+        cols += [c for c in LEADING_RS_FEATURES if c in out.columns]
     if include_aux:
         cols += [c for c in AUX_COLUMNS if c in out.columns]
     return out[cols]
@@ -370,6 +449,10 @@ _LEVEL_COLUMNS = {
     "vix_term_spread",
     "vix9d_over_vix_ratio_minus1",
     "vix_zscore_60d",
+    # E-rebuild phase-1 features — all snapshots (level OAS, 63d log-changes).
+    "hyg_ig_oas",
+    "copper_gold_ratio",
+    "xlp_xly_ratio",
 }
 
 

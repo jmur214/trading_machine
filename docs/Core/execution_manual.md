@@ -281,6 +281,23 @@ print(MacroDataManager().fetch_series('DGS10', force=True).tail())"
 # Inspect the on-disk cache state without hitting the network:
 python -c "from engines.data_manager.macro_data import MacroDataManager; \
 print(MacroDataManager(api_key=None).cache_status().to_string())"
+
+# E-rebuild phase-1 (added 2026-05-07): yfinance leading-indicator series
+# (HG=F copper, GC=F gold, XLP, XLY) for copper-gold + defensive-cyclical
+# rotation features. Cached as data/macro/{HG_F,GC_F,XLP,XLY}.parquet.
+python scripts/fetch_leading_indicators.py
+python scripts/fetch_leading_indicators.py --start 2010-01-01 --end 2026-05-07
+
+# Train minimal-HMM variants (A: 4 long-history FRED features, B: A + HY-IG
+# OAS, C: B + intermarket RS). All trained on shared 2023-10 → 2024-12
+# window. Model artifacts at engines/engine_e_regime/models/hmm_minimal_*_v1.pkl,
+# state series at data/macro/minimal_hmm_states_<variant>.parquet.
+python scripts/train_minimal_hmm.py --variant all
+python scripts/train_minimal_hmm.py --variant C --test-end 2026-04-17
+
+# Validate variants vs forward SPY drawdowns at 5d/20d/60d horizons.
+# Writes data/research/hmm_minimal_validation_2026_05.json + stdout summary.
+python scripts/validate_minimal_hmm.py --test-end 2026-04-17
 ```
 
 ### EARNINGS DATA (yfinance)
