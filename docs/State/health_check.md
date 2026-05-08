@@ -569,31 +569,29 @@ Severity counts: HIGH 3 | MEDIUM 6 | LOW 4. Top-3 highest-impact below.
   with consistent error-handling — the 5 gate try-except blocks have
   drifted slightly which is its own reason to factor out the boilerplate.
 
-### [MEDIUM] Engine A imports Engine C optimizers — charter inversion (A→C)
+### [RESOLVED 2026-05-07] Engine A imports Engine C optimizers — charter inversion (A→C)
 - Category: charter inversion
-- Files: `engines/engine_a_alpha/signal_processor.py:229-231`
+- Files: `engines/engine_a_alpha/signal_processor.py` (was :229-231 — those imports no longer exist)
 - First flagged: 2026-05-06
-- Status: not started
-- Description: `signal_processor.py` does
-  `from engines.engine_c_portfolio.optimizers import HRPOptimizer,
-  TurnoverPenalty` (and HRPConfig / TurnoverConfig) inside its `__init__`
-  when `po_settings.method in ("hrp", "hrp_composed")`. Per
-  `engine_charters.md` the data flow is A → B → C; A consuming C optimizers
-  inverts the dependency. In effect, Engine A is now doing portfolio
-  composition as part of signal aggregation. This is not new debt
-  (HRP slice work landed in May), but it is a structural drift the
-  charter-inversion-imports memory `pattern_charter_inversion_imports.md`
-  flagged as a recurring failure mode. Combined with the existing inversion
-  `signal_processor.py:27` (A imports F's `EDGE_CATEGORY_MAP`),
-  signal_processor is now A's largest charter-violation surface.
-- Recommended next step: Long-term: HRP composition belongs in Engine C
-  (or in a `core/portfolio_optimizers/` shared package), with A consuming
-  a portfolio-allocation interface rather than instantiating an optimizer
-  itself. Short-term: rename `engines/engine_c_portfolio/optimizers/` to
-  `core/portfolio_optimizers/` so the directional inversion goes away
-  even if A keeps the lazy-import. Document in
-  `engine_charters.md` that "optimizer interfaces are charter-neutral
-  utilities, not C-owned" if that's the desired contract.
+- Status: RESOLVED. The lazy `from engines.engine_c_portfolio.optimizers
+  import HRPOptimizer, TurnoverPenalty` block in `signal_processor.__init__`
+  was lifted as part of the C-engines-1 dispatch (commit `cae2002`). HRP
+  composition now lives in `engines/engine_c_portfolio/composer.py` as
+  `PortfolioComposer`, instantiated unconditionally in
+  `engines/engine_a_alpha/alpha_engine.py:506`. SignalProcessor is pure
+  edge-aggregation; the optimizer instantiation no longer crosses the A→C
+  charter line.
+- Remaining surface: `alpha_engine.py:61` imports `PortfolioComposer` and
+  `PortfolioOptimizerSettings` from `engine_c_portfolio.composer`. This is
+  the *correct* direction for a portfolio-composition service — A consumes
+  a C-owned utility class via an explicit interface (compose / is_active),
+  rather than instantiating raw optimizers and wiring them by hand. The
+  charter language can be tightened to read "portfolio composers are
+  C-owned services that A may consume via the composer.compose interface"
+  rather than treating ANY A→C import as inversion.
+- Verification (2026-05-07): `grep "engines.engine_c_portfolio" engines/engine_a_alpha/`
+  returns only the alpha_engine.py:61 composer import; signal_processor
+  has zero engine_c imports.
 
 ### [MEDIUM → PARTIALLY RESOLVED 2026-05-07] Engine A signal_processor approaching god-class threshold (715 LOC); fundamentals_helpers global cache adds another mutable singleton
 - Category: god-class / mutable singleton
