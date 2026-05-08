@@ -76,7 +76,18 @@ class EarningsVolEdge(EdgeBase, EdgeTemplate):
             tk = yf.Ticker(ticker)
             dates = tk.earnings_dates
             if dates is not None and not dates.empty:
-                date_list = sorted(dates.index.normalize().tolist())
+                # yfinance returns a tz-aware DatetimeIndex (America/New_York).
+                # The rest of the system uses tz-naive Timestamps, and
+                # comparing tz-aware vs tz-naive raises TypeError. Strip
+                # tz here so downstream `d > as_of` / `d <= as_of`
+                # comparisons in _pre/post_earnings_signal work.
+                # Without this, every backtest crashes silently in
+                # signal_collector → backtest_controller bare-except,
+                # producing zero trades. Bug surfaced 2026-05-08.
+                idx = dates.index
+                if getattr(idx, "tz", None) is not None:
+                    idx = idx.tz_localize(None)
+                date_list = sorted(idx.normalize().tolist())
                 self._earnings_cache[ticker] = date_list
                 return date_list
         except Exception as e:
