@@ -1,0 +1,60 @@
+{
+  "sleeve_name": "trend-following",
+  "window": [
+    "2021-01-01",
+    "2025-12-31"
+  ],
+  "rebalance_cadence": "monthly",
+  "universe_size": 110,
+  "n_rebalances": 37,
+  "n_returns": 1226,
+  "metrics": {
+    "sortino": 1.4672247006391983,
+    "skewness": -0.15331648018797775,
+    "tail_ratio": 0.99734431769661,
+    "upside_capture": 1.0820536673378627,
+    "max_drawdown": -0.2330416516397915,
+    "sharpe": 1.0128145947992033,
+    "n_observations": 1226,
+    "hit_rate": null,
+    "avg_winner": null,
+    "avg_loser": null,
+    "has_3x_bet": null,
+    "bootstrap_sortino": {
+      "point_estimate": 1.4672247006391983,
+      "mean": 1.5249527677583599,
+      "std": 0.6841871326733587,
+      "median": 1.490570977814994,
+      "ci_low": 0.18910789051733656,
+      "ci_high": 2.9132832853927346,
+      "p_above_zero": 0.9833333333333333,
+      "n_iterations": 300,
+      "block_length": 11
+    }
+  },
+  "verdict": {
+    "bucket": "FAIL",
+    "n_success_criteria_met": 2,
+    "n_success_criteria_total": 4,
+    "failed_criteria": [
+      "skewness",
+      "tail_ratio"
+    ],
+    "triggered_kill_criteria": [],
+    "explanation": "2/4 success criteria met \u2014 failed: skewness, tail_ratio"
+  },
+  "criteria": {
+    "sleeve_name": "trend",
+    "sortino_min_success": 1.2,
+    "skewness_min_success": 0.0,
+    "tail_ratio_min_success": 1.2,
+    "upside_capture_min_success": 0.7,
+    "sortino_kill": 0.3,
+    "max_drawdown_kill": 0.25,
+    "skewness_kill_below": -0.5,
+    "hit_rate_kill_below": 0.25,
+    "avg_winner_kill_below": 2.0,
+    "min_observations": 120,
+    "require_min_3x_bet": false
+  }
+}

@@ -1,0 +1,63 @@
+{
+  "sleeve_name": "moonshot",
+  "window": [
+    "2021-01-01",
+    "2025-12-31"
+  ],
+  "rebalance_cadence": "monthly",
+  "universe_size": 110,
+  "n_rebalances": 40,
+  "n_returns": 1309,
+  "metrics": {
+    "sortino": 1.5985013211141064,
+    "skewness": -0.027828352256008285,
+    "tail_ratio": 0.9957276863579411,
+    "upside_capture": 0.9035605521271326,
+    "max_drawdown": -0.2128349977034786,
+    "sharpe": 1.157809642400907,
+    "n_observations": 1309,
+    "hit_rate": null,
+    "avg_winner": null,
+    "avg_loser": null,
+    "has_3x_bet": null,
+    "bootstrap_sortino": {
+      "point_estimate": 1.5985013211141064,
+      "mean": 1.5764929609045302,
+      "std": 0.6586718701224568,
+      "median": 1.555232396261324,
+      "ci_low": 0.34150568920594426,
+      "ci_high": 2.9204977651564468,
+      "p_above_zero": 0.9833333333333333,
+      "n_iterations": 300,
+      "block_length": 11
+    }
+  },
+  "verdict": {
+    "bucket": "FAIL",
+    "n_success_criteria_met": 2,
+    "n_success_criteria_total": 4,
+    "failed_criteria": [
+      "skewness",
+      "tail_ratio"
+    ],
+    "triggered_kill_criteria": [
+      "skewness -0.028 \u2264 kill-floor 0.0"
+    ],
+    "explanation": "2/4 success criteria met \u2014 failed: skewness, tail_ratio \u2014 kills: skewness -0.028 \u2264 kill-floor 0.0"
+  },
+  "criteria": {
+    "sleeve_name": "moonshot",
+    "sortino_min_success": 1.5,
+    "skewness_min_success": 0.5,
+    "tail_ratio_min_success": 1.5,
+    "upside_capture_min_success": 0.7,
+    "sortino_kill": 0.3,
+    "max_drawdown_kill": 0.35,
+    "skewness_kill_below": 0.0,
+    "hit_rate_kill_below": 0.25,
+    "avg_winner_kill_below": 2.0,
+    "min_observations": 120,
+    "require_min_3x_bet": false
+  },
+  "phase_0_caveat": "synthetic Black-Scholes; not real OPRA"
+}
