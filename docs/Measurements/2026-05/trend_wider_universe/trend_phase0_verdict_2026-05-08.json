@@ -1,0 +1,63 @@
+{
+  "sleeve_name": "trend-following",
+  "window": [
+    "2021-01-01",
+    "2025-12-31"
+  ],
+  "rebalance_cadence": "monthly",
+  "universe_size": 722,
+  "n_rebalances": 40,
+  "n_returns": 1314,
+  "metrics": {
+    "sortino": 0.45597518639548296,
+    "skewness": -0.13324830456651424,
+    "tail_ratio": 0.9790243318776359,
+    "upside_capture": 0.9630421300162034,
+    "max_drawdown": -0.4314069402443711,
+    "sharpe": 0.34019631486129875,
+    "n_observations": 1314,
+    "hit_rate": null,
+    "avg_winner": null,
+    "avg_loser": null,
+    "has_3x_bet": null,
+    "bootstrap_sortino": {
+      "point_estimate": 0.45597518639548296,
+      "mean": 0.5096058406446582,
+      "std": 0.546342187484018,
+      "median": 0.5131497088387444,
+      "ci_low": -0.5800859969199399,
+      "ci_high": 1.519356612254181,
+      "p_above_zero": 0.8266666666666667,
+      "n_iterations": 300,
+      "block_length": 11
+    }
+  },
+  "verdict": {
+    "bucket": "FAIL",
+    "n_success_criteria_met": 1,
+    "n_success_criteria_total": 4,
+    "failed_criteria": [
+      "sortino",
+      "skewness",
+      "tail_ratio"
+    ],
+    "triggered_kill_criteria": [
+      "|MDD| 0.431 > kill 0.25"
+    ],
+    "explanation": "1/4 success criteria met \u2014 failed: sortino, skewness, tail_ratio \u2014 kills: |MDD| 0.431 > kill 0.25"
+  },
+  "criteria": {
+    "sleeve_name": "trend",
+    "sortino_min_success": 1.2,
+    "skewness_min_success": 0.0,
+    "tail_ratio_min_success": 1.2,
+    "upside_capture_min_success": 0.7,
+    "sortino_kill": 0.3,
+    "max_drawdown_kill": 0.25,
+    "skewness_kill_below": -0.5,
+    "hit_rate_kill_below": 0.25,
+    "avg_winner_kill_below": 2.0,
+    "min_observations": 120,
+    "require_min_3x_bet": false
+  }
+}
