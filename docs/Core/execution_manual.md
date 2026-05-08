@@ -406,6 +406,50 @@ skipped. The script exits with code 0 on full success, 1 if any
 ticker failed to fetch, 2 if Alpaca credentials are missing for a
 non-empty fetch list.
 
+#### Sourcing delisted / share-class names
+
+`fetch_universe.py` works for active tickers. For S&P 500 names that
+were delisted during the backtest window (FRC, SIVB, ATVI, TWTR, …),
+yfinance now 404s on most non-trading symbols and the public Stooq
+CSV endpoint requires a captcha-issued API key. Use
+`scripts/fetch_missing_delisted.py` instead — it tries Alpaca v2
+historical bars (which retains delisted-name history because the
+broker held positions) before falling back to yfinance and Stooq.
+Provenance is tracked at
+`data/processed/_data_provenance_delisted.json`.
+
+```bash
+# Discover the missing 2021-2025 S&P 500 union and source from the chain:
+python -m scripts.fetch_missing_delisted
+
+# List what would be fetched without hitting any API:
+python -m scripts.fetch_missing_delisted --dry-run
+
+# Targeted retry of specific names:
+python -m scripts.fetch_missing_delisted --tickers FRC SIVB ATVI
+
+# Different membership window or backfill start:
+python -m scripts.fetch_missing_delisted \
+    --window-start 2018-01-01 --window-end 2025-12-31 \
+    --start 2018-01-01
+
+# Skip a particular source in the chain (for debugging):
+python -m scripts.fetch_missing_delisted --skip-yfinance
+```
+
+The script applies a `HARD_DELIST_DATES` map for names whose equity
+stub kept trading at penny prices post-failure (FRC, SIVB) and
+truncates everything else at the membership table's `included_until +
+7d` — so backtests don't see post-removal phantom data. Stray odd-lot
+leading bars (Alpaca occasionally emits one isolated row months
+before real coverage starts) are dropped automatically.
+
+Coverage achieved on the 2026-05-08 run: 48/48 legitimate
+delisted-S&P-500 names sourced (100%); 7 false-positive names whose
+ticker changed pre-2021 (HRS, JEC, JOYG, KORS, LUK, TSO, WLP) are
+documented in
+`docs/Measurements/2026-05/missing_csv_closure_2026_05_08.md`.
+
 ### DEBUGGING & DIAGNOSTICS
 ```bash
 # The 'debug/' folder contains ad-hoc verification scripts
