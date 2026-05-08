@@ -267,6 +267,24 @@ then LOW. Within each severity, list newest at the top.
 
 ### MEDIUM
 
+### [MEDIUM] Variant C HMM wire shipped (OFF-by-default) — flip `feature_set="minimal_c"` + `model_path=hmm_minimal_C_v1.pkl` to engage
+- Category: regime / risk-advisory wire-up
+- Files: `engines/engine_e_regime/regime_config.py`, `engines/engine_e_regime/regime_detector.py`, `tests/test_hmm_variant_c_wire.py`
+- First flagged: 2026-05-08
+- Status: SHIPPED. `HMMConfig.feature_set` enum (`legacy` / `minimal_a` / `minimal_b` / `minimal_c`) selects which feature panel `_init_hmm` builds; `minimal_c` matches the trained Variant C model's 7-feature contract (4 long-history FRED + hyg_ig_oas + copper_gold_ratio + xlp_xly_ratio). The downstream advisory→risk_engine wire was already in place (per the inline comment at `advisory.py:200-201`); this commit just makes the right model loadable. 10 tests cover config defaults, model artifact existence, feature-panel logic, end-to-end load, and the confidence-modulates-risk_scalar contract. INERT until user flips `hmm_enabled=True` + selects minimal_c.
+
+### [MEDIUM] Lifecycle gauntlet hasn't fired on V/Q/A edges because the harness wipes its audit trail
+- Category: F11 architectural problem manifesting in edge attribution
+- Files: `docs/Measurements/2026-05/lifecycle_gauntlet_investigation_2026_05_08.md`
+- First flagged: 2026-05-08
+- Status: DIAGNOSED, not acted on. The retirement gate WOULD fire on `value_earnings_yield_v1` in 3 of 5 yearly windows (per-year edge Sharpe −3.99 / −3.65 / +2.16 / −1.89 / +0.50). But `lifecycle_history.csv` has zero 2026 entries — the V/Q/A edges shipped 2026-05-06 and every run since has been through `run_isolated`, which snapshots+restores `lifecycle_history.csv`. F11 Phase 2's `apply_journal_at_end=True` path or a real autonomous-cycle run (outside the harness) is needed to actually persist a decision. Per CLAUDE.md not flipping by hand.
+
+### [MEDIUM] Trend on wider universe (722 tickers) is dramatically WORSE than mega-caps — hypothesis refuted
+- Category: design verification result
+- Files: `docs/Measurements/2026-05/trend_wider_universe_verdict_2026_05_08.md`, `scripts/run_trend_wider_universe.py`
+- First flagged: 2026-05-08
+- Status: SHIPPED + VERDICT. The mega-cap diagnosis ("trend needs more dispersion") is empirically refuted. Wider-universe trend gives Sortino +0.456 vs mega-cap +1.467 (Δ −1.01); MDD −43.14% vs −23.30% (kill threshold tripped); skewness still negative (−0.133); Sharpe +0.340 vs +1.013. Trend on the long tail has higher idiosyncratic vol that becomes drawdown-amplified, not skew-amplified. The asymmetric-upside property requires structural convexity (LEAPS / event-driven binary catalysts / disciplined stop-losses), not just more universe. Three documented paths forward: reframe as Sharpe vehicle / add stop-losses / drop sleeve.
+
 ### [MEDIUM] `value_earnings_yield_v1` is a net-$1,192 drag on the 6-active ensemble (2021-2025)
 - Category: per-edge contribution analysis
 - Files: `scripts/per_edge_contribution.py`, `docs/Measurements/2026-05/per_edge_contribution_2026_05_08.md`
