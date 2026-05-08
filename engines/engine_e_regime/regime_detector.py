@@ -20,7 +20,7 @@ from collections import deque
 
 import numpy as np
 import pandas as pd
-from typing import Deque, Dict, Optional
+from typing import Any, Deque, Dict, Optional
 
 from engines.engine_e_regime.regime_config import RegimeConfig
 from engines.engine_e_regime.hysteresis import HysteresisFilter
@@ -382,15 +382,28 @@ class RegimeDetector:
 
         # Build feature panel once (covers full historical range).
         # detect_regime() will look up the row at-or-before the current bar.
+        # E-rebuild Phase 1 wire: feature_set selects which panel shape
+        # the HMM expects. "minimal_c" appends hyg_ig_oas + copper_gold_
+        # ratio + xlp_xly_ratio so the panel matches the trained model's
+        # 7-feature contract. Default "legacy" preserves the 4-feature
+        # panel and the legacy hmm_3state_v1 model.
+        feature_set = getattr(cfg, "feature_set", "legacy")
+        panel_kwargs: Dict[str, Any] = {"include_aux": False}
+        if feature_set in ("minimal_b", "minimal_c"):
+            panel_kwargs["include_hyg_ig"] = True
+        if feature_set == "minimal_c":
+            panel_kwargs["include_leading_rs"] = True
         try:
-            self._hmm_feature_panel = mf.build_feature_panel(include_aux=False)
+            self._hmm_feature_panel = mf.build_feature_panel(**panel_kwargs)
             _log.info(
-                f"HMM model loaded ({self._hmm_clf.n_states} states); "
-                f"feature panel rows={len(self._hmm_feature_panel)}"
+                f"HMM model loaded ({self._hmm_clf.n_states} states, "
+                f"feature_set={feature_set!r}); panel rows={len(self._hmm_feature_panel)}, "
+                f"cols={list(self._hmm_feature_panel.columns)[-4:]}"
             )
         except Exception as exc:
             _log.warning(
-                f"HMM feature panel build failed: {exc}; HMM augmentation disabled"
+                f"HMM feature panel build failed (feature_set={feature_set!r}): "
+                f"{exc}; HMM augmentation disabled"
             )
             self._hmm_clf = None
 

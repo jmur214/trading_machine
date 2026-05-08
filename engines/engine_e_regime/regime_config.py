@@ -130,6 +130,26 @@ class HMMConfig:
     #   "warn"  → log warning, skip HMM augmentation (advisory unchanged)
     #   "raise" → fail RegimeDetector init
     on_model_missing: str = "warn"
+    # E-rebuild Phase 1 wire-up — feature-panel selection. Determines
+    # which feature set the HMM operates on:
+    #   "legacy"     → 4 features (spy_vol_20d, yield_curve_spread,
+    #                  credit_spread_baa_aaa, dollar_ret_63d). Pairs
+    #                  with hmm_3state_v1.pkl. Default.
+    #   "minimal_a"  → 4 features (same as legacy but trained against
+    #                  the minimal-HMM target). Pairs with
+    #                  hmm_minimal_A_v1.pkl. Phase-1 verdict:
+    #                  INDETERMINATE (AUC ~0.50).
+    #   "minimal_b"  → 5 features (legacy + hyg_ig_oas). Pairs with
+    #                  hmm_minimal_B_v1.pkl. Phase-1 verdict:
+    #                  INDETERMINATE.
+    #   "minimal_c"  → 7 features (B + copper_gold_ratio + xlp_xly_ratio).
+    #                  Pairs with hmm_minimal_C_v1.pkl. Phase-1 verdict:
+    #                  LEADING at 20d/60d (AUC 0.594/0.636); benign-state
+    #                  forward 60d-DD = -2.4% vs unconditional -7.4%.
+    #                  RECOMMENDED for the wire when hmm_enabled=True.
+    # When changing feature_set, ALSO update model_path to the matching
+    # artifact above. Mismatched (model, features) raises at load.
+    feature_set: str = "legacy"
 
 
 @dataclass
