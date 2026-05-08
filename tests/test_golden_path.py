@@ -107,12 +107,28 @@ def test_bagholder_and_vanity_bugs(golden_data):
     print(f"\nFinal Position Qty: {final_pos.qty}")
     print(f"Final Portfolio Equity: {history[-1]['equity']}")
     
-    # --- BUG 1: BAGHOLDER ASSERTION ---
-    # If bug exists, we still hold the position because the gap prevented an exit signal
-    # If fixed, we should have exited (due to forced check) or ideally Panic Exited.
-    # For now, we EXPECT THE BUG to demonstrate it.
-    assert final_pos.qty > 0, "Bug not reproduced! System somehow closed the position without data?"
-    print("✅ Bagholder Bug Reproduced: Position is still open despite data blackout.")
+    # --- BUG 1: BAGHOLDER REGRESSION GUARD ---
+    # The bagholder bug (position held through a data gap because the
+    # gap prevented any exit signal from firing) has been FIXED — likely
+    # as part of the phantom-stops + signal-exits work in 2026-04. This
+    # test was originally written to *demonstrate* the bug; now it
+    # serves as a regression guard against the bug returning.
+    #
+    # Expected post-fix behavior: when data vanishes for the held
+    # ticker, the system should either close the position (forced exit)
+    # OR retain it through the gap and then exit on the crash bar. Either
+    # is acceptable; what is NOT acceptable is the original bug where
+    # equity stayed flat at avg_price through the gap and the position
+    # silently survived without re-evaluation.
+    #
+    # The simplest regression check: post-event, position is closed.
+    # If a future change re-introduces the bug (qty > 0 at end with no
+    # post-crash exit), this assertion fires.
+    assert final_pos.qty == 0, (
+        f"Bagholder regression: position still open at end "
+        f"(qty={final_pos.qty}). Pre-2026-04 bug behavior re-introduced."
+    )
+    print("✅ Bagholder bug stays fixed: position correctly closed.")
 
     # --- BUG 2: VANITY ASSERTION ---
     # Check the snapshots during the gap.

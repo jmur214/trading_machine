@@ -180,7 +180,12 @@ def test_http_error_raises_macro_error_when_no_cache(mgr):
             mgr.fetch_series("DGS10")
 
 
-def test_no_api_key_uses_cache_only(tmp_path):
+def test_no_api_key_uses_cache_only(tmp_path, monkeypatch):
+    # MacroDataManager.__init__ does `api_key or os.getenv("FRED_API_KEY")`
+    # so passing api_key=None still falls back to the env. To test the
+    # truly-keyless path, also clear the env var.
+    monkeypatch.delenv("FRED_API_KEY", raising=False)
+
     # Pre-populate cache via a keyed manager
     keyed = MacroDataManager(api_key="fake-key", cache_dir=tmp_path)
     with patch("engines.data_manager.macro_data.requests.get",
@@ -195,7 +200,8 @@ def test_no_api_key_uses_cache_only(tmp_path):
     assert len(df) == 4
 
 
-def test_no_api_key_no_cache_raises(tmp_path):
+def test_no_api_key_no_cache_raises(tmp_path, monkeypatch):
+    monkeypatch.delenv("FRED_API_KEY", raising=False)
     keyless = MacroDataManager(api_key=None, cache_dir=tmp_path)
     with pytest.raises(MacroDataError):
         keyless.fetch_series("DGS10")

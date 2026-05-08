@@ -26,7 +26,17 @@ class ATRBreakoutEdge(EdgeBase):
             low = df['Low']
             close = df['Close']
 
-            tr = np.maximum(high - low, np.abs(high - close.shift()), np.abs(low - close.shift()))
+            # True Range = max of (H-L, |H-PrevC|, |L-PrevC|). The
+            # earlier np.maximum(a, b, c) form silently treated the 3rd
+            # arg as `out=` (numpy>=1.7 ufunc convention), corrupting the
+            # result. Use the reduce-over-stacked-series form so all
+            # three components are honored.
+            tr = pd.concat(
+                [high - low,
+                 (high - close.shift()).abs(),
+                 (low - close.shift()).abs()],
+                axis=1,
+            ).max(axis=1)
             atr = tr.rolling(atr_window).mean()
             breakout = (close - close.rolling(breakout_window).mean()) / (atr + 1e-9)
             raw = float(np.tanh(breakout.iloc[-1] / score_scale))
