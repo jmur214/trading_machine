@@ -554,11 +554,20 @@ class StrategyGovernor:
         # --- Autonomous lifecycle transitions (Phase α) ---
         self.evaluate_lifecycle(trades)
 
-    def evaluate_lifecycle(self, trades) -> None:
+    def evaluate_lifecycle(
+        self,
+        trades,
+        journal: Optional[Any] = None,
+        journal_run_id: str = "unknown",
+    ) -> None:
         """Run lifecycle gates on active/paused edges using the provided trade
         DataFrame. No-op if `lifecycle_enabled` is False. Callable from both
         the backtest post-run path and the paper/live `update_from_trade_log`
         path so autonomous retirement/pause/revival fires in every mode.
+
+        F11 Phase 2: when ``journal`` is provided, status changes append to
+        the journal instead of mutating ``edges.yml`` directly. Default
+        ``journal=None`` preserves the legacy direct-mutation behavior.
 
         Wrapped in try/except — lifecycle evaluation must never break the
         feedback loop upstream. Failures are logged and swallowed.
@@ -596,9 +605,15 @@ class StrategyGovernor:
                 registry_path=registry_path,
                 history_path=history_path,
             )
-            events = lcm.evaluate(trades, benchmark_sharpe=bench_sharpe)
+            events = lcm.evaluate(
+                trades, benchmark_sharpe=bench_sharpe,
+                journal=journal, journal_run_id=journal_run_id,
+            )
             if events:
-                log.info(f"[Governor] Lifecycle fired {len(events)} transition(s)")
+                log.info(
+                    f"[Governor] Lifecycle fired {len(events)} transition(s)"
+                    + (f" [journaled run={journal_run_id}]" if journal is not None else "")
+                )
         except Exception as e:
             log.warning(f"[Governor] Lifecycle evaluation failed: {e}")
 
@@ -606,6 +621,8 @@ class StrategyGovernor:
         self,
         trades_path: Optional[Path] = None,
         initial_capital: float = 100_000.0,
+        journal: Optional[Any] = None,
+        journal_run_id: str = "unknown",
     ) -> List[Any]:
         """Phase 2.10d Trigger 3: post-backtest tier reclassification hook.
 
@@ -614,6 +631,10 @@ class StrategyGovernor:
         `combination_role` in `edges.yml`. No-op if
         `tier_reclassification_enabled` is False, or if the trade log is
         missing.
+
+        F11 Phase 2: when ``journal`` is provided, tier changes append to
+        the journal instead of mutating ``edges.yml`` directly. Default
+        ``journal=None`` preserves the legacy write=True behavior.
 
         Returns the list of TierDecisions (including unchanged ones), so
         callers can log how many edges changed tier this cycle.
@@ -638,17 +659,32 @@ class StrategyGovernor:
                 store_path=str(self.state_path.parent / "edges.yml")
             )
             classifier = TierClassifier(registry=registry)
+            # When journaling, run classifier in read-only mode (write=False)
+            # so edges.yml is NOT mutated; we then append the changed
+            # decisions to the journal as tier_change entries.
+            classifier_write = journal is None
             decisions = classifier.classify_from_trades(
                 trades_path=trades_path,
                 initial_capital=initial_capital,
-                write=True,
+                write=classifier_write,
             )
+            if journal is not None:
+                from engines.engine_f_governance.journal import make_tier_change
+                for d in decisions:
+                    if getattr(d, "changed", False):
+                        journal.append(make_tier_change(
+                            run_id=journal_run_id,
+                            edge_id=d.edge_id,
+                            new_tier=d.new_tier,
+                            prior_tier=d.prior_tier,
+                        ))
             changed = [d for d in decisions if getattr(d, "changed", False)]
             if changed:
                 log.info(
                     f"[Governor] TierClassifier reclassified {len(changed)} edge(s): "
                     + ", ".join(f"{d.edge_id}({d.prior_tier}→{d.new_tier})"
                                 for d in changed)
+                    + (f" [journaled run={journal_run_id}]" if journal is not None else "")
                 )
             else:
                 log.info(

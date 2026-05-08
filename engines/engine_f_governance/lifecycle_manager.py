@@ -46,7 +46,7 @@ import logging
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
@@ -300,6 +300,8 @@ class LifecycleManager:
         trades: pd.DataFrame,
         benchmark_sharpe: float = 0.0,
         as_of: Optional[pd.Timestamp] = None,
+        journal: Optional[Any] = None,
+        journal_run_id: str = "unknown",
     ) -> List[LifecycleEvent]:
         """Evaluate lifecycle transitions using the current trade log and benchmark.
 
@@ -584,13 +586,36 @@ class LifecycleManager:
                         f"benchmark_sharpe={ev.benchmark_sharpe:.2f}  trades={ev.trade_count}"
                     )
             else:
-                self._save_registry(edges)
+                # F11 Phase 2: route status changes through journal when
+                # one is provided. Backtest measurement runs pass a
+                # journal so edges.yml is NOT mutated mid-run; the
+                # autonomous-cycle driver later applies the journal at a
+                # configured cadence. When journal is None, fall through
+                # to the legacy direct-mutation path so existing
+                # behavior is preserved bit-for-bit.
+                if journal is not None:
+                    from engines.engine_f_governance.journal import make_status_change
+                    for ev in events:
+                        journal.append(make_status_change(
+                            run_id=journal_run_id,
+                            edge_id=ev.edge_id,
+                            new_status=ev.new_status,
+                            prior_status=ev.old_status,
+                            reason=f"gate={ev.triggering_gate}",
+                        ))
+                else:
+                    self._save_registry(edges)
+                # lifecycle_history.csv is a separate audit trail, not
+                # edges.yml; we keep appending in both paths so the
+                # historical record is consistent regardless of whether
+                # the journal is in use.
                 self._append_history(events)
                 for ev in events:
                     log.info(
                         f"[Lifecycle] {ev.edge_id}: {ev.old_status} → {ev.new_status}  "
                         f"gate={ev.triggering_gate}  edge_sharpe={ev.edge_sharpe:.2f}  "
                         f"benchmark_sharpe={ev.benchmark_sharpe:.2f}  trades={ev.trade_count}"
+                        + (f"  [JOURNALED run={journal_run_id}]" if journal is not None else "")
                     )
 
         return events

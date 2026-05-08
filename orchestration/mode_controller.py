@@ -723,6 +723,7 @@ class ModeController:
         override_capital: Optional[float] = None,
         log_per_ticker_scores: bool = False,
         use_historical_universe: Optional[bool] = None,
+        apply_journal_at_end: bool = False,
     ) -> dict:
         """
         Full backtest orchestration with all features previously in run_backtest_logic().
@@ -1007,17 +1008,51 @@ class ModeController:
             if not no_governor:
                 governor.update_from_trades(metrics.trades, metrics.snapshots)
                 governor.save_weights()
+                # F11 Phase 2: when apply_journal_at_end=True, route
+                # lifecycle and tier-reclass decisions through the
+                # journal instead of mutating edges.yml directly.
+                # Default False preserves the legacy direct-mutation
+                # behavior bit-for-bit.
+                journal_obj = None
+                journal_run_id = "unknown"
+                if apply_journal_at_end:
+                    from engines.engine_f_governance.journal import LifecycleJournal
+                    journal_obj = LifecycleJournal()
+                    journal_run_id = getattr(cockpit, "run_id", None) or "unknown"
                 # Phase α: autonomous lifecycle evaluation after weight updates.
                 # Gated by governor.cfg.lifecycle_enabled (default False). Fires
                 # retire/pause/revive transitions and appends to lifecycle_history.csv.
-                governor.evaluate_lifecycle(metrics.trades)
+                governor.evaluate_lifecycle(
+                    metrics.trades,
+                    journal=journal_obj,
+                    journal_run_id=journal_run_id,
+                )
                 # Phase 2.10d Trigger 3: post-backtest tier reclassification.
                 # Gated by governor.cfg.tier_reclassification_enabled (default
                 # False). Re-runs FF5+Mom decomp per edge against the just-finished
                 # backtest's trades.csv and updates `tier`/`combination_role`
                 # in edges.yml so stale classifications self-correct.
                 trades_path = self.root / "data" / "trade_logs" / "trades.csv"
-                governor.evaluate_tiers(trades_path=trades_path)
+                governor.evaluate_tiers(
+                    trades_path=trades_path,
+                    journal=journal_obj,
+                    journal_run_id=journal_run_id,
+                )
+                # If the caller asked us to apply the journal at end-of-
+                # run, run journal_apply now (transactional read+write).
+                # This is the explicit-cadence behavior the F11 design
+                # promises: backtest measurement runs DO NOT auto-apply,
+                # but autonomous-cycle drivers can opt in here.
+                if apply_journal_at_end and journal_obj is not None and len(journal_obj) > 0:
+                    try:
+                        from scripts.journal_apply import apply as _journal_apply
+                        _result = _journal_apply(verbose=True)
+                        print(f"[JOURNAL][APPLY] processed={_result.n_processed} "
+                              f"status={_result.n_status_changes} "
+                              f"tier={_result.n_tier_changes} "
+                              f"unknown_edge={_result.n_skipped_unknown_edge}")
+                    except Exception as _je:
+                        print(f"[JOURNAL][APPLY][WARN] {_je}")
         except Exception as e:
             print(f"[GOVERNOR][WARN] Could not update governor: {e}")
 

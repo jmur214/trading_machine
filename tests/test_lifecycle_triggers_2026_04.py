@@ -436,7 +436,10 @@ class TestTrigger3TierClassifierScheduling:
         decisions rather than racing them."""
         ROOT = Path(__file__).resolve().parents[1]
         src = (ROOT / "orchestration" / "mode_controller.py").read_text()
-        idx_lifecycle = src.find("governor.evaluate_lifecycle(metrics.trades)")
+        # F11 Phase 2 split the call across multiple lines to thread the
+        # journal kwargs through. Substring match on the open-paren is
+        # sufficient — the test's intent is ordering, not exact form.
+        idx_lifecycle = src.find("governor.evaluate_lifecycle(")
         idx_tiers = src.find("governor.evaluate_tiers(")
         assert idx_lifecycle > 0, "evaluate_lifecycle hook missing"
         assert idx_tiers > 0, "evaluate_tiers hook missing"
