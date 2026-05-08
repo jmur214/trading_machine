@@ -319,3 +319,115 @@ class MetricsEngine:
         roll_max = equity_curve.cummax()
         drawdown_pct = (equity_curve - roll_max) / roll_max * 100.0
         return float(np.sqrt((drawdown_pct ** 2).mean()))
+
+    @staticmethod
+    def bootstrap_distribution(
+        returns: pd.Series,
+        metric_fn,
+        n_iterations: int = 1000,
+        block_length: Optional[int] = None,
+        seed: int = 0,
+        confidence: float = 0.95,
+    ) -> Dict[str, float]:
+        """Stationary block-bootstrap distribution of an arbitrary metric.
+
+        Parameters
+        ----------
+        returns : pd.Series
+            Per-period returns (daily, weekly, etc.). Must contain at least
+            ``2 * block_length`` observations.
+        metric_fn : callable
+            ``returns -> float``. Examples: ``MetricsEngine.sharpe_ratio``,
+            ``lambda r: MetricsEngine.sortino_ratio(r)``,
+            ``lambda r: MetricsEngine.tail_ratio(r)``.
+        n_iterations : int
+            Bootstrap resamples (default 1000).
+        block_length : int, optional
+            Block length for the moving-block bootstrap. None → automatic
+            ``max(5, int(n ** (1/3)))`` per Politis-White rule of thumb.
+        seed : int
+            RNG seed for reproducibility.
+        confidence : float
+            Two-sided confidence level (default 0.95).
+
+        Returns
+        -------
+        dict
+            Keys: ``point_estimate`` (metric on full series),
+            ``mean`` / ``std`` / ``median`` (bootstrap distribution moments),
+            ``ci_low`` / ``ci_high`` (two-sided percentile CI),
+            ``p_above_zero`` (fraction of bootstrap samples > 0),
+            ``n_iterations`` / ``block_length`` (bookkeeping).
+
+        Why block bootstrap vs iid: financial returns exhibit serial
+        correlation (volatility clustering, momentum auto-correlation).
+        Iid resampling breaks that structure → CI widths are
+        underestimated. Block bootstrap preserves short-range dependence
+        within each block.
+        """
+        if returns is None or len(returns) < 4:
+            return {
+                "point_estimate": 0.0,
+                "mean": 0.0,
+                "std": 0.0,
+                "median": 0.0,
+                "ci_low": 0.0,
+                "ci_high": 0.0,
+                "p_above_zero": 0.0,
+                "n_iterations": 0,
+                "block_length": 0,
+            }
+
+        n = len(returns)
+        if block_length is None:
+            block_length = max(5, int(round(n ** (1.0 / 3.0))))
+        block_length = max(1, min(block_length, n))
+
+        rng = np.random.default_rng(seed)
+        # Number of blocks per resample so the resampled series is at least
+        # as long as the original. Excess is trimmed back to n.
+        n_blocks = int(np.ceil(n / block_length))
+
+        ret_arr = np.asarray(returns, dtype=float)
+        # Cache the index for converting bootstrap arrays back to Series so
+        # metric_fn can use any index-aware operations (e.g. cagr looks at
+        # the time delta).
+        idx = returns.index
+
+        samples = np.empty(n_iterations, dtype=float)
+        for i in range(n_iterations):
+            # Random block start positions in [0, n - block_length].
+            # Wrap-around is intentionally NOT used; this is the classic
+            # moving-block bootstrap of Künsch (1989).
+            max_start = max(0, n - block_length)
+            starts = rng.integers(0, max_start + 1, size=n_blocks)
+            chunks = [ret_arr[s:s + block_length] for s in starts]
+            boot = np.concatenate(chunks)[:n]
+            samples[i] = float(metric_fn(pd.Series(boot, index=idx)))
+
+        point = float(metric_fn(returns))
+        alpha = (1.0 - confidence) / 2.0
+        ci_low = float(np.percentile(samples, 100.0 * alpha))
+        ci_high = float(np.percentile(samples, 100.0 * (1.0 - alpha)))
+        # Robust to non-finite values produced by a degenerate metric_fn
+        finite = samples[np.isfinite(samples)]
+        if finite.size == 0:
+            mean = std = median = 0.0
+            p_above = 0.0
+        else:
+            mean = float(np.mean(finite))
+            std = float(np.std(finite, ddof=1)) if finite.size > 1 else 0.0
+            median = float(np.median(finite))
+            p_above = float((finite > 0).mean())
+
+        return {
+            "point_estimate": point,
+            "mean": mean,
+            "std": std,
+            "median": median,
+            "ci_low": ci_low,
+            "ci_high": ci_high,
+            "p_above_zero": p_above,
+            "n_iterations": int(n_iterations),
+            "block_length": int(block_length),
+        }
