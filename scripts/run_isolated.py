@@ -243,12 +243,20 @@ def isolated(journal_mode: bool = False) -> Iterator[None]:
     journal + apply-mark between reps so each run starts from the same
     journal state.
     """
-    restore_anchor(include_journal=journal_mode)
+    # Only pass include_journal when set so existing tests that
+    # monkeypatch `restore_anchor` with a no-kwarg callable keep working.
+    if journal_mode:
+        restore_anchor(include_journal=True)
+    else:
+        restore_anchor()
     reset_module_globals()
     try:
         yield
     finally:
-        restore_anchor(include_journal=journal_mode)
+        if journal_mode:
+            restore_anchor(include_journal=True)
+        else:
+            restore_anchor()
         reset_module_globals()
 
 
