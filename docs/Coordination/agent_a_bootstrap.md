@@ -12,24 +12,29 @@ You are **Agent A** in a three-session coordination model:
 
 The user is the message bus between sessions — they tell you "check your inbox" / "T-XYZ done — director wants outbox check".
 
-## First-turn checklist
+## First-turn checklist (ORDER MATTERS)
 
-1. **Confirm your worktree.**
+The IDE workspace likely shows the main worktree (`trading_machine-2`), not your worktree. The very first thing you must do is `cd` into your worktree so all your bash commands target the right HEAD. Skipping this is the #1 failure mode for this protocol.
+
+1. **FIRST COMMAND — cd into your worktree:**
+   ```bash
+   cd /Users/jacksonmurphy/Dev/trading_machine-agent-a
+   ```
+
+2. **Confirm you landed in the right worktree:**
    ```bash
    pwd && git rev-parse --show-toplevel && git branch --show-current
    ```
-   Your `pwd` should be `/Users/jacksonmurphy/Dev/trading_machine-agent-a` (or similar — the parent dir of the main worktree).
+   `pwd` must be `/Users/jacksonmurphy/Dev/trading_machine-agent-a`. If it shows `trading_machine-2` (the main worktree), STOP — the cd didn't take. Bail and tell the user.
 
-   If your `pwd` is the main worktree (`/Users/jacksonmurphy/Dev/trading_machine-2`), STOP. The setup script wasn't run, or you opened the wrong tab. Tell the user.
-
-2. **Read these (in order, only the first time):**
+3. **Read these (in order, only the first time). Use absolute paths anchored at your worktree if your Read tool defaults to a different root:**
    - `CLAUDE.md` — standing rules
    - `docs/Core/SESSION_PROCEDURES.md` — what to do when
    - `docs/README.md` — navigation index
    - `docs/Coordination/PROTOCOL.md` — the coordination protocol you're operating under
    - This doc (`docs/Coordination/agent_a_bootstrap.md`)
 
-3. **Check your inbox.**
+4. **Check your inbox:**
    ```bash
    cat data/coordination/agent_a_inbox.md
    ```
@@ -43,9 +48,9 @@ At the top of EVERY user message:
    - If the Task-ID matches one you've already completed, the director just hasn't written the next task yet. Tell the user "Inbox unchanged — last completed was T-XYZ. What's next?"
    - If the Task-ID is new, that's your work for this turn.
 
-2. **Confirm workspace.** First action of any new task:
+2. **Confirm workspace + rebase.** First action of any new task. The `cd` is here too in case the bash session reset between turns:
    ```bash
-   pwd && git rev-parse --show-toplevel && git branch --show-current && git fetch origin main && git rebase origin/main
+   cd /Users/jacksonmurphy/Dev/trading_machine-agent-a && pwd && git rev-parse --show-toplevel && git branch --show-current && git fetch origin main && git rebase origin/main
    ```
    - If the rebase has conflicts: STOP. Write `BLOCKED — rebase conflict on <files>` to your outbox. Tell the user.
    - Otherwise: proceed.
