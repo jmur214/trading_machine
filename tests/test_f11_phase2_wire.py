@@ -12,17 +12,14 @@ and zero-impact unless explicitly enabled.
 from __future__ import annotations
 
 from pathlib import Path
-from unittest.mock import MagicMock
 
 import pandas as pd
 import pytest
 import yaml
 
-from engines.engine_f_governance.journal import (
-    JournalEntry, LifecycleJournal,
-)
+from engines.engine_f_governance.journal import LifecycleJournal
 from engines.engine_f_governance.lifecycle_manager import (
-    LifecycleConfig, LifecycleManager, LifecycleEvent,
+    LifecycleConfig, LifecycleManager,
 )
 
 
@@ -222,3 +219,70 @@ def test_governor_evaluate_tiers_accepts_journal() -> None:
     assert "journal" in sig.parameters
     assert "journal_run_id" in sig.parameters
     assert sig.parameters["journal"].default is None
+
+
+# ----- F11 Phase 2 invariant: journal-mode doesn't mutate registry -- #
+
+def test_evaluate_with_journal_does_not_change_registry_hash(workspace) -> None:
+    """The load-bearing F11 Phase 2 invariant: when journal is supplied,
+    the registry FILE on disk has the same byte-content before and after
+    evaluate(). Verified empirically in run_isolated --journal-mode but
+    pinned here so any future change to the wire-up that breaks this
+    invariant is caught in CI."""
+    import hashlib
+    cfg = LifecycleConfig(enabled=True, retirement_min_trades=100,
+                          retirement_min_days=30, retirement_margin=0.0)
+    pre_bytes = workspace["registry_path"].read_bytes()
+    pre_hash = hashlib.md5(pre_bytes).hexdigest()
+
+    lcm = LifecycleManager(
+        cfg=cfg,
+        registry_path=workspace["registry_path"],
+        history_path=workspace["history_path"],
+    )
+    events = lcm.evaluate(
+        trades=_losing_trades(),
+        benchmark_sharpe=0.5,
+        journal=workspace["journal"],
+        journal_run_id="invariant-test",
+    )
+    # Events fired (proves the gate logic ran)
+    assert len(events) >= 1
+
+    post_bytes = workspace["registry_path"].read_bytes()
+    post_hash = hashlib.md5(post_bytes).hexdigest()
+
+    assert pre_hash == post_hash, (
+        f"F11 Phase 2 invariant violated: edges.yml hash CHANGED during "
+        f"journal-mode evaluate() (pre={pre_hash} post={post_hash}). "
+        f"This means a write path bypassed the journal — investigate "
+        f"_save_registry call sites in lifecycle_manager.py."
+    )
+
+
+def test_evaluate_without_journal_DOES_change_registry_hash(workspace) -> None:
+    """Symmetric counter-test: in legacy mode (no journal), the same
+    losing-edge gate scenario MUST mutate edges.yml. Otherwise the
+    invariant test above proves nothing — we'd be passing because gates
+    silently never wrote, not because journal-mode is correct."""
+    import hashlib
+    cfg = LifecycleConfig(enabled=True, retirement_min_trades=100,
+                          retirement_min_days=30, retirement_margin=0.0)
+    pre_hash = hashlib.md5(workspace["registry_path"].read_bytes()).hexdigest()
+
+    lcm = LifecycleManager(
+        cfg=cfg,
+        registry_path=workspace["registry_path"],
+        history_path=workspace["history_path"],
+    )
+    events = lcm.evaluate(
+        trades=_losing_trades(),
+        benchmark_sharpe=0.5,
+        # journal=None (legacy)
+    )
+    assert len(events) >= 1
+    post_hash = hashlib.md5(workspace["registry_path"].read_bytes()).hexdigest()
+    assert pre_hash != post_hash, (
+        "Legacy path also failed to mutate edges.yml — the journal-mode "
+        "invariant test is meaningless without this symmetric check."
+    )
