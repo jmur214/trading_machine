@@ -309,10 +309,15 @@ class AlphaEngine:
                 if is_info_enabled() or is_debug_enabled("ALPHA"):
                     print(f"[ALPHA][DEBUG] Failed to import news_sentiment_boost: {e}")
 
-        # Registers News Sentiment Edge (Phase 15) - Always Active
+        # Registers News Sentiment Edge (Phase 15) - Always Active.
+        # SignalCollector calls edge.compute_signals(data_map, now) as a
+        # bound method, which means the registered value MUST be an
+        # instance, not the class. Pre-fix this stored ns.NewsSentimentEdge
+        # (the class), so an unbound call consumed `data_map` as `self` and
+        # raised TypeError on the missing `now`.
         try:
             ns = importlib.import_module("engines.engine_a_alpha.edges.news_sentiment_edge")
-            self.edges.setdefault("news_sentiment_edge", ns.NewsSentimentEdge)
+            self.edges.setdefault("news_sentiment_edge", ns.NewsSentimentEdge())
             if is_info_enabled() or is_debug_enabled("ALPHA"):
                 print(f"[ALPHA][INFO] Registered edge: news_sentiment_edge")
         except Exception as e:
