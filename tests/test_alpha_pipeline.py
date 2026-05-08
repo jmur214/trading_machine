@@ -27,7 +27,10 @@ def create_mock_data(tickers, days=200):
         df["High"] = price + 1
         df["Low"] = price - 1
         df["Close"] = price
-        df["Volume"] = 1000000
+        # MomentumEdge has a $200M/day ADV floor; price ~100 × volume 1M
+        # = $100M, below floor → edge filters everything. Use 5M shares
+        # so dollar-volume clears the floor with margin.
+        df["Volume"] = 5_000_000
         data_map[t] = df
         
     return data_map, dates[-1]

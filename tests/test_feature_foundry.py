@@ -50,12 +50,33 @@ from core.feature_foundry.sources.cftc_cot import (
 
 @pytest.fixture(autouse=True)
 def reset_registries():
-    """Each test starts with empty Foundry registries."""
-    get_feature_registry().clear()
-    get_source_registry().clear()
-    yield
-    get_feature_registry().clear()
-    get_source_registry().clear()
+    """Each test starts with empty Foundry registries — but the GLOBAL
+    registry's import-time contents are snapshotted and restored so
+    other test files' features (WS-E batches etc.) survive cross-file.
+
+    Critical: force-import the features package BEFORE snapshotting.
+    If this test file runs before any WS-E test, the registry is empty
+    on first entry; snapshotting then restoring the empty state still
+    leaves WS-E's features missing for the rest of the suite. Forcing
+    the import here guarantees the snapshot is fully-populated."""
+    import core.feature_foundry.features  # noqa: F401  trigger self-register
+    import core.feature_foundry.sources    # noqa: F401  trigger self-register
+    feat_reg = get_feature_registry()
+    src_reg = get_source_registry()
+    saved_feats = dict(feat_reg._features)
+    saved_srcs = dict(src_reg._sources) if hasattr(src_reg, "_sources") else None
+    feat_reg.clear()
+    src_reg.clear()
+    try:
+        yield
+    finally:
+        feat_reg.clear()
+        feat_reg._features.update(saved_feats)
+        if saved_srcs is not None:
+            src_reg.clear()
+            src_reg._sources.update(saved_srcs)
+        else:
+            src_reg.clear()
 
 
 # ===================================================================

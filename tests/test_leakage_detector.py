@@ -205,35 +205,53 @@ def test_scan_callable_passes_clean_function() -> None:
 def test_decorator_registers_leaky_feature_with_warning(caplog) -> None:
     """The detector is ADVISORY this round: registration must succeed
     even when the feature contains a leak. Warnings are logged.
+
+    Test pollution note: an earlier version called registry.clear() to
+    reset state, but that wiped every feature registered at import-time
+    (mom_12_1, realized_vol_60d, etc. — all of WS-E). Since Python caches
+    imports, those features did NOT re-register for the rest of the
+    test session, breaking ws_e_*_batch tests. Fixed by snapshotting
+    and restoring around the test.
     """
     from core.feature_foundry import feature, get_feature_registry
 
+    # Force-import features so the snapshot captures the import-time set.
+    # If this test runs before any other foundry test, the registry would
+    # otherwise be empty at snapshot time → restoring empty would leave
+    # WS-E features missing for the rest of the suite.
+    import core.feature_foundry.features  # noqa: F401  trigger self-register
     registry = get_feature_registry()
     fid = "test_leaky_feature_for_advisory_unit_test"
-    # Clean any prior registration from a previous run
-    if registry.get(fid) is not None:
-        registry.clear()
+    # Snapshot the registry so we can restore after this test, instead
+    # of using registry.clear() which destroys other tests' features.
+    saved_features = dict(registry._features)
+    # Drop any prior registration of OUR feature_id (from a re-run)
+    registry._features.pop(fid, None)
 
-    with caplog.at_level(logging.WARNING):
-        @feature(
-            feature_id=fid,
-            tier="B",
-            horizon=1,
-            license="public",
-            source="synthetic",
-        )
-        def my_leaky(ticker: str, dt: date) -> Optional[float]:
-            import pandas as pd
-            df = pd.DataFrame({"close": [1.0, 2.0]})
-            return float(df["close"].shift(-1).iloc[-1])
+    try:
+        with caplog.at_level(logging.WARNING):
+            @feature(
+                feature_id=fid,
+                tier="B",
+                horizon=1,
+                license="public",
+                source="synthetic",
+            )
+            def my_leaky(ticker: str, dt: date) -> Optional[float]:
+                import pandas as pd
+                df = pd.DataFrame({"close": [1.0, 2.0]})
+                return float(df["close"].shift(-1).iloc[-1])
 
-    assert registry.get(fid) is not None, "Feature must register despite leak"
-    # Warning should mention the feature_id
-    foundry_warns = [
-        r for r in caplog.records
-        if r.name == "core.feature_foundry.feature"
-        and r.levelno == logging.WARNING
-    ]
-    assert any(fid in r.message for r in foundry_warns)
-    # Cleanup
-    registry.clear()
+        assert registry.get(fid) is not None, "Feature must register despite leak"
+        # Warning should mention the feature_id
+        foundry_warns = [
+            r for r in caplog.records
+            if r.name == "core.feature_foundry.feature"
+            and r.levelno == logging.WARNING
+        ]
+        assert any(fid in r.message for r in foundry_warns)
+    finally:
+        # Restore the registry to the pre-test snapshot. Drop our test
+        # feature; bring back everything else.
+        registry._features.clear()
+        registry._features.update(saved_features)

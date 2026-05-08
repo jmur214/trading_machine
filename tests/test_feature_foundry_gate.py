@@ -34,13 +34,27 @@ from scripts.feature_foundry_gate import (
 
 @pytest.fixture(autouse=True)
 def reset_registries():
-    """Each gate test starts with empty Foundry registries to keep
-    feature ids unambiguous."""
-    get_feature_registry().clear()
-    get_source_registry().clear()
-    yield
-    get_feature_registry().clear()
-    get_source_registry().clear()
+    """Each gate test starts with empty Foundry registries — but the
+    GLOBAL registry contents are snapshotted and restored so other
+    test files' import-time features survive cross-file. Force-import
+    of the features + sources packages here ensures the snapshot
+    captures a fully-populated registry even when this test file runs
+    before any WS-E test."""
+    import core.feature_foundry.features  # noqa: F401  trigger self-register
+    import core.feature_foundry.sources    # noqa: F401  trigger self-register
+    feat_reg = get_feature_registry()
+    src_reg = get_source_registry()
+    saved_feats = dict(feat_reg._features)
+    saved_srcs = dict(src_reg._sources) if hasattr(src_reg, "_sources") else {}
+    feat_reg.clear()
+    src_reg.clear()
+    try:
+        yield
+    finally:
+        feat_reg.clear()
+        feat_reg._features.update(saved_feats)
+        src_reg.clear()
+        src_reg._sources.update(saved_srcs)
 
 
 # ---------------------------------------------------------------------------
