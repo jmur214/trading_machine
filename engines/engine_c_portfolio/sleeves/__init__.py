@@ -15,6 +15,7 @@ add the opt-in wrapper.
 from __future__ import annotations
 
 from .aggregator import AggregatorResult, MultiSleeveAggregator
+from .moonshot_sleeve import MoonshotSleeve
 from .sleeve_base import (
     RebalanceCadence,
     Sleeve,
@@ -25,6 +26,7 @@ from .trend_following_sleeve import TrendFollowingSleeve
 
 __all__ = [
     "AggregatorResult",
+    "MoonshotSleeve",
     "MultiSleeveAggregator",
     "RebalanceCadence",
     "Sleeve",
