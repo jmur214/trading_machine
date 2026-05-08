@@ -22,6 +22,39 @@ then LOW. Within each severity, list newest at the top.
 
 ### HIGH
 
+### [HIGH → RESOLVED 2026-05-07] WFO geometry was gapless — every Sharpe in the falsification record was measured under no-embargo conditions
+- Category: validation geometry / leakage
+- Files: `engines/engine_d_discovery/wfo.py:98`
+- First flagged: 2026-05-07 (R1 audit-week-of)
+- Status: RESOLVED — `run_optimization` now takes `embargo_days: int = 21`
+  and gaps test_start from train_end_idx by that many trading days. The
+  default ≈1 trading month clears the lookback of every active edge except
+  multi-month windows (mom_252d, realized_vol_60d are still partial-leak;
+  edge-aware embargo is future work). Setting embargo_days=0 reverts to
+  legacy behavior for backwards-compat sanity only. Commit `c449179`.
+
+### [HIGH → RESOLVED 2026-05-07] Discovery Gates 7 (substrate-transfer) and 8 (DSR) were dead code in production
+- Category: missing call-site wire
+- Files: `orchestration/mode_controller.py::_run_discovery_cycle:1149`
+- First flagged: 2026-05-07 (R1 audit-week-of)
+- Status: RESOLVED — Gate 7 receives a per-cycle `data_map_substrate_b`
+  built once via `universe_resolver` (the *complement* of the static
+  universe so Gate 7 measures genuine transfer rather than near-identity
+  overlap; falls back to skipped when the membership parquet is missing).
+  Gate 8 receives `n_trials_for_dsr = max(1, len(batch))` so every
+  candidate competes against the expected-max-of-N null. Commit `b46dd30`.
+
+### [HIGH → RESOLVED 2026-05-07] Symmetric vol-target clamp leveraged into calm regimes (Minsky setup)
+- Category: risk geometry
+- Files: `engines/engine_c_portfolio/policy.py:321`
+- First flagged: 2026-05-07 (R1 audit-week-of)
+- Status: RESOLVED — vol-target ceiling is now regime-aware. Adverse
+  regimes (`market_turmoil`, `cautious_decline`, `stressed`, `crisis`)
+  cap the upside scalar at 1.0 (no leverage). Transitional regime caps
+  at 1.4. Benign or unknown regime keeps the legacy 2.0 ceiling. Downside
+  floor 0.3 unchanged. When `regime_meta is None`, behavior is identical
+  to legacy. 6 unit tests cover all 4 regime classes. Commit `c4fb913`.
+
 ### [HIGH] Foundation Gate baseline (mean Sharpe 1.296) was a substrate artifact — universe-aware rerun lands 0.507 (−0.789, −61%)
 - Engine: data_manager (pre-2026-05-09 the survivorship-bias-aware loader was unwired) + orchestration (ModeController defaulted to the static 109-ticker config) + Engine A (edges were tuned and validated against the static-substrate Sharpes)
 - First flagged: 2026-05-09 — F6 finding from the dev-opinion consolidated audit (the 115-name static config was identified as a load-bearing assumption hiding under every prior Sharpe headline). The universe loader (`engines/data_manager/universe.py`) was built 2026-04-24 but never wired into ModeController, so every measurement campaign through 2026-05-08 ran on the static substrate.
@@ -224,6 +257,36 @@ then LOW. Within each severity, list newest at the top.
 - See: `docs/Sessions/2026-04-27_session.md`, commits dfb0627, f06afb2-b1928c9, aa1cb65, da196b1, 1600e45, 53d5c07, 7db6625, 45abf0e, efbdf8d. Also `scripts/walk_forward_phase210.py`.
 
 ### MEDIUM
+
+### [MEDIUM → RESOLVED 2026-05-07] AlphaEngine auto-registered NewsSentimentEdge as the *class*, not an instance — TypeError on every backtest startup since 2026-01-27
+- Category: latent integration bug
+- Files: `engines/engine_a_alpha/alpha_engine.py:315`
+- First flagged: 2026-05-07 (manifested in test_alpha_pipeline TypeError)
+- Status: RESOLVED 2026-05-07 — `setdefault("news_sentiment_edge", ns.NewsSentimentEdge)` → `setdefault("news_sentiment_edge", ns.NewsSentimentEdge())`. SignalCollector calls `compute_signals(data_map, now)` as a bound method; passing the class made the call unbound, `data_map` consumed `self`, and `now` was reported missing. Latent for ~4 months. Commit `bb155f5`.
+
+### [MEDIUM → RESOLVED 2026-05-07] No drawdown-aware sizing brake — peak_equity wasn't tracked
+- Category: missing risk control
+- Files: `engines/engine_c_portfolio/portfolio_engine.py`, `engines/engine_b_risk/risk_engine.py`
+- First flagged: 2026-05-07 (R1 audit-week-of)
+- Status: RESOLVED — Engine C now tracks `peak_equity` monotonically and emits `current_drawdown_pct` on every snapshot. Engine B reads it under an OFF-by-default `drawdown_kill_switch_enabled` flag with thresholds at 5% (warn), 10% (de-gross via `risk_scaler ×= 0.5`), 15% (block new entries). Default OFF preserves legacy behavior; flipping the flag is the user's call (Engine B charter requires user approval per CLAUDE.md). Commit `3acec41`.
+
+### [MEDIUM → RESOLVED 2026-05-07] Performance summary lacked distributional CIs around point Sharpe
+- Category: measurement quality
+- Files: `core/metrics_engine.py`, `backtester/backtest_controller.py`
+- First flagged: 2026-05-07 (R1 audit-week-of)
+- Status: RESOLVED — `MetricsEngine.bootstrap_distribution(returns, metric_fn, ...)` provides moving-block bootstrap (Künsch 1989) with auto block length per Politis-White n^(1/3). Wired into backtest_controller so every new run's `performance_summary.json` carries `bootstrap_distribution: { sharpe: {...}, sortino: {...}, n_returns }` with point estimate, mean/std/median, 95% CI, p>0, n_iterations, block_length. 8 metrics tests + smoke. Commits `ce4cd2c`, `dab74e4`.
+
+### [MEDIUM → RESOLVED 2026-05-07] No queryable index of historical backtests — cross-run forensics required walking 134 directories by hand
+- Category: observability
+- Files: `core/observability/run_registry.py`, `data/observability/run_registry.sqlite`
+- First flagged: 2026-05-07 (forward-plan item)
+- Status: RESOLVED — SQLite registry ingests `data/trade_logs/<uuid>/performance_summary.json` + `engine_versions.json` into a single queryable table. CLI: `python -m core.observability.run_registry --rebuild` and `--query "<SQL>"`. Idempotent (UPSERT). Schema covers run_id, snapshot_at, key metrics, per-engine versions, n_trades, source paths. Indices on snapshot_at, sharpe, engine versions. Smoke-tested: 119/134 runs ingested cleanly (15 skipped — unfinished or pre-engine-versions). 8 tests. Commit `b4b9fd3`.
+
+### [MEDIUM] Inter-edge correlation matrix on 6 active edges — no collapsed pairs, two value-family pairs at moderate ρ ≈ 0.51
+- Category: ensemble diagnostic
+- Files: `scripts/inter_edge_correlation.py`, `docs/Measurements/2026-05/inter_edge_correlation_2026_05_07.md`
+- First flagged: 2026-05-07 (R1 audit-week-of)
+- Status: SHIPPED 2026-05-07 — daily realized PnL aggregated across 2021-2025 from 5 deterministic-harness multi-year runs (942 trading days). 6/6 active edges show realized PnL. Zero pairs above |ρ|≥0.7 (no collapse). Two moderate pairs (~0.507) involving `value_earnings_yield_v1`: vs `value_book_to_market_v1` and vs `accruals_inv_asset_growth_v1` — expected for value-family factors. The 2 technical edges (gap_fill, volume_anomaly) are well-decorrelated from the 4 fundamentals. Active set is NOT one-strategy-with-extra-trades. Commit `9a79e67`.
 
 ### [MEDIUM → RESOLVED 2026-05-07] Engine F duplicate orchestrator `system_governor.py` (653 lines) archived
 - Engine: F
