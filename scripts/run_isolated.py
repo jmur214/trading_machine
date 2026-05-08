@@ -46,7 +46,7 @@ import shutil
 import sys
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Iterator
+from typing import Iterator, List
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -77,6 +77,16 @@ ISOLATED_FILES = [
     "edge_weights.json",
     "regime_edge_performance.json",
     "lifecycle_history.csv",
+]
+
+# Additional files snapshotted ONLY when --journal-mode is active.
+# The journal grows monotonically across runs and apply-mark advances
+# with each apply; both must reset between reps for true determinism
+# verification under journal-mode. Listed here separately so the
+# legacy-path snapshot scope is unchanged.
+ISOLATED_FILES_JOURNAL_MODE = [
+    "lifecycle_journal.jsonl",
+    ".journal_apply_mark",
 ]
 
 
@@ -177,7 +187,17 @@ def save_anchor() -> int:
     return 0
 
 
-def restore_anchor() -> None:
+def _scoped_files(include_journal: bool = False) -> List[str]:
+    """Files snapshotted by the harness. When journal-mode is on, the
+    journal + apply-mark are also reset between reps so each run sees
+    the same starting journal state."""
+    out = list(ISOLATED_FILES)
+    if include_journal:
+        out.extend(ISOLATED_FILES_JOURNAL_MODE)
+    return out
+
+
+def restore_anchor(include_journal: bool = False) -> None:
     """Restore the full set of governor files from the anchor.
 
     For files that exist in the anchor: copy over current.
@@ -187,12 +207,15 @@ def restore_anchor() -> None:
     Without this, lifecycle_history.csv accumulates mutations in the live
     tree even when not present in the anchor, causing drift on the
     audit-trail divergence-check side.
+
+    include_journal: F11 Phase 2 — when True, also resets the journal
+    + apply-mark so each rep starts with the same journal state.
     """
     if not ISOLATED_ANCHOR.exists():
         raise RuntimeError(
             f"No anchor at {ISOLATED_ANCHOR}; run with --save-anchor first."
         )
-    for name in ISOLATED_FILES:
+    for name in _scoped_files(include_journal):
         src = ISOLATED_ANCHOR / name
         dst = GOV_DIR / name
         if src.exists():
@@ -202,7 +225,7 @@ def restore_anchor() -> None:
 
 
 @contextmanager
-def isolated() -> Iterator[None]:
+def isolated(journal_mode: bool = False) -> Iterator[None]:
     """Context manager: restore anchor on entry, restore again on exit.
 
     Restoring on exit (not just entry) means a sequence of isolated runs
@@ -215,30 +238,42 @@ def isolated() -> Iterator[None]:
     same-process invocations (e.g. multi-run measurement drivers,
     sweeps, walk-forward orchestrators) and would otherwise leak state
     across runs identically to the 04-25 registry-stomp bug.
+
+    journal_mode: F11 Phase 2 acceptance gate. When True, also resets the
+    journal + apply-mark between reps so each run starts from the same
+    journal state.
     """
-    restore_anchor()
+    restore_anchor(include_journal=journal_mode)
     reset_module_globals()
     try:
         yield
     finally:
-        restore_anchor()
+        restore_anchor(include_journal=journal_mode)
         reset_module_globals()
 
 
-def _print_state(label: str) -> None:
+def _print_state(label: str, journal_mode: bool = False) -> None:
     print(f"[ISOLATED] {label} governor hashes:")
-    for name in ISOLATED_FILES:
+    for name in _scoped_files(journal_mode):
         print(f"  {name}: {_md5(GOV_DIR / name)}")
 
 
-def _run_q1_inside_context() -> dict:
-    """Run a 2025 OOS Q1 backtest (the canonical validation case)."""
+def _run_q1_inside_context(apply_journal_at_end: bool = False) -> dict:
+    """Run a 2025 OOS Q1 backtest (the canonical validation case).
+
+    apply_journal_at_end: F11 Phase 2 acceptance gate. When True, the
+    backtest routes governance decisions through the LifecycleJournal
+    instead of mutating edges.yml directly. The journal is then applied
+    at end-of-run as a transactional read+write. Verifies that the
+    journal-mode pipeline produces deterministic output across reps.
+    """
     from orchestration.mode_controller import ModeController
     mc = ModeController(ROOT, env="prod")
     return mc.run_backtest(
         mode="prod", fresh=False, no_governor=False, reset_governor=True,
         alpha_debug=False,
         override_start="2025-01-01", override_end="2025-12-31",
+        apply_journal_at_end=apply_journal_at_end,
     )
 
 
@@ -297,6 +332,11 @@ def main() -> int:
                         help="Backtest task to run inside the isolation.")
     parser.add_argument("--show-hashes", action="store_true",
                         help="Print pre/post governor hashes per run.")
+    parser.add_argument("--journal-mode", action="store_true",
+                        help="F11 Phase 2 acceptance gate: route governance "
+                             "decisions through the LifecycleJournal "
+                             "instead of mutating edges.yml directly. "
+                             "Applies journal at end-of-run.")
     args = parser.parse_args()
 
     if args.save_anchor:
@@ -307,21 +347,28 @@ def main() -> int:
               file=sys.stderr)
         return 1
 
+    if args.journal_mode:
+        print("[ISOLATED] journal-mode ON — F11 Phase 2 acceptance gate. "
+              "Decisions append to LifecycleJournal; "
+              "journal_apply runs at end-of-run.")
+
     results = []
     for i in range(args.runs):
         print(f"\n===== ISOLATED RUN {i + 1} / {args.runs} =====")
         if args.show_hashes:
-            _print_state("PRE  ANCHOR")
+            _print_state("PRE  ANCHOR", journal_mode=args.journal_mode)
         before = {p.name for p in TRADES_DIR.iterdir()
                   if p.is_dir() and p.name != "backup"}
-        with isolated():
+        with isolated(journal_mode=args.journal_mode):
             if args.show_hashes:
-                _print_state("PRE  RUN  ")
-            summary = _run_q1_inside_context()
+                _print_state("PRE  RUN  ", journal_mode=args.journal_mode)
+            summary = _run_q1_inside_context(
+                apply_journal_at_end=args.journal_mode,
+            )
             if args.show_hashes:
-                _print_state("POST RUN  ")
+                _print_state("POST RUN  ", journal_mode=args.journal_mode)
         if args.show_hashes:
-            _print_state("POST RESTORE")
+            _print_state("POST RESTORE", journal_mode=args.journal_mode)
 
         run_id = _find_run_id(before) or "?"
         record = {
