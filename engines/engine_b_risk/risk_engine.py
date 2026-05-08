@@ -58,6 +58,18 @@ class RiskConfig:
     # correlation-regime sector-cap adjustments. Default True preserves behavior.
     risk_advisory_enabled: bool = True
 
+    # Drawdown-gated kill switch (R1 audit-week-of, propose-first).
+    # When enabled, current_drawdown_pct sourced from PortfolioEngine.snapshot()
+    # de-grosses new sizing or halts new entries entirely as drawdown deepens.
+    # OFF by default — does not affect any backtest output until explicitly
+    # enabled via config. Engine B charter requires user approval for behavior
+    # changes; this scaffold ships INERT.
+    drawdown_kill_switch_enabled: bool = False
+    drawdown_warn_threshold: float = 0.05        # 5% — log only
+    drawdown_degrade_threshold: float = 0.10     # 10% — halve new sizing
+    drawdown_halt_threshold: float = 0.15        # 15% — block new entries
+    drawdown_degrade_scaler: float = 0.5         # multiplier applied above degrade
+
 
 class RiskEngine:
     """
@@ -771,6 +783,33 @@ class RiskEngine:
             sig_meta_in = signal.get("meta") or {}
             optimizer_weight = float(sig_meta_in.get("optimizer_weight", 1.0))
             risk_scaler *= optimizer_weight
+
+            # 6. Drawdown-gated kill switch (R1 punch-list, OFF by default).
+            # Reads current_drawdown_pct from PortfolioEngine.snapshot() via
+            # self.portfolio.history. INERT when the flag is False — current
+            # behavior unchanged.
+            if self.cfg.drawdown_kill_switch_enabled and self.portfolio is not None:
+                dd_pct = 0.0
+                try:
+                    if self.portfolio.history:
+                        dd_pct = float(self.portfolio.history[-1].get("current_drawdown_pct", 0.0))
+                except Exception:
+                    dd_pct = 0.0
+                if dd_pct >= self.cfg.drawdown_halt_threshold:
+                    self._fail(ticker, "drawdown_halt")
+                    if is_debug_enabled("RISK"):
+                        print(f"[RISK] Drawdown halt: {dd_pct*100:.2f}% ≥ "
+                              f"{self.cfg.drawdown_halt_threshold*100:.2f}% — blocking new entry for {ticker}")
+                    return None
+                if dd_pct >= self.cfg.drawdown_degrade_threshold:
+                    risk_scaler *= self.cfg.drawdown_degrade_scaler
+                    if is_debug_enabled("RISK"):
+                        print(f"[RISK] Drawdown de-gross: {dd_pct*100:.2f}% ≥ "
+                              f"{self.cfg.drawdown_degrade_threshold*100:.2f}% — risk scaler ×"
+                              f"{self.cfg.drawdown_degrade_scaler:.2f}")
+                elif dd_pct >= self.cfg.drawdown_warn_threshold and is_debug_enabled("RISK"):
+                    print(f"[RISK] Drawdown warn: {dd_pct*100:.2f}% ≥ "
+                          f"{self.cfg.drawdown_warn_threshold*100:.2f}% (no action)")
 
             adjusted_risk_pct = base_risk_pct * risk_scaler
 

@@ -68,6 +68,10 @@ class PortfolioEngine:
         self.history: List[dict] = []
         self.policy = PortfolioPolicy(policy_cfg or PortfolioPolicyConfig())
         self.current_target_weights: Dict[str, float] = {}
+        # Running peak equity for the drawdown-gated kill switch (R1
+        # punch-list). Initialized to starting capital; advanced monotonically
+        # in snapshot() whenever equity makes a new high.
+        self.peak_equity: float = float(initial_capital)
 
     def _log_debug(self, msg: str):
         if is_debug_enabled("PORTFOLIO"):
@@ -264,6 +268,15 @@ class PortfolioEngine:
             unrealized += (px - pos.avg_price) * pos.qty
 
         equity = self.cash + market_value
+        # Advance the running peak; compute drawdown vs peak. peak_equity
+        # is monotone non-decreasing so subsequent flat-or-down equity
+        # produces a non-negative current_drawdown_pct.
+        if equity > self.peak_equity:
+            self.peak_equity = equity
+        current_drawdown_pct = (
+            0.0 if self.peak_equity <= 0.0
+            else max(0.0, (self.peak_equity - equity) / self.peak_equity)
+        )
         snap = {
             "timestamp": pd.to_datetime(timestamp),
             "cash": self.cash,
@@ -272,6 +285,8 @@ class PortfolioEngine:
             "unrealized_pnl": unrealized,
             "equity": equity,
             "positions": open_positions_count,
+            "peak_equity": self.peak_equity,
+            "current_drawdown_pct": current_drawdown_pct,
         }
         # optional quick-look attribution (counts of open positions by edge)
         try:
