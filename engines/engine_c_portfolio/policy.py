@@ -240,7 +240,7 @@ class PortfolioPolicy:
 
         # --- Portfolio-level vol targeting overlay ---
         if self.cfg.vol_target_enabled:
-            weights = self._apply_vol_target(weights, price_data)
+            weights = self._apply_vol_target(weights, price_data, regime_meta)
 
         # --- Advisory exposure cap (from Engine E regime detection) ---
         if self.cfg.exposure_cap_enabled:
@@ -309,8 +309,21 @@ class PortfolioPolicy:
 
     # ------------------------------------------------------------------ #
     def _apply_vol_target(self, weights: Dict[str, float],
-                          price_data: Dict[str, pd.DataFrame]) -> Dict[str, float]:
-        """Scale weights so portfolio vol matches target_volatility."""
+                          price_data: Dict[str, pd.DataFrame],
+                          regime_meta: Optional[Dict] = None) -> Dict[str, float]:
+        """Scale weights so portfolio vol matches target_volatility.
+
+        Asymmetric upside clamp (R1 audit-week-of, the "Minsky fix"):
+        the symmetric [0.3, 2.0] clamp let the system run at 2× leverage
+        whenever realized vol fell below target — i.e. it leveraged into
+        calm markets, which is the textbook Minsky setup. The fix caps
+        the upside at 1.0 (no leverage) in stressed/crisis regimes and
+        only allows the legacy 2.0 ceiling in benign regimes.
+
+        The downside floor (0.3) is unchanged — when realized vol spikes,
+        keep at least 30% gross so the system isn't fully flat in the
+        most informative environment.
+        """
         if not weights:
             return weights
 
@@ -318,7 +331,25 @@ class PortfolioPolicy:
         if port_vol < 1e-9:
             return weights
 
-        vol_scalar = float(np.clip(self.cfg.target_volatility / port_vol, 0.3, 2.0))
+        # Regime-aware upside ceiling. Sourced from Engine E's macro/forward
+        # stress regime label when available; defaults to legacy 2.0 ceiling
+        # under no-regime-context (preserves baseline reproducibility).
+        upside_ceiling = 2.0
+        regime_label = None
+        if regime_meta:
+            # Try the macro_regime label first (5-state HMM), then forward_stress.
+            macro = regime_meta.get("macro_regime") or {}
+            regime_label = macro.get("label") if isinstance(macro, dict) else None
+            if regime_label is None:
+                fs = regime_meta.get("forward_stress_regime") or {}
+                regime_label = fs.get("state") if isinstance(fs, dict) else None
+        if regime_label in ("market_turmoil", "cautious_decline", "stressed", "crisis"):
+            upside_ceiling = 1.0  # no leverage in adverse regimes
+        elif regime_label in ("transitional",):
+            upside_ceiling = 1.4  # half-step
+        # else: benign / unknown → legacy 2.0
+
+        vol_scalar = float(np.clip(self.cfg.target_volatility / port_vol, 0.3, upside_ceiling))
 
         if abs(vol_scalar - 1.0) > 0.01:
             weights = {t: w * vol_scalar for t, w in weights.items()}
@@ -326,7 +357,12 @@ class PortfolioPolicy:
             weights = {t: float(np.clip(w, self.cfg.min_weight, self.cfg.max_weight))
                        for t, w in weights.items()}
             if self.cfg.debug:
-                print(f"[POLICY] Vol target: port_vol={port_vol:.3f} target={self.cfg.target_volatility:.3f} scalar={vol_scalar:.2f}")
+                print(
+                    f"[POLICY] Vol target: port_vol={port_vol:.3f} "
+                    f"target={self.cfg.target_volatility:.3f} "
+                    f"scalar={vol_scalar:.2f} ceiling={upside_ceiling:.1f} "
+                    f"regime={regime_label or 'none'}"
+                )
 
         return weights
 
