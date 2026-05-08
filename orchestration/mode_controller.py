@@ -1149,6 +1149,75 @@ class ModeController:
             from orchestration.run_backtest_pure import PureBacktestCache
             cycle_cache = PureBacktestCache()
             all_results: list = []
+
+            # ---- Gate 7 (substrate-transfer) and Gate 8 (DSR) call-site wire ----
+            # R1's audit-week-of finding: gates 7 and 8 ship in
+            # discovery.validate_candidate but the Discovery cycle never
+            # passes the parameters that activate them. Without this wire,
+            # both gates are dead code in production.
+            #
+            # Gate 8 (DSR): the multiple-testing correction applies only when
+            # n_trials_for_dsr > 1. The natural choice is the size of the
+            # validation batch — every candidate evaluated this cycle is one
+            # trial in the same multiple-comparison family.
+            cycle_n_trials_for_dsr = max(1, len(batch))
+
+            # Gate 7 (substrate transfer): build a historical-S&P 500 data_map
+            # ONCE per cycle so all candidates measure substrate transfer
+            # against the same out-of-static-universe benchmark. Skipped
+            # gracefully if the membership parquet is missing or the loader
+            # raises — Gate 7 then defaults to skipped (gate_7_passed = True)
+            # via the validate_candidate signature, preserving legacy behavior.
+            cycle_data_map_substrate_b: Optional[Dict[str, pd.DataFrame]] = None
+            try:
+                from engines.data_manager.universe_resolver import (
+                    resolve_universe,
+                    discover_cached_tickers,
+                )
+                _first_tkr_seed = next(iter(data_map.keys()), None)
+                if _first_tkr_seed is not None and not data_map[_first_tkr_seed].empty:
+                    _sb_start = data_map[_first_tkr_seed].index[0].isoformat()
+                    _sb_end = data_map[_first_tkr_seed].index[-1].isoformat()
+                else:
+                    _sb_start = self.cfg_bt.get("start_date")
+                    _sb_end = self.cfg_bt.get("end_date")
+                _cache_root = self.root / "data"
+                _cached = discover_cached_tickers(_cache_root, timeframe=timeframe)
+                _static = list(self.cfg_bt.get("tickers", []))
+                _sb_tickers, _sb_info = resolve_universe(
+                    static_tickers=_static,
+                    start=_sb_start,
+                    end=_sb_end,
+                    use_historical=True,
+                    cache_dir=_cache_root,
+                    available_filter=_cached,
+                )
+                if _sb_info.get("mode") == "historical" and _sb_tickers:
+                    # Drop tickers already in static; substrate-B should be
+                    # the *complement* universe, not the union, so Gate 7
+                    # measures genuine transfer rather than near-identity.
+                    _sb_only = [t for t in _sb_tickers if t not in set(_static)]
+                    if _sb_only:
+                        cycle_data_map_substrate_b = self.dm.ensure_data(
+                            _sb_only, _sb_start, _sb_end, timeframe=timeframe,
+                        )
+                        print(
+                            f"[DISCOVERY] Gate 7 substrate-B loaded: "
+                            f"{len(cycle_data_map_substrate_b)} tickers "
+                            f"({_sb_info.get('mode')})"
+                        )
+                    else:
+                        print("[DISCOVERY] Gate 7 substrate-B empty after dedupe; gate skipped.")
+                else:
+                    print(
+                        f"[DISCOVERY] Gate 7 substrate-B unavailable "
+                        f"(mode={_sb_info.get('mode')}, "
+                        f"reason={_sb_info.get('fallback_reason')}); gate skipped."
+                    )
+            except Exception as _sb_err:
+                print(f"[DISCOVERY] Gate 7 substrate-B build failed; gate skipped: {_sb_err}")
+                cycle_data_map_substrate_b = None
+            print(f"[DISCOVERY] Gate 8 DSR n_trials = {cycle_n_trials_for_dsr}")
             for cand in batch:
                 cand_id = cand.get("edge_id", "unknown")
                 print(f"[DISCOVERY] Validating {cand_id}...")
@@ -1188,6 +1257,8 @@ class ModeController:
                         cache=cycle_cache,
                         start_date=_val_start,
                         end_date=_val_end,
+                        data_map_substrate_b=cycle_data_map_substrate_b,
+                        n_trials_for_dsr=cycle_n_trials_for_dsr,
                     )
                 except TimeoutError as toe:
                     _timed_out = True
