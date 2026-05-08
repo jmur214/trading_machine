@@ -981,6 +981,33 @@ class BacktestController:
                 except Exception:
                     pass
 
+                # Bootstrap distribution layer: 95% block-bootstrap CI on
+                # Sharpe + Sortino. Surfaces "Sharpe 0.85 [CI 0.32, 1.41]"
+                # alongside the bare point estimate. Read-only post-processor.
+                try:
+                    from core.metrics_engine import MetricsEngine
+                    snap_df_boot = _pd.read_csv(snapshots_path_for_metrics)
+                    if not snap_df_boot.empty and "equity" in snap_df_boot.columns:
+                        equity = _pd.to_numeric(snap_df_boot["equity"], errors="coerce").dropna()
+                        rets = equity.pct_change().dropna()
+                        if len(rets) >= 32:  # need a meaningful sample
+                            sharpe_boot = MetricsEngine.bootstrap_distribution(
+                                rets, MetricsEngine.sharpe_ratio,
+                                n_iterations=500, seed=0,
+                            )
+                            sortino_boot = MetricsEngine.bootstrap_distribution(
+                                rets, MetricsEngine.sortino_ratio,
+                                n_iterations=500, seed=0,
+                            )
+                            stats["bootstrap_distribution"] = {
+                                "sharpe": sharpe_boot,
+                                "sortino": sortino_boot,
+                                "n_returns": int(len(rets)),
+                            }
+                except Exception as be:
+                    if is_debug_enabled("BACKTEST_CONTROLLER"):
+                        print(f"[BACKTEST][BOOTSTRAP][WARN] {be}")
+
                 # Save the summary next to the (possibly filtered) snapshots
                 perf_dir = os.path.dirname(snapshots_path_for_metrics)
                 perf_path = os.path.join(perf_dir, "performance_summary.json")
