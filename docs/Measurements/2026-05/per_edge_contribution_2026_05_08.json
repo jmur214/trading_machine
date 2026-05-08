@@ -1,0 +1,383 @@
+{
+  "generated": "2026-05-08",
+  "active_edges": [
+    "gap_fill_v1",
+    "volume_anomaly_v1",
+    "value_earnings_yield_v1",
+    "value_book_to_market_v1",
+    "accruals_inv_sloan_v1",
+    "accruals_inv_asset_growth_v1"
+  ],
+  "per_year": {
+    "2021": {
+      "gap_fill_v1": {
+        "year": 2021,
+        "pnl_total": 135.76999999999998,
+        "n_trades": 47,
+        "n_winners": 35,
+        "n_losers": 12,
+        "win_rate": 0.7446808510638298,
+        "avg_winner": 6.084571428571427,
+        "avg_loser": -6.432500000000001,
+        "best_trade": 23.81,
+        "worst_trade": -13.38
+      },
+      "volume_anomaly_v1": {
+        "year": 2021,
+        "pnl_total": 453.61,
+        "n_trades": 73,
+        "n_winners": 58,
+        "n_losers": 15,
+        "win_rate": 0.7945205479452054,
+        "avg_winner": 8.98051724137931,
+        "avg_loser": -4.483999999999999,
+        "best_trade": 58.25,
+        "worst_trade": -10.0
+      },
+      "value_earnings_yield_v1": {
+        "year": 2021,
+        "pnl_total": -396.3300000000001,
+        "n_trades": 247,
+        "n_winners": 91,
+        "n_losers": 156,
+        "win_rate": 0.3684210526315789,
+        "avg_winner": 4.108351648351649,
+        "avg_loser": -4.937115384615385,
+        "best_trade": 33.95,
+        "worst_trade": -26.97
+      },
+      "value_book_to_market_v1": {
+        "year": 2021,
+        "pnl_total": 456.81,
+        "n_trades": 305,
+        "n_winners": 170,
+        "n_losers": 135,
+        "win_rate": 0.5573770491803278,
+        "avg_winner": 7.154647058823529,
+        "avg_loser": -5.6257777777777775,
+        "best_trade": 42.78,
+        "worst_trade": -36.28
+      },
+      "accruals_inv_sloan_v1": {
+        "year": 2021,
+        "pnl_total": 378.69000000000005,
+        "n_trades": 222,
+        "n_winners": 107,
+        "n_losers": 115,
+        "win_rate": 0.481981981981982,
+        "avg_winner": 11.516168224299067,
+        "avg_loser": -7.422086956521738,
+        "best_trade": 58.89,
+        "worst_trade": -29.75
+      },
+      "accruals_inv_asset_growth_v1": {
+        "year": 2021,
+        "pnl_total": -81.19999999999999,
+        "n_trades": 34,
+        "n_winners": 9,
+        "n_losers": 25,
+        "win_rate": 0.2647058823529412,
+        "avg_winner": 5.466666666666666,
+        "avg_loser": -5.215999999999999,
+        "best_trade": 15.19,
+        "worst_trade": -26.73
+      }
+    },
+    "2022": {
+      "gap_fill_v1": {
+        "year": 2022,
+        "pnl_total": 187.04999999999998,
+        "n_trades": 47,
+        "n_winners": 33,
+        "n_losers": 14,
+        "win_rate": 0.7021276595744681,
+        "avg_winner": 8.514848484848486,
+        "avg_loser": -6.709999999999999,
+        "best_trade": 22.87,
+        "worst_trade": -40.0
+      },
+      "volume_anomaly_v1": {
+        "year": 2022,
+        "pnl_total": 859.6700000000002,
+        "n_trades": 107,
+        "n_winners": 85,
+        "n_losers": 22,
+        "win_rate": 0.794392523364486,
+        "avg_winner": 11.370235294117647,
+        "avg_loser": -4.854545454545455,
+        "best_trade": 46.6,
+        "worst_trade": -19.05
+      },
+      "value_earnings_yield_v1": {
+        "year": 2022,
+        "pnl_total": -1106.3400000000001,
+        "n_trades": 339,
+        "n_winners": 137,
+        "n_losers": 202,
+        "win_rate": 0.40412979351032446,
+        "avg_winner": 8.604379562043796,
+        "avg_loser": -11.312574257425739,
+        "best_trade": 63.21,
+        "worst_trade": -54.39
+      },
+      "value_book_to_market_v1": {
+        "year": 2022,
+        "pnl_total": -411.74999999999994,
+        "n_trades": 197,
+        "n_winners": 88,
+        "n_losers": 109,
+        "win_rate": 0.4467005076142132,
+        "avg_winner": 8.014318181818181,
+        "avg_loser": -10.247798165137615,
+        "best_trade": 40.33,
+        "worst_trade": -51.43
+      },
+      "accruals_inv_sloan_v1": {
+        "year": 2022,
+        "pnl_total": -595.7899999999997,
+        "n_trades": 127,
+        "n_winners": 40,
+        "n_losers": 87,
+        "win_rate": 0.31496062992125984,
+        "avg_winner": 12.56225,
+        "avg_loser": -12.62390804597701,
+        "best_trade": 66.58,
+        "worst_trade": -82.35
+      },
+      "accruals_inv_asset_growth_v1": {
+        "year": 2022,
+        "pnl_total": -77.11000000000001,
+        "n_trades": 89,
+        "n_winners": 45,
+        "n_losers": 44,
+        "win_rate": 0.5056179775280899,
+        "avg_winner": 10.059111111111111,
+        "avg_loser": -12.04022727272727,
+        "best_trade": 46.71,
+        "worst_trade": -44.81
+      }
+    },
+    "2023": {
+      "gap_fill_v1": {
+        "year": 2023,
+        "pnl_total": 126.98999999999998,
+        "n_trades": 88,
+        "n_winners": 46,
+        "n_losers": 42,
+        "win_rate": 0.5227272727272727,
+        "avg_winner": 9.691304347826087,
+        "avg_loser": -7.590714285714286,
+        "best_trade": 72.21,
+        "worst_trade": -42.41
+      },
+      "volume_anomaly_v1": {
+        "year": 2023,
+        "pnl_total": 74.69999999999999,
+        "n_trades": 108,
+        "n_winners": 57,
+        "n_losers": 51,
+        "win_rate": 0.5277777777777778,
+        "avg_winner": 9.897543859649122,
+        "avg_loser": -9.597254901960785,
+        "best_trade": 52.32,
+        "worst_trade": -45.6
+      },
+      "value_earnings_yield_v1": {
+        "year": 2023,
+        "pnl_total": 682.66,
+        "n_trades": 413,
+        "n_winners": 215,
+        "n_losers": 197,
+        "win_rate": 0.5205811138014528,
+        "avg_winner": 9.195255813953489,
+        "avg_loser": -6.5701522842639575,
+        "best_trade": 71.56,
+        "worst_trade": -51.55
+      },
+      "value_book_to_market_v1": {
+        "year": 2023,
+        "pnl_total": 222.1099999999999,
+        "n_trades": 298,
+        "n_winners": 145,
+        "n_losers": 153,
+        "win_rate": 0.4865771812080537,
+        "avg_winner": 8.247724137931035,
+        "avg_loser": -6.364771241830065,
+        "best_trade": 40.43,
+        "worst_trade": -46.84
+      },
+      "accruals_inv_sloan_v1": {
+        "year": 2023,
+        "pnl_total": 349.86999999999995,
+        "n_trades": 154,
+        "n_winners": 75,
+        "n_losers": 78,
+        "win_rate": 0.487012987012987,
+        "avg_winner": 14.664933333333336,
+        "avg_loser": -9.615384615384615,
+        "best_trade": 78.08,
+        "worst_trade": -51.38
+      },
+      "accruals_inv_asset_growth_v1": {
+        "year": 2023,
+        "pnl_total": 139.48000000000002,
+        "n_trades": 154,
+        "n_winners": 88,
+        "n_losers": 66,
+        "win_rate": 0.5714285714285714,
+        "avg_winner": 8.613863636363636,
+        "avg_loser": -9.371818181818181,
+        "best_trade": 69.78,
+        "worst_trade": -40.91
+      }
+    },
+    "2024": {
+      "gap_fill_v1": {
+        "year": 2024,
+        "pnl_total": 433.55000000000007,
+        "n_trades": 105,
+        "n_winners": 71,
+        "n_losers": 34,
+        "win_rate": 0.6761904761904762,
+        "avg_winner": 9.927464788732395,
+        "avg_loser": -7.979411764705882,
+        "best_trade": 49.03,
+        "worst_trade": -90.32
+      },
+      "volume_anomaly_v1": {
+        "year": 2024,
+        "pnl_total": 858.4499999999999,
+        "n_trades": 138,
+        "n_winners": 104,
+        "n_losers": 34,
+        "win_rate": 0.7536231884057971,
+        "avg_winner": 10.436923076923078,
+        "avg_loser": -6.676176470588236,
+        "best_trade": 66.35,
+        "worst_trade": -59.95
+      },
+      "value_earnings_yield_v1": {
+        "year": 2024,
+        "pnl_total": -479.3399999999999,
+        "n_trades": 393,
+        "n_winners": 138,
+        "n_losers": 255,
+        "win_rate": 0.3511450381679389,
+        "avg_winner": 8.121376811594203,
+        "avg_loser": -6.27486274509804,
+        "best_trade": 44.86,
+        "worst_trade": -60.66
+      },
+      "value_book_to_market_v1": {
+        "year": 2024,
+        "pnl_total": -155.33999999999997,
+        "n_trades": 237,
+        "n_winners": 90,
+        "n_losers": 147,
+        "win_rate": 0.379746835443038,
+        "avg_winner": 5.723888888888888,
+        "avg_loser": -4.561156462585034,
+        "best_trade": 24.73,
+        "worst_trade": -19.26
+      },
+      "accruals_inv_sloan_v1": {
+        "year": 2024,
+        "pnl_total": 227.54000000000002,
+        "n_trades": 154,
+        "n_winners": 65,
+        "n_losers": 89,
+        "win_rate": 0.42207792207792205,
+        "avg_winner": 13.917846153846154,
+        "avg_loser": -7.608089887640451,
+        "best_trade": 101.22,
+        "worst_trade": -48.89
+      },
+      "accruals_inv_asset_growth_v1": {
+        "year": 2024,
+        "pnl_total": 52.11,
+        "n_trades": 131,
+        "n_winners": 62,
+        "n_losers": 69,
+        "win_rate": 0.4732824427480916,
+        "avg_winner": 10.027741935483872,
+        "avg_loser": -8.255217391304347,
+        "best_trade": 47.72,
+        "worst_trade": -46.85
+      }
+    },
+    "2025": {
+      "gap_fill_v1": {
+        "year": 2025,
+        "pnl_total": 181.81,
+        "n_trades": 115,
+        "n_winners": 64,
+        "n_losers": 51,
+        "win_rate": 0.5565217391304348,
+        "avg_winner": 8.27140625,
+        "avg_loser": -6.814901960784314,
+        "best_trade": 53.97,
+        "worst_trade": -29.14
+      },
+      "volume_anomaly_v1": {
+        "year": 2025,
+        "pnl_total": 755.97,
+        "n_trades": 194,
+        "n_winners": 126,
+        "n_losers": 68,
+        "win_rate": 0.6494845360824743,
+        "avg_winner": 10.388015873015872,
+        "avg_loser": -8.131176470588237,
+        "best_trade": 96.85,
+        "worst_trade": -114.57
+      },
+      "value_earnings_yield_v1": {
+        "year": 2025,
+        "pnl_total": 107.80999999999996,
+        "n_trades": 267,
+        "n_winners": 121,
+        "n_losers": 146,
+        "win_rate": 0.45318352059925093,
+        "avg_winner": 9.68206611570248,
+        "avg_loser": -7.285753424657535,
+        "best_trade": 84.17,
+        "worst_trade": -55.83
+      },
+      "value_book_to_market_v1": {
+        "year": 2025,
+        "pnl_total": -51.85,
+        "n_trades": 222,
+        "n_winners": 103,
+        "n_losers": 118,
+        "win_rate": 0.46396396396396394,
+        "avg_winner": 6.1634951456310665,
+        "avg_loser": -5.819406779661017,
+        "best_trade": 37.08,
+        "worst_trade": -43.73
+      },
+      "accruals_inv_sloan_v1": {
+        "year": 2025,
+        "pnl_total": 16.700000000000024,
+        "n_trades": 103,
+        "n_winners": 39,
+        "n_losers": 64,
+        "win_rate": 0.3786407766990291,
+        "avg_winner": 15.68923076923077,
+        "avg_loser": -9.299687500000001,
+        "best_trade": 139.01,
+        "worst_trade": -27.88
+      },
+      "accruals_inv_asset_growth_v1": {
+        "year": 2025,
+        "pnl_total": -144.12000000000003,
+        "n_trades": 110,
+        "n_winners": 42,
+        "n_losers": 68,
+        "win_rate": 0.38181818181818183,
+        "avg_winner": 10.095714285714287,
+        "avg_loser": -8.355000000000002,
+        "best_trade": 45.33,
+        "worst_trade": -38.67
+      }
+    }
+  }
+}
