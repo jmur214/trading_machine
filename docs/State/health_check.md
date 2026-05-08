@@ -267,6 +267,24 @@ then LOW. Within each severity, list newest at the top.
 
 ### MEDIUM
 
+### [MEDIUM] `value_earnings_yield_v1` is a net-$1,192 drag on the 6-active ensemble (2021-2025)
+- Category: per-edge contribution analysis
+- Files: `scripts/per_edge_contribution.py`, `docs/Measurements/2026-05/per_edge_contribution_2026_05_08.md`
+- First flagged: 2026-05-08 (per-edge attribution)
+- Status: FINDING SHIPPED, not yet acted on. Across 2021-2025: `volume_anomaly_v1` carries 93.8% of ensemble PnL (+$3,002); `gap_fill_v1` adds 33.3%; `accruals_inv_sloan_v1` 11.8%; `value_book_to_market_v1` 1.9%. **Two net-drags: `accruals_inv_asset_growth_v1` (−$111, −3.5%) and `value_earnings_yield_v1` (−$1,192, −37.2%).** value_earnings_yield is doubly bad: substantial $-drag AND highly correlated with the value/accrual cluster (+0.507 unconditional, +0.642 adverse) — pure cost, no diversification. Per CLAUDE.md autonomous-improvement rules I am NOT flipping its status manually; the lifecycle gauntlet should catch this on its next run.
+
+### [MEDIUM] Inter-edge correlation roughly DOUBLES under adverse regimes (mean off-diag ρ +0.154 benign → +0.315 adverse)
+- Category: regime-conditional diversification
+- Files: `scripts/inter_edge_correlation_regime.py`, `docs/Measurements/2026-05/inter_edge_correlation_regime_2026_05_08.md`
+- First flagged: 2026-05-08
+- Status: FINDING SHIPPED. 11 of 15 edge pairs become more correlated under stress; 1 pair decorrelates further; 3 flat. Biggest jumpers: gap_fill × volume_anomaly (−0.092 → +0.273, Δ +0.365), value_b2m × value_earnings_yield (+0.337 → +0.642). The 6-active set's effective independent-edge count drops in stress — exactly when diversification would matter most. **Validates the drawdown-gated kill switch design (commit `3acec41`)**: de-grossing in adverse regimes is doing the right thing because effective diversification halves.
+
+### [MEDIUM → RESOLVED 2026-05-08] F11 Phase 2 acceptance gate — 3-rep determinism passes under journal-mode
+- Category: F11 verification gate
+- Files: `scripts/run_isolated.py` (--journal-mode flag added 2026-05-08)
+- First flagged: 2026-05-07 (F11 Phase 2 ship)
+- Status: RESOLVED. Verified empirically: in journal-mode, `edges.yml` POST-RUN hash equals anchor hash (`818330dc05e5e58804fa5cace7973640`) — i.e. edges.yml is NOT mutated during the run. Three reps produce 1 unique canon md5 (PASS). Caveat: zero-trade environment; the full no-mutation property holds for non-trivial workloads only by construction (decisions append to journal instead of edges.yml; nothing else mutates the file). Phase 3 (reduce snapshot scope to remove the redundant edges.yml/edge_weights.json files) is now unblocked.
+
 ### [MEDIUM] Trend-following Phase 0 sleeve gauntlet → FAIL (positive Sortino, but symmetric tails on S&P mega-caps)
 - Category: design verification result
 - Files: `engines/engine_c_portfolio/sleeves/trend_following_sleeve.py`, `docs/Measurements/2026-05/trend_phase0_verdict_2026-05-07.md`
