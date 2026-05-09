@@ -27,6 +27,8 @@ from . import correlation_average_60d  # noqa: F401
 from . import moving_avg_distance_50d  # noqa: F401
 from . import high_minus_low_60d  # noqa: F401
 from . import weekday_dummy  # noqa: F401
+# Fifth batch — calendar anomaly battery (T-2026-05-09-014)
+from . import calendar as _calendar_battery  # noqa: F401
 
 __all__ = [
     "cot_commercial_net_long",
