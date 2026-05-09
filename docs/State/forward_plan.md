@@ -222,7 +222,7 @@
 > | **C-engines-3** | **Engine E minimal-HMM on leading FRED features** + wire into Engine B de-grossing | Engine E operating per charter (also addresses the bull-conditionality of the surviving 6-edge set — see C-collapses-1 result) |
 > | **C-engines-4** | **Engine D Bayesian opt scaffolding** (replaces GA noise factory) | Engine D producing real candidates |
 > | **C-engines-5** | **Engine A pure-signals refactor** — charter restored | Engine A operating per charter |
-> | C-remeasure | Re-run multi-year on substrate-honest universe with completed engines AND the 6-edge surviving set | The honest baseline. The next pre-commit gate gets defined here. |
+> | C-remeasure | Re-run multi-year on substrate-honest universe with completed engines AND the 6-edge surviving set | The honest baseline. The next pre-commit gate gets defined here — and per the CLAUDE.md 6th non-negotiable (added 2026-05-08), it MUST be CI-aware: the trigger reads `Sharpe_ci_low < X`, not `Sharpe_point < X`. |
 >
 > Goal C / Moonshot Sleeve stays parked until C-remeasure verdict. As
 > the user framed it: "if we can't get the bones working properly we
