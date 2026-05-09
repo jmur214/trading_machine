@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Dict, List, Any, Optional
+import logging
 import pandas as pd
 import numpy as np
 import time
@@ -11,6 +12,8 @@ from backtester.execution_simulator import ExecutionSimulator, ExecParams
 import math
 from engines.engine_c_portfolio.portfolio_engine import PortfolioEngine
 from debug_config import is_debug_enabled, is_info_enabled
+
+logger = logging.getLogger(__name__)
 
 def is_controller_debug():
     return is_debug_enabled("BACKTEST_CONTROLLER")
@@ -387,9 +390,19 @@ class BacktestController:
             else:
                 signals = self.alpha.generate_signals(slice_map, ts, regime_meta=regime_meta) or []
         except Exception as e:
+            # Narrowed-catch (2026-05-08; mirrors gauntlet remediation 453e04e):
+            # programmer errors propagate so a typo, missing import, or
+            # interface drift surfaces immediately. The 2026-05-08 zero-trade
+            # regression (TypeError on tz-naive vs tz-aware compare in
+            # EarningsVolEdge) was silently swallowed here for ~24 hours
+            # under the prior pattern.
+            if isinstance(e, (TypeError, AttributeError, NameError, AssertionError, ImportError)):
+                raise
             signals = []
-            if is_debug_enabled("BACKTEST_CONTROLLER"):
-                print(f"[DEBUG][{ts}] Alpha signal generation error: {e}")
+            logger.warning(
+                "[%s] Alpha signal generation error: %s: %s",
+                ts, type(e).__name__, e,
+            )
 
         if BACKTEST_DEBUG and signals:
             print(f"[DEBUG_BACKTEST][{ts}] Raw signals: {signals[:3]}")
