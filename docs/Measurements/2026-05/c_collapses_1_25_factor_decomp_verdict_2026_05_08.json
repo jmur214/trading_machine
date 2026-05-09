@@ -1,0 +1,326 @@
+{
+  "generated": "2026-05-09T06:15:40",
+  "spec": "docs/Measurements/2026-05/spec_c_collapses_1_25_factor_decomp_2026_05_08.md",
+  "arm1_run_ids": {
+    "2021": "191c14ba-3e8d-4f7f-ae08-8b24bf54dec0",
+    "2022": "85ae17d9-a7b9-473b-933a-94dc0c681fcc",
+    "2023": "a23ce948-9fd0-43ef-84c6-dc6aaa7653ca",
+    "2024": "a1591104-7c2b-428c-a02a-a1fa712fe569",
+    "2025": "a3aac752-6daa-487a-a3e5-2f1e4d81d319"
+  },
+  "panel": {
+    "convention": "tier_classifier-compatible: closed-trade pnl per edge per closure-day, divided by initial_capital ($100k). Days without a closure for an edge are EXCLUDED from that edge's regression (not filled with zero).",
+    "initial_capital": 100000.0,
+    "n_obs_per_edge": {
+      "volume_anomaly_v1": 268,
+      "gap_fill_v1": 243,
+      "value_book_to_market_v1": 648,
+      "accruals_inv_sloan_v1": 675,
+      "value_earnings_yield_v1": 689,
+      "accruals_inv_asset_growth_v1": 472
+    }
+  },
+  "verdict_volume_anomaly_v1": "GENUINELY NOISY (|t|\u22642 and R\u00b2<0.3). Alpha not detectable on substrate-honest universe; statistical power not there. Don't flip flags from substrate measurement.",
+  "per_edge": [
+    {
+      "edge": "volume_anomaly_v1",
+      "n_obs": 268,
+      "lag_neweywest": 4,
+      "alpha_daily": 3.1932786355762846e-05,
+      "alpha_annualized": 0.008047062161652237,
+      "alpha_se_daily_hac": 3.860800222476571e-05,
+      "alpha_se_annualized_hac": 0.009729216560640958,
+      "alpha_tstat_hac": 0.8271027899827218,
+      "alpha_ci_low_analytic": -0.011022202297204041,
+      "alpha_ci_high_analytic": 0.027116326620508516,
+      "alpha_ci_low_bootstrap": -0.012582056239436873,
+      "alpha_ci_high_bootstrap": 0.02888838265556859,
+      "alpha_p_above_zero_bootstrap": 0.778,
+      "r_squared": 0.04013338582008541,
+      "raw_sharpe": 5.255881911473555,
+      "betas": {
+        "MktRF": {
+          "beta": 0.007763024199358396,
+          "se": 0.003074112046377411,
+          "t_stat": 2.525289931610165
+        },
+        "SMB": {
+          "beta": -0.0031564525251299796,
+          "se": 0.005240280084089647,
+          "t_stat": -0.6023442400938624
+        },
+        "HML": {
+          "beta": 0.003198205610871098,
+          "se": 0.003701280843809613,
+          "t_stat": 0.8640807725304316
+        },
+        "RMW": {
+          "beta": -0.0009180385045404478,
+          "se": 0.005388921182012902,
+          "t_stat": -0.1703566397676532
+        },
+        "CMA": {
+          "beta": 0.0070771058782758715,
+          "se": 0.00534771179300573,
+          "t_stat": 1.323389545325164
+        },
+        "Mom": {
+          "beta": -0.0032219545800499564,
+          "se": 0.0030827112164644125,
+          "t_stat": -1.0451691234786642
+        }
+      },
+      "ok": true
+    },
+    {
+      "edge": "gap_fill_v1",
+      "n_obs": 243,
+      "lag_neweywest": 4,
+      "alpha_daily": -2.045247847811329e-06,
+      "alpha_annualized": -0.0005154024576484549,
+      "alpha_se_daily_hac": 4.8307065366625006e-05,
+      "alpha_se_annualized_hac": 0.012173380472389502,
+      "alpha_tstat_hac": -0.04233848262752007,
+      "alpha_ci_low_analytic": -0.02437522818353188,
+      "alpha_ci_high_analytic": 0.02334442326823497,
+      "alpha_ci_low_bootstrap": -0.02298982253515914,
+      "alpha_ci_high_bootstrap": 0.025832011077242003,
+      "alpha_p_above_zero_bootstrap": 0.527,
+      "r_squared": 0.08930372339583392,
+      "raw_sharpe": 2.9997122068671955,
+      "betas": {
+        "MktRF": {
+          "beta": -0.010162934091027788,
+          "se": 0.012621131504365902,
+          "t_stat": -0.8052316139414462
+        },
+        "SMB": {
+          "beta": 0.0038626222730698593,
+          "se": 0.009064585989045219,
+          "t_stat": 0.42612230472940915
+        },
+        "HML": {
+          "beta": 0.0195618992313084,
+          "se": 0.009761249700631733,
+          "t_stat": 2.0040363510055874
+        },
+        "RMW": {
+          "beta": -0.01736841287734324,
+          "se": 0.011044476054063626,
+          "t_stat": -1.57258821444525
+        },
+        "CMA": {
+          "beta": -0.0045573232780178365,
+          "se": 0.015904659626706025,
+          "t_stat": -0.2865401325763356
+        },
+        "Mom": {
+          "beta": -0.0035849791849813547,
+          "se": 0.006561521350700119,
+          "t_stat": -0.5463640203805532
+        }
+      },
+      "ok": true
+    },
+    {
+      "edge": "value_book_to_market_v1",
+      "n_obs": 648,
+      "lag_neweywest": 6,
+      "alpha_daily": -8.723613159151415e-05,
+      "alpha_annualized": -0.021983505161061567,
+      "alpha_se_daily_hac": 3.351115284779821e-05,
+      "alpha_se_annualized_hac": 0.00844481051764515,
+      "alpha_tstat_hac": -2.603196971101692,
+      "alpha_ci_low_analytic": -0.03853533377564606,
+      "alpha_ci_high_analytic": -0.005431676546477075,
+      "alpha_ci_low_bootstrap": -0.03975634156397723,
+      "alpha_ci_high_bootstrap": -0.005110732795870256,
+      "alpha_p_above_zero_bootstrap": 0.006,
+      "r_squared": 0.16349971801463792,
+      "raw_sharpe": 0.7672227391075453,
+      "betas": {
+        "MktRF": {
+          "beta": 0.02024839649480168,
+          "se": 0.0049020949734471355,
+          "t_stat": 4.130559812586226
+        },
+        "SMB": {
+          "beta": -0.004782274827548134,
+          "se": 0.004379595870513189,
+          "t_stat": -1.0919443183664705
+        },
+        "HML": {
+          "beta": 0.017770191556790736,
+          "se": 0.004691892355840614,
+          "t_stat": 3.787425245310636
+        },
+        "RMW": {
+          "beta": -0.007918269112799109,
+          "se": 0.005562383008223026,
+          "t_stat": -1.4235389941852818
+        },
+        "CMA": {
+          "beta": 0.011384534948526197,
+          "se": 0.0073568442194074666,
+          "t_stat": 1.5474753316773544
+        },
+        "Mom": {
+          "beta": -0.006332576288099515,
+          "se": 0.003290722965744159,
+          "t_stat": -1.924372350398532
+        }
+      },
+      "ok": true
+    },
+    {
+      "edge": "accruals_inv_sloan_v1",
+      "n_obs": 675,
+      "lag_neweywest": 6,
+      "alpha_daily": -0.0001402996643100155,
+      "alpha_annualized": -0.03535551540612391,
+      "alpha_se_daily_hac": 3.441540081991845e-05,
+      "alpha_se_annualized_hac": 0.00867268100661945,
+      "alpha_tstat_hac": -4.07665350301005,
+      "alpha_ci_low_analytic": -0.05235397017909803,
+      "alpha_ci_high_analytic": -0.018357060633149788,
+      "alpha_ci_low_bootstrap": -0.05510458183053866,
+      "alpha_ci_high_bootstrap": -0.02064080577269291,
+      "alpha_p_above_zero_bootstrap": 0.0,
+      "r_squared": 0.12811204612553484,
+      "raw_sharpe": -0.536237188287217,
+      "betas": {
+        "MktRF": {
+          "beta": 0.019155549979405717,
+          "se": 0.004862836737442622,
+          "t_stat": 3.939171930637274
+        },
+        "SMB": {
+          "beta": -0.0016671537987703671,
+          "se": 0.005237673565703497,
+          "t_stat": -0.31830043966217353
+        },
+        "HML": {
+          "beta": 0.009666772548957415,
+          "se": 0.005310431999143508,
+          "t_stat": 1.820336377627379
+        },
+        "RMW": {
+          "beta": -0.013255694973937004,
+          "se": 0.006060420119617039,
+          "t_stat": -2.187256776313164
+        },
+        "CMA": {
+          "beta": 2.7383665916814565e-05,
+          "se": 0.00652404261848509,
+          "t_stat": 0.0041973462649103855
+        },
+        "Mom": {
+          "beta": -0.002707855597855878,
+          "se": 0.0031584512153717942,
+          "t_stat": -0.8573365276870757
+        }
+      },
+      "ok": true
+    },
+    {
+      "edge": "value_earnings_yield_v1",
+      "n_obs": 689,
+      "lag_neweywest": 6,
+      "alpha_daily": -0.0001573759625014014,
+      "alpha_annualized": -0.039658742550353156,
+      "alpha_se_daily_hac": 2.7663290307484858e-05,
+      "alpha_se_annualized_hac": 0.006971149157486184,
+      "alpha_tstat_hac": -5.688982068008742,
+      "alpha_ci_low_analytic": -0.05332219489902608,
+      "alpha_ci_high_analytic": -0.025995290201680236,
+      "alpha_ci_low_bootstrap": -0.05468958206912131,
+      "alpha_ci_high_bootstrap": -0.027036184171373406,
+      "alpha_p_above_zero_bootstrap": 0.0,
+      "r_squared": 0.19572985688455213,
+      "raw_sharpe": -0.8470311526117626,
+      "betas": {
+        "MktRF": {
+          "beta": 0.021654499469966126,
+          "se": 0.004713135973784086,
+          "t_stat": 4.594499201893415
+        },
+        "SMB": {
+          "beta": -0.0004007242525467295,
+          "se": 0.004047185409514713,
+          "t_stat": -0.0990130700720181
+        },
+        "HML": {
+          "beta": 0.01951367407041065,
+          "se": 0.0041066597047110616,
+          "t_stat": 4.751714403807316
+        },
+        "RMW": {
+          "beta": -0.004507778091382149,
+          "se": 0.004818849148454218,
+          "t_stat": -0.9354470232437441
+        },
+        "CMA": {
+          "beta": 0.0024480032123707415,
+          "se": 0.005719300999093634,
+          "t_stat": 0.4280248954826278
+        },
+        "Mom": {
+          "beta": -0.00647355445596211,
+          "se": 0.0030462745384022796,
+          "t_stat": -2.125072567936501
+        }
+      },
+      "ok": true
+    },
+    {
+      "edge": "accruals_inv_asset_growth_v1",
+      "n_obs": 472,
+      "lag_neweywest": 5,
+      "alpha_daily": -0.00014846423673625222,
+      "alpha_annualized": -0.037412987657535555,
+      "alpha_se_daily_hac": 2.899437181033187e-05,
+      "alpha_se_annualized_hac": 0.007306581696203631,
+      "alpha_tstat_hac": -5.120450193142257,
+      "alpha_ci_low_analytic": -0.05173388778209467,
+      "alpha_ci_high_analytic": -0.023092087532976438,
+      "alpha_ci_low_bootstrap": -0.0535591938131995,
+      "alpha_ci_high_bootstrap": -0.02333000043207908,
+      "alpha_p_above_zero_bootstrap": 0.0,
+      "r_squared": 0.16827816941165763,
+      "raw_sharpe": -0.39036357364132146,
+      "betas": {
+        "MktRF": {
+          "beta": 0.014667307057419124,
+          "se": 0.0038944170594996134,
+          "t_stat": 3.766239422570653
+        },
+        "SMB": {
+          "beta": -0.004429391959258324,
+          "se": 0.005128333046701857,
+          "t_stat": -0.8637098875836394
+        },
+        "HML": {
+          "beta": 0.016114838269321502,
+          "se": 0.005758787314277942,
+          "t_stat": 2.7983041202732872
+        },
+        "RMW": {
+          "beta": -0.01775947948716912,
+          "se": 0.006322153234911857,
+          "t_stat": -2.8090871618072573
+        },
+        "CMA": {
+          "beta": 0.004640151715222412,
+          "se": 0.0064791973416894735,
+          "t_stat": 0.7161615043527099
+        },
+        "Mom": {
+          "beta": -0.0038444817097985067,
+          "se": 0.002663127393487556,
+          "t_stat": -1.4435966222268786
+        }
+      },
+      "ok": true
+    }
+  ]
+}
