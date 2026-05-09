@@ -1,7 +1,8 @@
 import pandas as pd
 import numpy as np
 import logging
-from typing import Dict, List, Optional, Tuple
+from datetime import date as _date
+from typing import Any, Dict, List, Optional, Tuple
 from ta.trend import SMAIndicator, EMAIndicator, MACD, ADXIndicator
 from ta.momentum import RSIIndicator
 from ta.volatility import AverageTrueRange, BollingerBands
@@ -65,6 +66,99 @@ _FOUNDRY_PROGRAMMER_ERRORS: Tuple[type, ...] = (
 # during ad-hoc unit tests degrades to "no Foundry features available"
 # instead of import-failing the whole module.
 _FOUNDRY_FEATURES_IMPORTED = False
+
+
+# ----------------------------------------------------------------------
+# Foundry vectorization caches (T-2026-05-08-013).
+#
+# TreeScanner's production call path iterates ~109 tickers and invokes
+# `compute_all_features(..., ticker=T)` per ticker. Inside, every
+# tier-A/B Foundry feature is evaluated on the (T, date_seq) grid. A
+# subset of features (calendar, FRED-macro, market-wide cross-asset)
+# return values that are FUNCTIONS OF DATE ONLY — calling them per
+# ticker re-does identical work N times. The cache below classifies
+# features empirically once-per-process and memoizes their per-date
+# values so the second-through-Nth ticker hits the cache.
+#
+# Memory bound: ~8 ticker-independent features × ~2000 trading dates
+# = ~16K entries × 24 bytes/entry ≈ 400 KB. Trivial.
+#
+# Concurrency: Engine D is single-threaded; no locking needed.
+#
+# Test interaction: the autouse `reset_registries` fixture in
+# `tests/test_feature_foundry.py` clears the FeatureRegistry but NOT
+# these caches. That's intentional — the caches are keyed by
+# (feature_id, date) and the feature_ids are stable across the
+# fixture's snapshot/clear/restore. Tests that change feature
+# semantics under the same id should call `_clear_foundry_caches()`
+# explicitly.
+# ----------------------------------------------------------------------
+_FOUNDRY_TICKER_INDEPENDENCE: Dict[str, bool] = {}
+_FOUNDRY_TICKER_INDEPENDENT_VALUE_CACHE: Dict[Tuple[str, _date], Any] = {}
+
+# Sentinel for "cache miss" — distinguishes from a legitimately-cached
+# `None` (which itself means "feature returned None for this date").
+# Using a plain object lets us write `if cached is _CACHE_MISS` without
+# colliding with any value the feature could legitimately return.
+_CACHE_MISS = object()
+
+# Synthetic ticker names used for the empirical classification probe.
+# They MUST NOT correspond to any real ticker in `data/processed/` so
+# `local_ohlcv`-backed features return None for both samples (which
+# means the feature gets safely classified as ticker-DEPENDENT — the
+# correctness-preserving default).
+_FOUNDRY_PROBE_TICKER_A = "__FOUNDRY_PROBE_AAA__"
+_FOUNDRY_PROBE_TICKER_B = "__FOUNDRY_PROBE_BBB__"
+
+# Three sample dates spanning a year, biased toward weekdays. If a
+# feature returns the SAME non-None value for both probe tickers on
+# AT LEAST ONE of these dates, it's classified as ticker-independent.
+_FOUNDRY_PROBE_DATES: Tuple[_date, ...] = (
+    _date(2024, 1, 2),
+    _date(2024, 6, 17),
+    _date(2024, 12, 30),
+)
+
+
+def _classify_feature_ticker_independence(feat) -> bool:
+    """Empirically determine whether a Foundry feature is ticker-
+    independent. Cached after first call.
+
+    A feature is ticker-independent iff `feat.func(ticker, dt)` returns
+    the same non-None value for two distinct synthetic tickers on at
+    least one of `_FOUNDRY_PROBE_DATES`. This catches calendar / macro
+    features that don't depend on ticker; it correctly rejects
+    `local_ohlcv`-backed features (they return None for synthetic
+    tickers because no CSV exists, which fails the "non-None" test).
+    """
+    fid = feat.feature_id
+    if fid in _FOUNDRY_TICKER_INDEPENDENCE:
+        return _FOUNDRY_TICKER_INDEPENDENCE[fid]
+    func = feat.func
+    independent = False
+    for d in _FOUNDRY_PROBE_DATES:
+        try:
+            v_a = func(_FOUNDRY_PROBE_TICKER_A, d)
+            v_b = func(_FOUNDRY_PROBE_TICKER_B, d)
+        except Exception:
+            # A probe failure is informative ("feature errors on this
+            # ticker shape") but not classifying — skip and try the
+            # next date. If all probes fail, the feature stays in the
+            # safe default (ticker-dependent → no cache).
+            continue
+        if v_a is not None and v_b is not None and v_a == v_b:
+            independent = True
+            break
+    _FOUNDRY_TICKER_INDEPENDENCE[fid] = independent
+    return independent
+
+
+def _clear_foundry_caches() -> None:
+    """Test helper: drop both the classification map and the value
+    cache. Use in tests that swap a feature's implementation under
+    the same `feature_id`."""
+    _FOUNDRY_TICKER_INDEPENDENCE.clear()
+    _FOUNDRY_TICKER_INDEPENDENT_VALUE_CACHE.clear()
 
 
 def _ensure_foundry_features_loaded() -> bool:
@@ -218,19 +312,50 @@ class FeatureEngineer:
 
         for feat in feats:
             col_name = f"Foundry_{feat.feature_id}"
+            # Pull `func` and `feature_id` out of the inner loop so we
+            # don't pay attribute-lookup cost per-bar.
+            func = feat.func
+            fid = feat.feature_id
+            ticker_independent = _classify_feature_ticker_independence(feat)
             values: List[float] = []
             for dt in date_seq:
-                try:
-                    v = feat(ticker, dt)
-                except _FOUNDRY_PROGRAMMER_ERRORS:
-                    raise
-                except Exception as exc:
-                    logger.debug(
-                        "[FEATURE_ENG] Foundry feature %r dropped %s @ %s: %s: %s",
-                        feat.feature_id, ticker, dt,
-                        type(exc).__name__, exc,
+                # ticker-independent path: hit the per-process cache
+                # keyed by (fid, dt) — second+ ticker calls hit this
+                # for calendar / FRED-macro / market-wide features.
+                if ticker_independent:
+                    cache_key = (fid, dt)
+                    cached = _FOUNDRY_TICKER_INDEPENDENT_VALUE_CACHE.get(
+                        cache_key, _CACHE_MISS,
                     )
-                    v = None
+                    if cached is not _CACHE_MISS:
+                        v = cached
+                    else:
+                        try:
+                            v = func(ticker, dt)
+                        except _FOUNDRY_PROGRAMMER_ERRORS:
+                            raise
+                        except Exception as exc:
+                            logger.debug(
+                                "[FEATURE_ENG] Foundry feature %r dropped %s @ %s: %s: %s",
+                                fid, ticker, dt,
+                                type(exc).__name__, exc,
+                            )
+                            v = None
+                        _FOUNDRY_TICKER_INDEPENDENT_VALUE_CACHE[cache_key] = v
+                else:
+                    # ticker-dependent path: scalar call (no cache —
+                    # would explode in size on a 109-ticker universe).
+                    try:
+                        v = func(ticker, dt)
+                    except _FOUNDRY_PROGRAMMER_ERRORS:
+                        raise
+                    except Exception as exc:
+                        logger.debug(
+                            "[FEATURE_ENG] Foundry feature %r dropped %s @ %s: %s: %s",
+                            fid, ticker, dt,
+                            type(exc).__name__, exc,
+                        )
+                        v = None
                 if v is None:
                     values.append(np.nan)
                 else:
