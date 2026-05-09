@@ -18,6 +18,7 @@ Output schema per ticker:
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Set
 
@@ -25,6 +26,17 @@ import numpy as np
 import pandas as pd
 
 from engines.engine_a_alpha.edge_taxonomy import EDGE_CATEGORY_MAP
+
+logger = logging.getLogger(__name__)
+
+# See engines/engine_a_alpha/alpha_engine.py for the rationale (T-005 +
+# T-2026-05-08-011). Re-raising programmer errors makes feature-name
+# drift / type errors in the per-edge feature collection surface
+# immediately rather than silently dropping the edge from the
+# meta-learner's input row.
+_PROGRAMMER_ERRORS = (
+    TypeError, AttributeError, NameError, AssertionError, ImportError,
+)
 
 
 # ----------------------------- Settings ----------------------------- #
@@ -302,7 +314,29 @@ class SignalProcessor:
             try:
                 feature_inputs[edge_name] = float(raw)
                 any_present = True
-            except Exception:
+            except Exception as e:
+                # Narrow-catch (T-2026-05-08-011): the legitimate
+                # failure here is `float(raw)` raising ValueError or
+                # TypeError on a non-coercible raw — but TypeError
+                # specifically also catches programmer errors at this
+                # site (e.g., `raw` is a list because an edge changed
+                # its return shape). Allow ValueError as the explicit
+                # operational path; everything else propagates.
+                if isinstance(e, ValueError):
+                    logger.debug(
+                        "[SIGNAL_PROCESSOR] dropped non-coercible feature "
+                        "%r: %s",
+                        edge_name, e,
+                    )
+                    continue
+                if isinstance(e, _PROGRAMMER_ERRORS):
+                    raise
+                # Any other exception type — defensive log + skip,
+                # consistent with the broader narrow-catch policy.
+                logger.warning(
+                    "[SIGNAL_PROCESSOR] feature collection error on %r: %s: %s",
+                    edge_name, type(e).__name__, e,
+                )
                 continue
         if not any_present:
             # No trained feature edges fired on this bar — model has nothing
