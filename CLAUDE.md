@@ -63,6 +63,27 @@ current behavior. For current code-quality state, read
 `docs/State/health_check.md`. For current strategy/plan, read 
 `docs/State/forward_plan.md` and `docs/State/ROADMAP.md`.
 
+**Sharpe headlines must report bootstrap CI; kill thresholds 
+must be CI-aware, not point-estimate.** Every measurement that 
+quotes a Sharpe (or Sortino, or any other risk-adjusted metric) 
+in an audit doc, session summary, or `health_check.md` entry 
+must also report a bootstrap-CI lower bound from 
+`MetricsEngine.bootstrap_distribution` — already wired into 
+`performance_summary.json` per backtest. A bare point-estimate 
+("Sharpe = 1.30") with no CI is not a measurement; it's a 
+guess. Kill thresholds and gating decisions follow the same 
+rule: compare against `ci_low`, not `point_estimate`. The 
+established kill-thesis trigger of "Sharpe < 0.4 net of all 
+costs" reads as `ci_low < 0.4` (not `point < 0.4`); a 
+point-estimate of 0.45 with `ci_low = 0.10` does NOT clear the 
+gate. This rule prevents implicit goalpost-moving when noise 
+straddles a threshold, and keeps the discipline aligned with 
+the "deterministic measurement always" rule already in force. 
+Block-bootstrap (Künsch 1989, default 1000 iter, auto block 
+length per Politis-White) is the project standard. Iid 
+resampling underestimates CI width on serially-correlated 
+financial returns and is not acceptable.
+
 ## Git discipline
 
 **Commit early and often.** After any logically-complete unit of 
