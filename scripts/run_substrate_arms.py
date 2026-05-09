@@ -38,7 +38,6 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import shutil
 import sys
 import time
 from contextlib import contextmanager
@@ -246,15 +245,18 @@ def run_smoke() -> int:
 
     rec = results[-1]
     canon = rec.get("trades_canon_md5", "")
-    trades = rec.get("total_trades", 0) or 0
     sharpe = rec.get("sharpe")
 
-    if canon == EMPTY_MD5 or trades == 0:
+    # Kill on canon md5 only — total_trades is sometimes missing from
+    # the summary dict on this code path (None) which is NOT a zero-trade
+    # signal. Empty trades.csv has a deterministic md5 (EMPTY_MD5);
+    # non-empty trades.csv has a content-derived md5. That's the real
+    # zero-trade test.
+    if canon == EMPTY_MD5:
         sentinel = RESULTS_DIR / "SMOKE_BLOCKED.txt"
         sentinel.write_text(
             f"BLOCKED — 2021 zero-trade reproduces; regression not fully fixed.\n"
-            f"canon md5: {canon}\n"
-            f"total trades: {trades}\n"
+            f"canon md5: {canon} (matches empty-file md5)\n"
             f"sharpe: {sharpe}\n"
         )
         print(f"[SUBSTRATE] SMOKE BLOCKED (zero-trade) — see {sentinel}", flush=True)
@@ -262,9 +264,9 @@ def run_smoke() -> int:
 
     sentinel = RESULTS_DIR / "SMOKE_PASS.txt"
     sentinel.write_text(
-        f"smoke 2021 Arm 1: Sharpe {sharpe}, trades {trades}, canon {canon}\n"
+        f"smoke 2021 Arm 1: Sharpe {sharpe}, canon {canon}\n"
     )
-    print(f"[SUBSTRATE] SMOKE PASS — Sharpe {sharpe}, trades {trades}", flush=True)
+    print(f"[SUBSTRATE] SMOKE PASS — Sharpe {sharpe}, canon {canon}", flush=True)
     return 0
 
 
