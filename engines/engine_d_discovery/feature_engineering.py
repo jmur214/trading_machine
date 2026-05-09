@@ -1,12 +1,91 @@
 import pandas as pd
 import numpy as np
 import logging
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 from ta.trend import SMAIndicator, EMAIndicator, MACD, ADXIndicator
 from ta.momentum import RSIIndicator
 from ta.volatility import AverageTrueRange, BollingerBands
 
 logger = logging.getLogger("FEATURE_ENG")
+
+
+# ----------------------------------------------------------------------
+# Fundamentals-percentile vocabulary (Change 2 of T-2026-05-08-006).
+# These are the V/Q/A factor columns the SimFin adapter publishes via
+# `engines/data_manager/fundamentals/simfin_adapter.py`. Any of these
+# present in the cross-sectional input DataFrame gets a corresponding
+# `XS_<PrettyName>_Pctile` column. Adding a new factor here is the only
+# step needed to expose it to Discovery.
+# ----------------------------------------------------------------------
+_FUNDAMENTALS_COLUMNS: Tuple[str, ...] = (
+    "earnings_yield_book",
+    "book_to_assets",
+    "roe",
+    "roa",
+    "gross_margin",
+    "gross_profitability",
+    "sloan_accruals",
+    "asset_growth",
+    # Price-relative valuation ratios — present when the caller has
+    # joined a price-aware ratio onto the panel.
+    "pe_ratio",
+    "pb_ratio",
+    "book_to_market",
+    "earnings_yield_market",
+)
+
+# Acronyms preserved as upper-case in the pretty name (for column
+# legibility — `XS_ROE_Pctile` reads cleaner than `XS_Roe_Pctile`).
+_FUND_ACRONYMS = {"PE", "PB", "PS", "ROE", "ROA", "ROIC", "EPS",
+                  "EBIT", "EBITDA", "EV", "FCF"}
+
+
+def _pretty_fund_col(col: str) -> str:
+    """`pe_ratio` -> `PE_Ratio`; `book_to_market` -> `Book_To_Market`."""
+    return "_".join(
+        p.upper() if p.upper() in _FUND_ACRONYMS else p.capitalize()
+        for p in col.split("_")
+    )
+
+
+# Programmer-error exceptions that MUST propagate from a Foundry feature
+# evaluation. Same set the gauntlet narrow-catch (commits 453e04e,
+# ee42ab7) and the backtest_controller fix (T-2026-05-08-005, commit
+# 129c7ba) re-raise. A Foundry feature that raises any of these has a
+# bug — silently treating it as "no data" hides interface drift.
+_FOUNDRY_PROGRAMMER_ERRORS: Tuple[type, ...] = (
+    TypeError, AttributeError, NameError, AssertionError, ImportError,
+)
+
+
+# Module-level singleton flag — force-import the Foundry features
+# package exactly once per process so all `@feature` decorators
+# self-register before TreeScanner asks for the registry. Wrapped in
+# a function (not a top-level import) so a missing optional dependency
+# during ad-hoc unit tests degrades to "no Foundry features available"
+# instead of import-failing the whole module.
+_FOUNDRY_FEATURES_IMPORTED = False
+
+
+def _ensure_foundry_features_loaded() -> bool:
+    """Force-import the Foundry features package on first call. Returns
+    True if the registry is usable, False if the import failed (in which
+    case Engine D continues with the technical-only vocabulary).
+    """
+    global _FOUNDRY_FEATURES_IMPORTED
+    if _FOUNDRY_FEATURES_IMPORTED:
+        return True
+    try:
+        import core.feature_foundry.features  # noqa: F401  trigger self-register
+        _FOUNDRY_FEATURES_IMPORTED = True
+        return True
+    except Exception as exc:
+        logger.warning(
+            "[FEATURE_ENG] Foundry features unavailable; "
+            "Engine D running on technical-only vocabulary: %s: %s",
+            type(exc).__name__, exc,
+        )
+        return False
 
 class FeatureEngineer:
     """
@@ -25,7 +104,15 @@ class FeatureEngineer:
     """
 
     def __init__(self):
-        pass
+        # Force-import the Foundry features package so all `@feature`
+        # decorators self-register before any TreeScanner consumer asks
+        # the registry for them. Idempotent (singleton flag); safe if
+        # the autouse `reset_registries` test fixture in
+        # `tests/test_feature_foundry.py` snapshots the registry before
+        # a test clears it, because the modules stay in `sys.modules`
+        # and the snapshot captures the registered features at fixture
+        # entry.
+        _ensure_foundry_features_loaded()
 
     def compute_all_features(
         self,
@@ -35,9 +122,17 @@ class FeatureEngineer:
         tlt_df: Optional[pd.DataFrame] = None,
         gld_df: Optional[pd.DataFrame] = None,
         regime_meta: Optional[Dict] = None,
+        ticker: Optional[str] = None,
     ) -> pd.DataFrame:
         """
         Master factory method. Computes all feature blocks and returns a unified DataFrame.
+
+        ``ticker`` (additive in T-2026-05-08-006) is the symbol the
+        ohlc_df belongs to. When provided, every tier-A and tier-B
+        Foundry feature is evaluated on the (ticker, date) grid and
+        added as ``Foundry_<feature_id>`` columns. When ``None`` the
+        Foundry pass is skipped — preserves backward-compat for
+        callers that don't yet thread the ticker through.
         """
         if ohlc_df.empty:
             return pd.DataFrame()
@@ -66,9 +161,84 @@ class FeatureEngineer:
         if regime_meta:
             df = self._compute_regime_features(df, regime_meta)
 
+        # 8. Foundry features — point-evaluations from the
+        # `core.feature_foundry` registry. Vocabulary expansion;
+        # Discovery TreeScanner consumes whatever columns we provide.
+        if ticker:
+            df = self._compute_foundry_features(df, ticker)
+
         # Cleanup (Inf, NaN)
         df = df.replace([np.inf, -np.inf], np.nan)
         df = df.ffill()
+
+        return df
+
+    # ------------------------------------------------------------------
+    # Foundry Features (point-evaluations on per-ticker per-date grid)
+    # ------------------------------------------------------------------
+
+    def _compute_foundry_features(self, df: pd.DataFrame, ticker: str) -> pd.DataFrame:
+        """Evaluate every tier-A and tier-B Foundry feature for ``ticker``
+        across ``df.index`` and append columns prefixed ``Foundry_``.
+
+        Skipped tiers: ``adversarial`` (auto-generated permuted twins —
+        not vocabulary, only used by the leakage detector).
+
+        Per-feature failure modes:
+          - feature returns ``None``: column gets ``NaN`` for that bar.
+          - feature raises a programmer error (TypeError, AttributeError,
+            NameError, AssertionError, ImportError): re-raise. Same
+            policy as `_fundamentals_helpers._PROGRAMMER_ERRORS` — these
+            are bugs, not missing data.
+          - feature raises any other Exception: column gets ``NaN`` for
+            that bar; logged at DEBUG so audits surface unexpected
+            swallowing.
+        """
+        if not isinstance(df.index, pd.DatetimeIndex):
+            return df
+
+        if not _ensure_foundry_features_loaded():
+            return df
+
+        # Local import — avoids a circular import at module load time
+        # if the test harness arranges modules in unusual order.
+        from core.feature_foundry import get_feature_registry
+
+        registry = get_feature_registry()
+        feats = [
+            f for f in registry.list_features()
+            if f.tier in ("A", "B")  # skip "adversarial"
+        ]
+
+        # Pre-extract the date sequence once. Foundry features expect
+        # `datetime.date`; df.index is `Timestamp` so we map upfront.
+        date_seq = [
+            (d.date() if hasattr(d, "date") else d) for d in df.index
+        ]
+
+        for feat in feats:
+            col_name = f"Foundry_{feat.feature_id}"
+            values: List[float] = []
+            for dt in date_seq:
+                try:
+                    v = feat(ticker, dt)
+                except _FOUNDRY_PROGRAMMER_ERRORS:
+                    raise
+                except Exception as exc:
+                    logger.debug(
+                        "[FEATURE_ENG] Foundry feature %r dropped %s @ %s: %s: %s",
+                        feat.feature_id, ticker, dt,
+                        type(exc).__name__, exc,
+                    )
+                    v = None
+                if v is None:
+                    values.append(np.nan)
+                else:
+                    try:
+                        values.append(float(v))
+                    except (TypeError, ValueError):
+                        values.append(np.nan)
+            df[col_name] = values
 
         return df
 
@@ -82,8 +252,12 @@ class FeatureEngineer:
         Compute cross-sectional rank features across the universe.
         Must be called AFTER per-ticker features are computed and concatenated.
 
-        Adds percentile ranks for momentum and volume features relative to the
-        universe on each date.
+        Adds percentile ranks for momentum, volume, and (when present in
+        the input frame) the V/Q/A fundamentals factors. New in
+        T-2026-05-08-006: any column from `_FUNDAMENTALS_COLUMNS`
+        present in `big_df` gets a corresponding `XS_<PrettyName>_Pctile`.
+        Caller is responsible for PIT-aligned fundamentals — convention
+        established in `engines/engine_a_alpha/edges/_fundamentals_helpers.py`.
         """
         if big_df.empty or ticker_col not in big_df.columns:
             return big_df
@@ -117,6 +291,12 @@ class FeatureEngineer:
 
         if "ATR_Pct" in df.columns:
             rank_targets["ATR_Pct"] = "XS_ATR_Pctile"
+
+        # Fundamentals percentile ranks — V/Q/A factor vocabulary.
+        # Only columns actually present in the input frame are added.
+        for fund_col in _FUNDAMENTALS_COLUMNS:
+            if fund_col in df.columns:
+                rank_targets[fund_col] = f"XS_{_pretty_fund_col(fund_col)}_Pctile"
 
         # Compute percentile ranks within each date
         for src_col, dst_col in rank_targets.items():
