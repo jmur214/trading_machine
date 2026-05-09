@@ -1,0 +1,640 @@
+{
+  "generated": "2026-05-09T05:38:48",
+  "verdict": {
+    "arm1_bucket": "COLLAPSED (<0.5) \u2014 closure didn't recover prior universe-aware result",
+    "arm2_bucket": "NEUTRAL (0<=\u0394<+0.2) \u2014 pruning + HMM didn't materially help",
+    "delta": 0.023799999999999988,
+    "contingent_2x2": false,
+    "summary": "Arm 1 mean Sharpe 0.2702 \u2192 COLLAPSED (<0.5) \u2014 closure didn't recover prior universe-aware result. Arm 2 mean Sharpe 0.2940, \u0394=+0.0238 \u2192 NEUTRAL (0<=\u0394<+0.2) \u2014 pruning + HMM didn't materially help. Contingent 2x2 decomposition: do NOT fire."
+  },
+  "arm1": {
+    "metrics": {
+      "per_year": [
+        {
+          "year": 2021,
+          "n_reps": 3,
+          "sharpe_mean": 0.413,
+          "sharpe_reps": [
+            0.413,
+            0.413,
+            0.413
+          ],
+          "sortino_mean": null,
+          "mdd_mean": -7.739999999999999,
+          "win_rate_mean": 56.919999999999995,
+          "trades_canon_md5_unique": 1,
+          "determinism_pass": true
+        },
+        {
+          "year": 2022,
+          "n_reps": 3,
+          "sharpe_mean": 0.116,
+          "sharpe_reps": [
+            0.116,
+            0.116,
+            0.116
+          ],
+          "sortino_mean": null,
+          "mdd_mean": -2.18,
+          "win_rate_mean": 43.0,
+          "trades_canon_md5_unique": 1,
+          "determinism_pass": true
+        },
+        {
+          "year": 2023,
+          "n_reps": 3,
+          "sharpe_mean": 0.261,
+          "sharpe_reps": [
+            0.261,
+            0.261,
+            0.261
+          ],
+          "sortino_mean": null,
+          "mdd_mean": -6.19,
+          "win_rate_mean": 55.95000000000001,
+          "trades_canon_md5_unique": 1,
+          "determinism_pass": true
+        },
+        {
+          "year": 2024,
+          "n_reps": 3,
+          "sharpe_mean": 0.236,
+          "sharpe_reps": [
+            0.236,
+            0.236,
+            0.236
+          ],
+          "sortino_mean": null,
+          "mdd_mean": -1.83,
+          "win_rate_mean": 41.13,
+          "trades_canon_md5_unique": 1,
+          "determinism_pass": true
+        },
+        {
+          "year": 2025,
+          "n_reps": 3,
+          "sharpe_mean": 0.325,
+          "sharpe_reps": [
+            0.325,
+            0.325,
+            0.325
+          ],
+          "sortino_mean": null,
+          "mdd_mean": -2.56,
+          "win_rate_mean": 50.22,
+          "trades_canon_md5_unique": 1,
+          "determinism_pass": true
+        }
+      ],
+      "mean_sharpe": 0.2702,
+      "mean_sortino": null,
+      "mean_mdd_pct": -4.1,
+      "mean_win_rate_pct": 49.444
+    },
+    "bootstrap": {
+      "n_obs": 1250,
+      "sharpe": {
+        "point_estimate": 0.2619586410279322,
+        "mean": 0.19831100175402816,
+        "std": 0.29353016668864407,
+        "median": 0.19180404010236113,
+        "ci_low": -0.3828897490642074,
+        "ci_high": 0.7706987996449267,
+        "p_above_zero": 0.735,
+        "n_iterations": 1000,
+        "block_length": 11
+      },
+      "sortino": {
+        "point_estimate": 0.27955227593911774,
+        "mean": 0.21501509792015838,
+        "std": 0.3167362603002776,
+        "median": 0.20360334127210886,
+        "ci_low": -0.3908789449413916,
+        "ci_high": 0.8517541914676461,
+        "p_above_zero": 0.735,
+        "n_iterations": 1000,
+        "block_length": 11
+      }
+    },
+    "attribution": {
+      "per_year": {
+        "2021": {
+          "gap_fill_v1": {
+            "pnl_total": 1157.8300000000004,
+            "n_trades": 83,
+            "win_rate": 0.7951807228915663
+          },
+          "volume_anomaly_v1": {
+            "pnl_total": 1732.7099999999998,
+            "n_trades": 77,
+            "win_rate": 0.7532467532467533
+          },
+          "value_earnings_yield_v1": {
+            "pnl_total": -356.52,
+            "n_trades": 301,
+            "win_rate": 0.49169435215946844
+          },
+          "value_book_to_market_v1": {
+            "pnl_total": 3006.38,
+            "n_trades": 408,
+            "win_rate": 0.5931372549019608
+          },
+          "accruals_inv_sloan_v1": {
+            "pnl_total": 535.83,
+            "n_trades": 410,
+            "win_rate": 0.5341463414634147
+          },
+          "accruals_inv_asset_growth_v1": {
+            "pnl_total": -35.64999999999999,
+            "n_trades": 62,
+            "win_rate": 0.5161290322580645
+          }
+        },
+        "2022": {
+          "gap_fill_v1": {
+            "pnl_total": 1202.1499999999999,
+            "n_trades": 62,
+            "win_rate": 0.6612903225806451
+          },
+          "volume_anomaly_v1": {
+            "pnl_total": 1239.23,
+            "n_trades": 96,
+            "win_rate": 0.7083333333333334
+          },
+          "value_earnings_yield_v1": {
+            "pnl_total": -1179.33,
+            "n_trades": 482,
+            "win_rate": 0.38381742738589214
+          },
+          "value_book_to_market_v1": {
+            "pnl_total": -77.75,
+            "n_trades": 257,
+            "win_rate": 0.45525291828793774
+          },
+          "accruals_inv_sloan_v1": {
+            "pnl_total": -790.1699999999998,
+            "n_trades": 332,
+            "win_rate": 0.3614457831325301
+          },
+          "accruals_inv_asset_growth_v1": {
+            "pnl_total": -534.7700000000001,
+            "n_trades": 189,
+            "win_rate": 0.4126984126984127
+          }
+        },
+        "2023": {
+          "gap_fill_v1": {
+            "pnl_total": 224.77999999999994,
+            "n_trades": 47,
+            "win_rate": 0.6170212765957447
+          },
+          "volume_anomaly_v1": {
+            "pnl_total": 625.9,
+            "n_trades": 107,
+            "win_rate": 0.7289719626168224
+          },
+          "value_earnings_yield_v1": {
+            "pnl_total": 1215.17,
+            "n_trades": 624,
+            "win_rate": 0.5336538461538461
+          },
+          "value_book_to_market_v1": {
+            "pnl_total": 306.19,
+            "n_trades": 389,
+            "win_rate": 0.532133676092545
+          },
+          "accruals_inv_sloan_v1": {
+            "pnl_total": 800.2199999999999,
+            "n_trades": 396,
+            "win_rate": 0.547979797979798
+          },
+          "accruals_inv_asset_growth_v1": {
+            "pnl_total": 843.0999999999999,
+            "n_trades": 276,
+            "win_rate": 0.5978260869565217
+          }
+        },
+        "2024": {
+          "gap_fill_v1": {
+            "pnl_total": 204.82999999999998,
+            "n_trades": 90,
+            "win_rate": 0.7333333333333333
+          },
+          "volume_anomaly_v1": {
+            "pnl_total": -66.17999999999998,
+            "n_trades": 92,
+            "win_rate": 0.5978260869565217
+          },
+          "value_earnings_yield_v1": {
+            "pnl_total": -1751.88,
+            "n_trades": 491,
+            "win_rate": 0.34623217922606925
+          },
+          "value_book_to_market_v1": {
+            "pnl_total": -992.03,
+            "n_trades": 279,
+            "win_rate": 0.35125448028673834
+          },
+          "accruals_inv_sloan_v1": {
+            "pnl_total": -855.6700000000001,
+            "n_trades": 353,
+            "win_rate": 0.41076487252124644
+          },
+          "accruals_inv_asset_growth_v1": {
+            "pnl_total": -486.91999999999996,
+            "n_trades": 220,
+            "win_rate": 0.41363636363636364
+          }
+        },
+        "2025": {
+          "gap_fill_v1": {
+            "pnl_total": 619.7099999999998,
+            "n_trades": 151,
+            "win_rate": 0.6490066225165563
+          },
+          "volume_anomaly_v1": {
+            "pnl_total": 995.27,
+            "n_trades": 170,
+            "win_rate": 0.7235294117647059
+          },
+          "value_earnings_yield_v1": {
+            "pnl_total": -279.52,
+            "n_trades": 503,
+            "win_rate": 0.4870775347912525
+          },
+          "value_book_to_market_v1": {
+            "pnl_total": -161.2300000000001,
+            "n_trades": 341,
+            "win_rate": 0.501466275659824
+          },
+          "accruals_inv_sloan_v1": {
+            "pnl_total": -1313.5900000000001,
+            "n_trades": 367,
+            "win_rate": 0.3760217983651226
+          },
+          "accruals_inv_asset_growth_v1": {
+            "pnl_total": -443.77,
+            "n_trades": 247,
+            "win_rate": 0.4777327935222672
+          }
+        }
+      },
+      "grand_total": {
+        "gap_fill_v1": {
+          "pnl_total": 3409.3,
+          "n_trades": 433,
+          "win_rate": 0.6928406466512702
+        },
+        "volume_anomaly_v1": {
+          "pnl_total": 4526.93,
+          "n_trades": 542,
+          "win_rate": 0.7047970479704797
+        },
+        "value_earnings_yield_v1": {
+          "pnl_total": -2352.08,
+          "n_trades": 2401,
+          "win_rate": 0.45022907122032485
+        },
+        "value_book_to_market_v1": {
+          "pnl_total": 2081.56,
+          "n_trades": 1674,
+          "win_rate": 0.498805256869773
+        },
+        "accruals_inv_sloan_v1": {
+          "pnl_total": -1623.38,
+          "n_trades": 1858,
+          "win_rate": 0.45156081808396126
+        },
+        "accruals_inv_asset_growth_v1": {
+          "pnl_total": -658.0100000000001,
+          "n_trades": 994,
+          "win_rate": 0.4869215291750503
+        }
+      }
+    },
+    "n_runs": 15
+  },
+  "arm2": {
+    "metrics": {
+      "per_year": [
+        {
+          "year": 2021,
+          "n_reps": 3,
+          "sharpe_mean": 0.416,
+          "sharpe_reps": [
+            0.416,
+            0.416,
+            0.416
+          ],
+          "sortino_mean": null,
+          "mdd_mean": -8.15,
+          "win_rate_mean": 58.03,
+          "trades_canon_md5_unique": 1,
+          "determinism_pass": true
+        },
+        {
+          "year": 2022,
+          "n_reps": 3,
+          "sharpe_mean": 0.282,
+          "sharpe_reps": [
+            0.282,
+            0.282,
+            0.282
+          ],
+          "sortino_mean": null,
+          "mdd_mean": -4.01,
+          "win_rate_mean": 42.74,
+          "trades_canon_md5_unique": 1,
+          "determinism_pass": true
+        },
+        {
+          "year": 2023,
+          "n_reps": 3,
+          "sharpe_mean": 0.34800000000000003,
+          "sharpe_reps": [
+            0.348,
+            0.348,
+            0.348
+          ],
+          "sortino_mean": null,
+          "mdd_mean": -8.61,
+          "win_rate_mean": 57.24,
+          "trades_canon_md5_unique": 1,
+          "determinism_pass": true
+        },
+        {
+          "year": 2024,
+          "n_reps": 3,
+          "sharpe_mean": 0.215,
+          "sharpe_reps": [
+            0.215,
+            0.215,
+            0.215
+          ],
+          "sortino_mean": null,
+          "mdd_mean": -4.37,
+          "win_rate_mean": 47.03,
+          "trades_canon_md5_unique": 1,
+          "determinism_pass": true
+        },
+        {
+          "year": 2025,
+          "n_reps": 3,
+          "sharpe_mean": 0.209,
+          "sharpe_reps": [
+            0.209,
+            0.209,
+            0.209
+          ],
+          "sortino_mean": null,
+          "mdd_mean": -4.18,
+          "win_rate_mean": 41.2,
+          "trades_canon_md5_unique": 1,
+          "determinism_pass": true
+        }
+      ],
+      "mean_sharpe": 0.294,
+      "mean_sortino": null,
+      "mean_mdd_pct": -5.864,
+      "mean_win_rate_pct": 49.248000000000005
+    },
+    "bootstrap": {
+      "n_obs": 1250,
+      "sharpe": {
+        "point_estimate": 0.2996169492352561,
+        "mean": 0.23865005199166212,
+        "std": 0.2711177827992289,
+        "median": 0.22937427916246675,
+        "ci_low": -0.2700372810161733,
+        "ci_high": 0.761418672462724,
+        "p_above_zero": 0.788,
+        "n_iterations": 1000,
+        "block_length": 11
+      },
+      "sortino": {
+        "point_estimate": 0.4417969531814798,
+        "mean": 0.35305760941567005,
+        "std": 0.400565244216502,
+        "median": 0.34137306193995276,
+        "ci_low": -0.39559982941395455,
+        "ci_high": 1.1247203008904603,
+        "p_above_zero": 0.788,
+        "n_iterations": 1000,
+        "block_length": 11
+      }
+    },
+    "attribution": {
+      "per_year": {
+        "2021": {
+          "gap_fill_v1": {
+            "pnl_total": 606.6299999999998,
+            "n_trades": 36,
+            "win_rate": 0.6944444444444444
+          },
+          "volume_anomaly_v1": {
+            "pnl_total": 2152.68,
+            "n_trades": 98,
+            "win_rate": 0.7448979591836735
+          },
+          "value_book_to_market_v1": {
+            "pnl_total": 2316.8000000000006,
+            "n_trades": 580,
+            "win_rate": 0.5465517241379311
+          },
+          "accruals_inv_sloan_v1": {
+            "pnl_total": 2447.48,
+            "n_trades": 508,
+            "win_rate": 0.5807086614173228
+          }
+        },
+        "2022": {
+          "gap_fill_v1": {
+            "pnl_total": 161.29000000000002,
+            "n_trades": 75,
+            "win_rate": 0.6133333333333333
+          },
+          "volume_anomaly_v1": {
+            "pnl_total": 1962.44,
+            "n_trades": 115,
+            "win_rate": 0.6260869565217392
+          },
+          "value_book_to_market_v1": {
+            "pnl_total": -1343.6200000000001,
+            "n_trades": 436,
+            "win_rate": 0.3944954128440367
+          },
+          "accruals_inv_sloan_v1": {
+            "pnl_total": -2660.79,
+            "n_trades": 357,
+            "win_rate": 0.3641456582633053
+          }
+        },
+        "2023": {
+          "gap_fill_v1": {
+            "pnl_total": 1018.61,
+            "n_trades": 69,
+            "win_rate": 0.6086956521739131
+          },
+          "volume_anomaly_v1": {
+            "pnl_total": 819.71,
+            "n_trades": 121,
+            "win_rate": 0.4628099173553719
+          },
+          "value_book_to_market_v1": {
+            "pnl_total": 2301.5099999999998,
+            "n_trades": 673,
+            "win_rate": 0.5943536404160475
+          },
+          "accruals_inv_sloan_v1": {
+            "pnl_total": 2245.1099999999997,
+            "n_trades": 559,
+            "win_rate": 0.5652951699463328
+          }
+        },
+        "2024": {
+          "gap_fill_v1": {
+            "pnl_total": -627.5799999999999,
+            "n_trades": 74,
+            "win_rate": 0.527027027027027
+          },
+          "volume_anomaly_v1": {
+            "pnl_total": 169.76000000000013,
+            "n_trades": 79,
+            "win_rate": 0.6075949367088608
+          },
+          "value_book_to_market_v1": {
+            "pnl_total": 477.95999999999987,
+            "n_trades": 506,
+            "win_rate": 0.4288537549407115
+          },
+          "accruals_inv_sloan_v1": {
+            "pnl_total": 1079.77,
+            "n_trades": 448,
+            "win_rate": 0.47767857142857145
+          }
+        },
+        "2025": {
+          "gap_fill_v1": {
+            "pnl_total": 73.75,
+            "n_trades": 288,
+            "win_rate": 0.2604166666666667
+          },
+          "volume_anomaly_v1": {
+            "pnl_total": 1245.61,
+            "n_trades": 84,
+            "win_rate": 0.7261904761904762
+          },
+          "value_book_to_market_v1": {
+            "pnl_total": -67.86999999999989,
+            "n_trades": 480,
+            "win_rate": 0.4583333333333333
+          },
+          "accruals_inv_sloan_v1": {
+            "pnl_total": -548.9300000000001,
+            "n_trades": 384,
+            "win_rate": 0.3958333333333333
+          }
+        }
+      },
+      "grand_total": {
+        "gap_fill_v1": {
+          "pnl_total": 1232.6999999999998,
+          "n_trades": 542,
+          "win_rate": 0.4188191881918819
+        },
+        "volume_anomaly_v1": {
+          "pnl_total": 6350.2,
+          "n_trades": 497,
+          "win_rate": 0.6237424547283702
+        },
+        "value_book_to_market_v1": {
+          "pnl_total": 3684.7800000000007,
+          "n_trades": 2675,
+          "win_rate": 0.49570093457943926
+        },
+        "accruals_inv_sloan_v1": {
+          "pnl_total": 2562.6399999999994,
+          "n_trades": 2256,
+          "win_rate": 0.49069148936170215
+        }
+      }
+    },
+    "n_runs": 15
+  },
+  "arm1_correlation": {
+    "gap_fill_v1": {
+      "gap_fill_v1": 1.0,
+      "volume_anomaly_v1": 0.07423256655305288,
+      "value_earnings_yield_v1": 0.15564689732681608,
+      "value_book_to_market_v1": 0.11987772229114713,
+      "accruals_inv_sloan_v1": 0.16417114115795842,
+      "accruals_inv_asset_growth_v1": 0.08826310785583259
+    },
+    "volume_anomaly_v1": {
+      "gap_fill_v1": 0.07423256655305288,
+      "volume_anomaly_v1": 1.0,
+      "value_earnings_yield_v1": 0.2318700381805437,
+      "value_book_to_market_v1": 0.22477643684176374,
+      "accruals_inv_sloan_v1": 0.26340884688422994,
+      "accruals_inv_asset_growth_v1": 0.17110372512352323
+    },
+    "value_earnings_yield_v1": {
+      "gap_fill_v1": 0.15564689732681608,
+      "volume_anomaly_v1": 0.2318700381805437,
+      "value_earnings_yield_v1": 1.0,
+      "value_book_to_market_v1": 0.6019840432726618,
+      "accruals_inv_sloan_v1": 0.6725881824661836,
+      "accruals_inv_asset_growth_v1": 0.6609801393694722
+    },
+    "value_book_to_market_v1": {
+      "gap_fill_v1": 0.11987772229114713,
+      "volume_anomaly_v1": 0.22477643684176374,
+      "value_earnings_yield_v1": 0.6019840432726618,
+      "value_book_to_market_v1": 1.0,
+      "accruals_inv_sloan_v1": 0.5855804032363328,
+      "accruals_inv_asset_growth_v1": 0.5014988174199362
+    },
+    "accruals_inv_sloan_v1": {
+      "gap_fill_v1": 0.16417114115795842,
+      "volume_anomaly_v1": 0.26340884688422994,
+      "value_earnings_yield_v1": 0.6725881824661836,
+      "value_book_to_market_v1": 0.5855804032363328,
+      "accruals_inv_sloan_v1": 1.0,
+      "accruals_inv_asset_growth_v1": 0.611391471635847
+    },
+    "accruals_inv_asset_growth_v1": {
+      "gap_fill_v1": 0.08826310785583259,
+      "volume_anomaly_v1": 0.17110372512352323,
+      "value_earnings_yield_v1": 0.6609801393694722,
+      "value_book_to_market_v1": 0.5014988174199362,
+      "accruals_inv_sloan_v1": 0.611391471635847,
+      "accruals_inv_asset_growth_v1": 1.0
+    }
+  },
+  "arm2_correlation": {
+    "gap_fill_v1": {
+      "gap_fill_v1": 1.0,
+      "volume_anomaly_v1": 0.08427823574524645,
+      "value_book_to_market_v1": 0.16099224023032505,
+      "accruals_inv_sloan_v1": 0.14957096147225094
+    },
+    "volume_anomaly_v1": {
+      "gap_fill_v1": 0.08427823574524645,
+      "volume_anomaly_v1": 1.0,
+      "value_book_to_market_v1": 0.24734133225714947,
+      "accruals_inv_sloan_v1": 0.14228009885461904
+    },
+    "value_book_to_market_v1": {
+      "gap_fill_v1": 0.16099224023032505,
+      "volume_anomaly_v1": 0.24734133225714947,
+      "value_book_to_market_v1": 1.0,
+      "accruals_inv_sloan_v1": 0.43504505968673335
+    },
+    "accruals_inv_sloan_v1": {
+      "gap_fill_v1": 0.14957096147225094,
+      "volume_anomaly_v1": 0.14228009885461904,
+      "value_book_to_market_v1": 0.43504505968673335,
+      "accruals_inv_sloan_v1": 1.0
+    }
+  }
+}
