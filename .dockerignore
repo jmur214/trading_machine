@@ -1,0 +1,60 @@
+# Build-context exclusions for Dockerfile.backtest.
+# Goal: keep the build context small and the image deterministic.
+# Anything not explicitly needed by the backtest harness is excluded.
+
+# --- Local environments / caches ---
+.venv/
+myenv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+build/
+dist/
+
+# --- Editor / IDE ---
+.vscode/
+.idea/
+.cursor/
+*.swp
+*.swo
+
+# --- Git internals ---
+.git/
+.gitignore
+.gitattributes
+
+# --- Local agent / coordination state (gitignored runtime files) ---
+data/coordination/
+.claude/
+
+# --- Runtime output (regenerable; do NOT bake into image) ---
+data/trade_logs/
+data/observability/
+
+# --- Secrets — MUST never be baked into the image ---
+.env
+.env.*
+config/alpaca_keys*.json
+
+# --- Documentation / non-code that bloats context ---
+docs/
+*.md
+!README.md
+
+# --- Test artifacts ---
+.coverage
+htmlcov/
+test-output/
+
+# --- macOS / OS noise ---
+.DS_Store
+*.log
+
+# --- Cockpit (not needed for backtest harness) ---
+cockpit/dashboard/
+cockpit/dashboard_v2/

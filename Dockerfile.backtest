@@ -1,0 +1,124 @@
+# Dockerfile.backtest — deterministic execution environment for substrate
+# measurements and backtest-only workloads. Designed for AWS Batch / ECR.
+#
+# Determinism guarantees:
+#   - Pinned base image digest (Python 3.14 slim)
+#   - All deps from requirements.lock.txt (90 packages, every transitive dep
+#     pinned via `pip freeze`)
+#   - PYTHONHASHSEED=0 to lock dict iteration order
+#   - LC_ALL=C.UTF-8 for stable string formatting
+#   - data/processed/ + data/raw/ baked at build time so a given image tag
+#     always sees the same input data
+#
+# Usage (local determinism check, see scripts/verify_container_determinism.sh):
+#   docker build -f Dockerfile.backtest -t archondex-backtest:dev .
+#   docker run --rm -v $(pwd)/data/trade_logs:/app/data/trade_logs \
+#              --env-file .env archondex-backtest:dev \
+#              python -m scripts.run_isolated --runs 1 --task q1
+#
+# IMPORTANT — secrets:
+#   The .dockerignore excludes .env and config/alpaca_keys*.json. Pass them
+#   at runtime via --env-file or AWS Secrets Manager. NEVER COPY them in.
+
+# ---------- builder stage: install pinned deps into a virtualenv ----------
+FROM python:3.14-slim AS builder
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        build-essential \
+        gcc \
+        g++ \
+        libxml2-dev \
+        libxslt1-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /build
+
+# Copy lockfile first so the deps layer caches independently of source changes
+COPY requirements.lock.txt .
+
+RUN python -m venv /opt/venv \
+    && /opt/venv/bin/pip install --upgrade pip \
+    && /opt/venv/bin/pip install -r requirements.lock.txt
+
+# ---------- runtime stage: minimal image with only what's needed -----------
+FROM python:3.14-slim AS runtime
+
+# Runtime libs that the C-extension wheels depend on (lxml, pyarrow, etc.)
+# Plus awscli for S3 upload from the cloud entrypoint script (~30MB).
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        libxml2 \
+        libxslt1.1 \
+        awscli \
+    && rm -rf /var/lib/apt/lists/*
+
+# Bring in the pre-built virtualenv from the builder
+COPY --from=builder /opt/venv /opt/venv
+
+# Determinism env vars — applied to every process in the image.
+# OMP/OpenBLAS/MKL thread pinning is critical: numpy parallel reductions are
+# order-dependent on thread count. Without these pins, an 8-vCPU host and a
+# 1-vCPU Fargate worker produce different canon md5s for the same input.
+# Verified 2026-05-09: local container 8-thread (md5 d9d7c5...) vs Fargate
+# 1-thread (md5 4d2bc3...) drifted on the same Q1 input.
+ENV PATH="/opt/venv/bin:$PATH" \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONHASHSEED=0 \
+    LC_ALL=C.UTF-8 \
+    LANG=C.UTF-8 \
+    TZ=UTC \
+    PYTHONUNBUFFERED=1 \
+    OMP_NUM_THREADS=1 \
+    OPENBLAS_NUM_THREADS=1 \
+    MKL_NUM_THREADS=1 \
+    NUMEXPR_NUM_THREADS=1 \
+    VECLIB_MAXIMUM_THREADS=1
+
+# Non-root user (UID 1000 to match common host UIDs and avoid mount perms issues)
+RUN useradd --create-home --uid 1000 archondex
+WORKDIR /app
+
+# Copy source code FIRST (changes more often than data → cache-friendlier).
+# All top-level Python packages the backtest harness imports.
+# DELIBERATELY excluded: live_trader/ (CLAUDE.md forbids cloud exercise
+# without user approval); cockpit/ (UI, not needed for headless backtest);
+# tests/ (test fixtures shouldn't ship in production image); logs/ (runtime
+# output, regenerable).
+COPY --chown=archondex:archondex backtester/ ./backtester/
+COPY --chown=archondex:archondex core/ ./core/
+COPY --chown=archondex:archondex engines/ ./engines/
+COPY --chown=archondex:archondex orchestration/ ./orchestration/
+COPY --chown=archondex:archondex analytics/ ./analytics/
+COPY --chown=archondex:archondex brokers/ ./brokers/
+COPY --chown=archondex:archondex utils/ ./utils/
+COPY --chown=archondex:archondex research/ ./research/
+# cockpit: top-level logger.py + metrics.py needed by orchestration/.
+# dashboard_v2/ is excluded via .dockerignore (UI not needed for backtests).
+COPY --chown=archondex:archondex cockpit/ ./cockpit/
+COPY --chown=archondex:archondex scripts/ ./scripts/
+
+# Config + data layer
+COPY --chown=archondex:archondex config/ ./config/
+COPY --chown=archondex:archondex data/processed/ ./data/processed/
+COPY --chown=archondex:archondex data/raw/ ./data/raw/
+
+# Governor templates (run_isolated.py snapshots+restores these per run, so
+# the in-image copy is the seed state, not mutated state)
+COPY --chown=archondex:archondex data/governor/ ./data/governor/
+
+# Root-level Python modules imported by the backtest harness
+COPY --chown=archondex:archondex debug_config.py ./
+
+# Pre-create the trade_logs mount point so a runtime volume mount succeeds
+# even when the host hasn't pre-created the directory. Empty in image.
+RUN mkdir -p /app/data/trade_logs /app/data/observability \
+    && chown -R archondex:archondex /app/data/trade_logs /app/data/observability
+
+USER archondex
+
+# Default command: print Python version + show that core imports work.
+# Real workloads override this with `docker run ... <command>`.
+CMD ["python", "-c", "import sys, pandas, numpy, hmmlearn, scipy; print('python', sys.version); print('pandas', pandas.__version__); print('numpy', numpy.__version__); print('CONTAINER_OK')"]

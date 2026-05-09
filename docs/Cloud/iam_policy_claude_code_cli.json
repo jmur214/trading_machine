@@ -1,0 +1,97 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "ECRPushPullForBacktestImages",
+      "Effect": "Allow",
+      "Action": [
+        "ecr:GetAuthorizationToken",
+        "ecr:BatchCheckLayerAvailability",
+        "ecr:GetDownloadUrlForLayer",
+        "ecr:BatchGetImage",
+        "ecr:DescribeRepositories",
+        "ecr:ListImages",
+        "ecr:DescribeImages",
+        "ecr:InitiateLayerUpload",
+        "ecr:UploadLayerPart",
+        "ecr:CompleteLayerUpload",
+        "ecr:PutImage",
+        "ecr:CreateRepository"
+      ],
+      "Resource": "*",
+      "_comment": "ECR auth token endpoint cannot be resource-scoped, hence '*'. Other actions narrow at use-time to the archondex-backtest repository the CLI creates and writes to."
+    },
+    {
+      "Sid": "S3DataAndResultsBuckets",
+      "Effect": "Allow",
+      "Action": [
+        "s3:GetObject",
+        "s3:PutObject",
+        "s3:DeleteObject",
+        "s3:ListBucket",
+        "s3:GetBucketLocation"
+      ],
+      "Resource": [
+        "arn:aws:s3:::archondex-data-407539788432",
+        "arn:aws:s3:::archondex-data-407539788432/*",
+        "arn:aws:s3:::archondex-results-407539788432",
+        "arn:aws:s3:::archondex-results-407539788432/*",
+        "arn:aws:s3:::archondex-archives-407539788432",
+        "arn:aws:s3:::archondex-archives-407539788432/*"
+      ],
+      "_comment": "407539788432 with your AWS account number (12 digits). Buckets MUST be globally unique; account-id suffix guarantees that without leaking semantics."
+    },
+    {
+      "Sid": "S3CreateOurBucketsOnly",
+      "Effect": "Allow",
+      "Action": [
+        "s3:CreateBucket",
+        "s3:PutBucketVersioning",
+        "s3:PutEncryptionConfiguration",
+        "s3:PutBucketPublicAccessBlock",
+        "s3:PutLifecycleConfiguration"
+      ],
+      "Resource": [
+        "arn:aws:s3:::archondex-data-407539788432",
+        "arn:aws:s3:::archondex-results-407539788432",
+        "arn:aws:s3:::archondex-archives-407539788432"
+      ]
+    },
+    {
+      "Sid": "BatchSubmitAndDescribe",
+      "Effect": "Allow",
+      "Action": [
+        "batch:SubmitJob",
+        "batch:DescribeJobs",
+        "batch:ListJobs",
+        "batch:TerminateJob",
+        "batch:DescribeJobQueues",
+        "batch:DescribeJobDefinitions",
+        "batch:DescribeComputeEnvironments"
+      ],
+      "Resource": "*",
+      "_comment": "Batch describe/submit ops cannot be resource-scoped to a queue/definition by AWS policy; this is the standard scope. The job role attached to the actual Batch task is a separate, narrower role (see batch_job_role.json — to be drafted)."
+    },
+    {
+      "Sid": "CloudWatchLogsRead",
+      "Effect": "Allow",
+      "Action": [
+        "logs:DescribeLogGroups",
+        "logs:DescribeLogStreams",
+        "logs:GetLogEvents",
+        "logs:FilterLogEvents"
+      ],
+      "Resource": "arn:aws:logs:*:407539788432:log-group:/aws/batch/job:*"
+    },
+    {
+      "Sid": "IAMSelfRead",
+      "Effect": "Allow",
+      "Action": [
+        "iam:GetUser",
+        "iam:ListAccessKeys"
+      ],
+      "Resource": "arn:aws:iam::407539788432:user/${aws:username}",
+      "_comment": "Read-only on the user's own profile (for `aws sts get-caller-identity` style checks). NO iam:CreateUser, NO iam:AttachRolePolicy, NO admin actions. If a future task needs broader IAM, propose first."
+    }
+  ]
+}
