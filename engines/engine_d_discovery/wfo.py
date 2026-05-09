@@ -6,11 +6,30 @@ from typing import Dict, List, Any
 import copy
 import logging
 
+from core.metrics_engine import MetricsEngine
 from engines.engine_d_discovery.discovery import DiscoveryEngine
 from backtester.backtest_controller import BacktestController
 from engines.engine_a_alpha.alpha_engine import AlphaEngine
 from engines.engine_b_risk.risk_engine import RiskEngine
 from cockpit.logger import CockpitLogger
+
+
+def _bootstrap_sharpe_ci_low(returns_list: List[float]) -> float:
+    """Block-bootstrap CI-low of Sharpe over a returns list (T-2026-05-08-010).
+
+    Wraps `MetricsEngine.bootstrap_distribution` with the project-standard
+    parameters (1000 iter, auto block length per Politis-White, seed=0
+    for determinism). Returns 0.0 when the series is too short to bootstrap.
+    """
+    if len(returns_list) < 4:
+        return 0.0
+    s = pd.Series(returns_list).dropna()
+    if len(s) < 4:
+        return 0.0
+    boot = MetricsEngine.bootstrap_distribution(
+        s, MetricsEngine.sharpe_ratio,
+    )
+    return float(boot.get("ci_low", 0.0))
 
 class WalkForwardOptimizer:
     """
@@ -78,6 +97,13 @@ class WalkForwardOptimizer:
         # of the gauntlet architectural fix (2026-05-02) stitches returns
         # instead, which is the well-known WFO-trap fix.
         oos_returns: list = []
+        # Per-window IS returns for the BEST-trial run, accumulated across
+        # train windows. T-2026-05-08-010 wires CI-aware gating: the
+        # downstream promotion check needs `is_ci_low` alongside
+        # `oos_ci_low`. Computed from the best-trial equity curve at each
+        # train window — not from per-trial sharpes (that would double-
+        # bootstrap the random sample of trial params).
+        is_returns: list = []
         param_history = []
         
         # Instantiate Edge Class only once to check params
@@ -126,19 +152,28 @@ class WalkForwardOptimizer:
             # 1. OPTIMIZE (In-Sample)
             best_sharpe = -999
             best_params = {}
-            
+            best_equity: list = []  # T-2026-05-08-010: capture for IS returns
+
             # Simple Grid Search / Random Search (Mocked for speed in this MVP)
             # In production, use optuna. Here we sample 5 random configs.
             for i in range(5):
                 # Sample params
                 trial_params = base_edge.sample_params()
-                
+
                 # Run Backtest on Train Window
                 res = self._quick_backtest(strategy_spec, trial_params, train_start, train_end)
                 if res["sharpe"] > best_sharpe:
                     best_sharpe = res["sharpe"]
                     best_params = trial_params
-            
+                    best_equity = res.get("equity_curve") or []
+
+            # Stitch the best-trial IS returns onto the cumulative IS series
+            # (returns, not equity, to dodge the same window-boundary phantom-
+            # drawdown trap as the OOS path documented above).
+            if len(best_equity) >= 2:
+                is_window_returns = pd.Series(best_equity).pct_change().dropna().tolist()
+                is_returns.extend(is_window_returns)
+
             param_history.append({"date": test_start, "params": best_params, "is_sharpe": best_sharpe})
             
             # 2. VALIDATE (Out-of-Sample)
@@ -178,10 +213,26 @@ class WalkForwardOptimizer:
         else:
             oos_sharpe = 0
             
+        # CI-aware gating fields (T-2026-05-08-010, CLAUDE.md 6th
+        # non-negotiable). bootstrap_distribution is seeded (seed=0
+        # default) so this is deterministic. Existing point-estimate
+        # fields stay alongside — call sites that read `oos_sharpe` /
+        # `degradation` keep working.
+        oos_ci_low = _bootstrap_sharpe_ci_low(oos_returns)
+        is_ci_low = _bootstrap_sharpe_ci_low(is_returns)
+        degradation_ci_low = (
+            oos_ci_low / is_ci_low if is_ci_low > 0 else 0.0
+        )
+
         return {
             "is_sharpe_avg": avg_is_sharpe,
             "oos_sharpe": oos_sharpe,
             "degradation": oos_sharpe / avg_is_sharpe if avg_is_sharpe > 0 else 0,
+            "oos_ci_low": oos_ci_low,
+            "is_ci_low": is_ci_low,
+            "degradation_ci_low": degradation_ci_low,
+            "oos_returns": list(oos_returns),
+            "is_returns": list(is_returns),
             "param_stability": param_history
         }
 

@@ -168,6 +168,15 @@ class EvolutionController:
 
         oos_sharpe = float(wfo_res.get("oos_sharpe", 0.0))
         degradation = float(wfo_res.get("degradation", 0.0))
+        # CI-aware gating fields produced by WFO under T-2026-05-08-010.
+        # `oos_ci_low` is the bootstrap 95% lower bound on OOS Sharpe;
+        # `degradation_ci_low` is oos_ci_low / is_ci_low. Default to 0.0
+        # for legacy WFO outputs that pre-date this field — those code
+        # paths never set the new keys, so they degrade to "no
+        # promotion under CI-aware reading" which is the right safe
+        # default while migration is in flight.
+        oos_ci_low = float(wfo_res.get("oos_ci_low", 0.0))
+        degradation_ci_low = float(wfo_res.get("degradation_ci_low", 0.0))
 
         # Benchmark-relative pass: OOS Sharpe must beat SPY - 0.3 over the eval window
         try:
@@ -179,11 +188,19 @@ class EvolutionController:
             log.warning(f"Benchmark unavailable ({e}); falling back to oos_sharpe > 0.5")
             bench_threshold = 0.5
 
-        passed = oos_sharpe >= bench_threshold and degradation > 0.6
+        # CI-aware promotion gate (T-2026-05-08-010, CLAUDE.md 6th
+        # non-negotiable). Compare ci_low against bench_threshold so a
+        # noisy candidate whose point-Sharpe straddles the threshold
+        # doesn't goalpost-move into production. Threshold values
+        # (0.6 degradation, bench-relative margin 0.3) are unchanged
+        # by design — re-tuning under CI-aware reading is a Phase 2
+        # question deferred per spec hard constraint.
+        passed = oos_ci_low >= bench_threshold and degradation_ci_low > 0.6
         specialist_type = None  # reserved for regime-specialist classification
         log.info(
-            f"[WFO] {edge_id}: oos_sharpe={oos_sharpe:.2f}  "
-            f"bench_threshold={bench_threshold:.2f}  degradation={degradation:.2f}  "
+            f"[WFO] {edge_id}: oos_sharpe={oos_sharpe:.2f}  oos_ci_low={oos_ci_low:.2f}  "
+            f"bench_threshold={bench_threshold:.2f}  "
+            f"degradation={degradation:.2f}  degradation_ci_low={degradation_ci_low:.2f}  "
             f"passed={passed}"
         )
         return passed, oos_sharpe, specialist_type

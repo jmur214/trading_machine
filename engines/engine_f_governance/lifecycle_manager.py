@@ -52,7 +52,31 @@ import numpy as np
 import pandas as pd
 import yaml
 
+from core.metrics_engine import MetricsEngine
+
 log = logging.getLogger("Lifecycle")
+
+
+def _bootstrap_sharpe_ci_low_from_pnls(pnls: np.ndarray) -> float:
+    """Block-bootstrap CI-low of trade-level Sharpe (T-2026-05-08-010).
+
+    The retirement gate is given trade-PnL series, not per-day returns;
+    `_edge_sharpe_from_pnl` already annualizes the per-trade mean/std by
+    sqrt(252) under "assume daily trade frequency." We bootstrap on the
+    same array under the same metric so the CI-aware gate compares
+    apples-to-apples with the existing point-estimate gate.
+
+    Returns 0.0 when the pnl array is too short to bootstrap.
+    """
+    if len(pnls) < 4:
+        return 0.0
+    s = pd.Series(pnls).dropna()
+    if len(s) < 4:
+        return 0.0
+    boot = MetricsEngine.bootstrap_distribution(
+        s, MetricsEngine.sharpe_ratio,
+    )
+    return float(boot.get("ci_low", 0.0))
 
 
 @dataclass
@@ -649,9 +673,19 @@ class LifecycleManager:
             return False, "insufficient_trades"
         if days_active < self.cfg.retirement_min_days:
             return False, "insufficient_age"
-        # Gate 2: benchmark-relative underperformance
+        # Gate 2: benchmark-relative underperformance, CI-aware
+        # (T-2026-05-08-010, CLAUDE.md 6th non-negotiable). Compare the
+        # bootstrap 95% lower bound on edge Sharpe against the fixed
+        # benchmark threshold. The asymmetry is intentional: `edge_ci_low`
+        # is bootstrapped (the variable being gated); `benchmark_sharpe`
+        # is point-estimate (a fixed reference — bootstrapping it would
+        # waste compute and the gate is about the EDGE's noise floor,
+        # not the benchmark's). Threshold value (retirement_margin=0.3)
+        # unchanged by design; threshold re-tuning under CI-aware
+        # reading is a Phase 2 question per spec hard constraint.
         threshold = benchmark_sharpe - self.cfg.retirement_margin
-        if edge_sharpe >= threshold:
+        edge_ci_low = _bootstrap_sharpe_ci_low_from_pnls(pnls)
+        if edge_ci_low >= threshold:
             return False, "benchmark_ok"
         # Gate 3: not currently reviving — don't retire an edge that's turning around
         revival_slice = pnls[-self.cfg.retirement_revival_window :]
@@ -659,7 +693,11 @@ class LifecycleManager:
             revival_sharpe = _edge_sharpe_from_pnl(revival_slice)
             if revival_sharpe > self.cfg.retirement_revival_sharpe:
                 return False, f"currently_reviving_sharpe_{revival_sharpe:.2f}"
-        return True, f"benchmark_under_{edge_sharpe:.2f}_vs_{benchmark_sharpe:.2f}_margin_{self.cfg.retirement_margin}"
+        return (
+            True,
+            f"benchmark_under_ci_low_{edge_ci_low:.2f}_vs_{benchmark_sharpe:.2f}"
+            f"_margin_{self.cfg.retirement_margin}_point_{edge_sharpe:.2f}",
+        )
 
     def _check_pause_gates(
         self,
