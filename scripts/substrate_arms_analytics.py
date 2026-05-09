@@ -27,13 +27,11 @@ from __future__ import annotations
 
 import argparse
 import json
-import statistics
 import sys
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, Optional
 
-import numpy as np
 import pandas as pd
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -329,7 +327,7 @@ def verdict_bucket(arm1_sharpe: Optional[float], arm2_sharpe: Optional[float]) -
         a2 = "REGRESSION (Δ<0) — diversification of the 2 dropped edges likely load-bearing; do NOT deploy"
         contingent = (abs(delta) >= 0.2)
     else:
-        a2 = "NEUTRAL (-0.2<=Δ<0) — pruning + HMM didn't materially help"
+        a2 = "NEUTRAL (0<=Δ<+0.2) — pruning + HMM didn't materially help"
         contingent = False
 
     summary = (
