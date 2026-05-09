@@ -308,6 +308,15 @@ class RobustnessTester:
         # PBO Logic (Simplified variant)
         # Probability that the strategy fails in random market variants
         # Survival Rate
+        #
+        # CI-aware-gates exemption (T-2026-05-08-010): this gate is ALREADY
+        # distributional. `survival_rate` is the fraction of `n_paths`
+        # bootstrap synthetic-market resamples on which Sharpe > 0 — i.e.,
+        # it's a CI-style statement (lower-bound on the share of paths
+        # producing positive Sharpe) computed across the bootstrap
+        # population. Replacing it with a `ci_low(survival_rate)` reading
+        # would be double-counting the bootstrap envelope. Leave as-is per
+        # the CLAUDE.md 6th non-negotiable + spec exemption rationale.
         survival_rate = (sharpes > 0.0).mean()
         avg_sharpe = sharpes.mean()
 
@@ -371,6 +380,12 @@ class RobustnessTester:
             float(r.mean() / actual_std * ann) if actual_std > 0 else 0.0
         )
 
+        # CI-aware-gates exemption (T-2026-05-08-010): same rationale as
+        # the per-block survival path above — `survival_rate` is already
+        # a distributional statistic over `n_paths` bootstrap resamples
+        # of the per-day attribution stream. The "survival > 0.7" gate
+        # is itself a CI-style statement; replacing it with
+        # `ci_low(survival_rate)` would double-count.
         return {
             "n_paths": int(len(sharpes)),
             "survival_rate": float((sharpes > 0.0).mean()),
