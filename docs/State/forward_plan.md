@@ -1,4 +1,35 @@
-# Forward Plan — live (last substantive update 2026-05-09 night)
+# Forward Plan — live (last substantive update 2026-05-08, applying dev review corrections)
+
+> **2026-05-08 — DEV REVIEW CORRECTIONS TO TIER LIST + DISPATCHED PIPELINE STATUS**
+>
+> The director (this session) drafted a tier list during the substrate-honest re-measurement spec discussion. A dev review surfaced 3 real gaps that this update closes:
+>
+> 1. **Trend-sleeve framing was wrong.** The director's tier list said "reframe trend sleeve as Sharpe vehicle / add stop-loss / drop sleeve". That conflates **equity-trend** (which was tested and falsified twice — 115-ticker and 722-ticker) with **diversified-futures trend** (R2's actual primary recommendation, never tested). The two are structurally different bets with different academic literature (AQR / Hurst-Ooi / Moskowitz). **Diversified-futures trend on a TLT/GLD/USO/UUP/EEM/SPY/IEF/DBC basket is now T-2026-05-08-007**, spec at `docs/Measurements/2026-05/spec_diversified_futures_trend_2026_05_08.md`. Includes data acquisition for the 5 missing ETFs (USO/UUP/EEM/IEF/DBC).
+>
+> 2. **Engine D vocabulary fix was missing.** R1's pushback on Bayesian-opt-replaces-GA: *"a different optimizer over the same narrow space won't help."* Engine D's current Discovery vocabulary is technical-only (RSI/ATR/Bollinger/MACD/momentum-ROC). Foundry features and fundamentals-percentile-rank operators are absent — Discovery can't reach them. **T-2026-05-08-006 ships the vocabulary expansion** as a prerequisite to any Bayesian opt swap. Spec at `docs/Measurements/2026-05/spec_engine_d_vocabulary_fix_2026_05_08.md`.
+>
+> 3. **Bootstrap CI is tooling, not discipline.** `MetricsEngine.bootstrap_distribution` shipped 2026-05-07 and is wired into `performance_summary.json`. But "every Sharpe reports CI" should become a non-negotiable rule alongside "deterministic measurement always." Currently it's just available, not required. Going further: **kill thresholds going forward should be CI-aware, not point-estimate.** The current kill thesis (`Sharpe < 0.4`) is point-estimate; `CI lower bound < 0.3` (or similar) prevents implicit goalpost-moving. **Both are being added to CLAUDE.md as the 6th non-negotiable rule** in T-2026-05-08-009.
+>
+> Other tier-list items the dev review surfaced as "tracked but invisible" — adding them explicitly:
+>
+> - **Auto-feature engineering via tsfresh** — Tier 3. Could 10x feature count overnight; substrate-independent.
+> - **Capacity testing infrastructure** — Tier 4 (deferred until live deployment is closer). Both reviewers flagged; explicit now rather than silently absent.
+>
+> ## Currently dispatched (2026-05-08)
+>
+> | Task-ID | Agent | Description | Spec |
+> |---|---|---|---|
+> | T-2026-05-08-002 | A | Substrate-honest re-measurement (Arm 1 + Arm 2; 7-11 hr) | `docs/Measurements/2026-05/spec_substrate_honest_remeasurement_2026_05_08.md` |
+> | T-2026-05-08-005 | B | Tighten `backtest_controller.py:389` bare-except (2-3 hr) | inline brief in B's inbox |
+>
+> ## Dispatch-ready, queued for next agent free
+>
+> - T-006: Engine D vocabulary fix (Foundry + fundamentals-percentile)
+> - T-007: Diversified-futures trend test (data acq + measurement)
+> - T-003: C-collapses-1.5 concentration-equivalent (post-process Arm 1)
+> - T-004: C-collapses-1.25 factor decomp (Arm 1 trade log)
+> - T-008: Forward-plan revision (this update — director task)
+> - T-009: CLAUDE.md discipline rule promotion (director task)
 
 > **2026-05-09 NIGHT — C-engines-1 RETURNED + CORRECTION TO ENGINE-C NARRATIVE.**
 >
