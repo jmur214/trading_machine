@@ -42,11 +42,26 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import json
+import logging
 import math
 from statistics import fmean
 import numpy as np
 import pandas as pd
 import os
+
+logger = logging.getLogger(__name__)
+
+# Programmer-error exceptions that MUST propagate through Engine A's
+# narrow-catch sites. Mirrors the gauntlet remediation (commits 453e04e,
+# ee42ab7) and the backtest_controller fix (T-2026-05-08-005, commit
+# 129c7ba). A bare `except Exception` in a hot path silently treats
+# typo'd attribute access / missing imports / type errors as "no signal" —
+# which is exactly what hid the 2026-05-08 zero-trade regression for
+# ~24 hours. Re-raising programmer errors makes those bugs surface
+# immediately.
+_PROGRAMMER_ERRORS = (
+    TypeError, AttributeError, NameError, AssertionError, ImportError,
+)
 
 from .signal_collector import SignalCollector
 from .signal_processor import (
@@ -292,22 +307,31 @@ class AlphaEngine:
         import importlib
         include_extras = os.getenv("ALPHA_INCLUDE_EXTRAS", "0").lower() in {"1","true","yes","on"}
         if include_extras:
+            # ModuleNotFoundError narrow-catch (T-2026-05-08-011): the
+            # only legitimate failure mode for an OPTIONAL import is
+            # "module file doesn't exist." A typo, syntax error, or
+            # AttributeError-during-load inside the module file is a
+            # bug — those should surface, not get silently swallowed
+            # behind a debug flag where new edges can register-but-
+            # disappear without anyone noticing.
             try:
                 test_edge = importlib.import_module("engines.engine_a_alpha.edges.test_edge")
                 self.edges.setdefault("test_edge", test_edge)
                 if is_info_enabled() or is_debug_enabled("ALPHA"):
                     print(f"[ALPHA][INFO] test_edge imported successfully: {test_edge}")
-            except Exception as e:
-                if is_info_enabled() or is_debug_enabled("ALPHA"):
-                    print(f"[ALPHA][DEBUG] Failed to import test_edge: {e}")
+            except ModuleNotFoundError as e:
+                logger.warning(
+                    "[ALPHA] Optional edge module 'test_edge' not present: %s", e,
+                )
             try:
                 news_edge = importlib.import_module("engines.engine_a_alpha.edges.news_sentiment_boost")
                 self.edges.setdefault("news_sentiment_boost", news_edge)
                 if is_info_enabled() or is_debug_enabled("ALPHA"):
                     print(f"[ALPHA][INFO] news_sentiment_boost imported successfully: {news_edge}")
-            except Exception as e:
-                if is_info_enabled() or is_debug_enabled("ALPHA"):
-                    print(f"[ALPHA][DEBUG] Failed to import news_sentiment_boost: {e}")
+            except ModuleNotFoundError as e:
+                logger.warning(
+                    "[ALPHA] Optional edge module 'news_sentiment_boost' not present: %s", e,
+                )
 
         # Registers News Sentiment Edge (Phase 15) - Always Active.
         # SignalCollector calls edge.compute_signals(data_map, now) as a
@@ -315,14 +339,23 @@ class AlphaEngine:
         # instance, not the class. Pre-fix this stored ns.NewsSentimentEdge
         # (the class), so an unbound call consumed `data_map` as `self` and
         # raised TypeError on the missing `now`.
+        # Same ModuleNotFoundError narrow-catch as the optional imports
+        # above — but news_sentiment_edge is registered ALWAYS-ACTIVE
+        # (Phase 15 contract). Any failure other than "module missing"
+        # (e.g., AttributeError on `ns.NewsSentimentEdge` when the class
+        # name drifts, TypeError on the `()` call when __init__ args
+        # change) is a bug that must surface, not silently produce
+        # signals=[] for the rest of the run.
         try:
             ns = importlib.import_module("engines.engine_a_alpha.edges.news_sentiment_edge")
             self.edges.setdefault("news_sentiment_edge", ns.NewsSentimentEdge())
             if is_info_enabled() or is_debug_enabled("ALPHA"):
                 print(f"[ALPHA][INFO] Registered edge: news_sentiment_edge")
-        except Exception as e:
-            if is_debug_enabled("ALPHA"):
-                print(f"[ALPHA][WARN] Could not register news_sentiment_edge: {e}")
+        except ModuleNotFoundError as e:
+            logger.warning(
+                "[ALPHA] news_sentiment_edge module not present (Phase 15 always-active edge): %s",
+                e,
+            )
 
 
         # 3️⃣ Print out all loaded edges for confirmation
@@ -484,7 +517,19 @@ class AlphaEngine:
             _paused_edge_ids = {
                 s.edge_id for s in _all_specs if s.status == "paused"
             }
-        except Exception:
+        except Exception as e:
+            # Narrow-catch (T-2026-05-08-011): programmer errors
+            # propagate; legitimate operational failures
+            # (FileNotFoundError, JSONDecodeError, KeyError on a stale
+            # registry shape) reset to empty state and warn so the
+            # operator sees the regime path is degraded.
+            if isinstance(e, _PROGRAMMER_ERRORS):
+                raise
+            logger.warning(
+                "[ALPHA] regime/tier/paused-edge state load failed; "
+                "resetting to empty: %s: %s",
+                type(e).__name__, e,
+            )
             _regime_gates = {}
             _edge_tiers = {}
             _paused_edge_ids = set()
@@ -767,7 +812,20 @@ class AlphaEngine:
                 if contribs:
                     try:
                         agg = sum(contribs) / (sum(weights) if sum(weights) != 0 else len(contribs))
-                    except Exception:
+                    except Exception as e:
+                        # Narrow-catch (T-2026-05-08-011): the only
+                        # legitimate runtime failure here is
+                        # ZeroDivisionError, which the inline
+                        # `if sum(weights) != 0 else ...` already
+                        # guards. Programmer errors (TypeError on
+                        # non-numeric contribs, etc.) propagate.
+                        if isinstance(e, _PROGRAMMER_ERRORS):
+                            raise
+                        logger.warning(
+                            "[ALPHA] aggregate-score weighted-mean fell back to "
+                            "fmean: %s: %s",
+                            type(e).__name__, e,
+                        )
                         agg = fmean(contribs)
                 proc[ticker] = {
                     "aggregate_score": float(max(-1.0, min(1.0, agg))),
@@ -956,8 +1014,20 @@ class AlphaEngine:
                             sig["meta"]["ml_confidence"] = f"NEUTRAL ({prob_up:.2f})"
                             
         except Exception as e:
-            if is_debug_enabled("ALPHA"):
-                print(f"[ALPHA][ML] Inference skipped: {e}")
+            # Narrow-catch (T-2026-05-08-011) — exact same bug class as
+            # the 2026-05-08 zero-trade regression on EarningsVolEdge.
+            # A TypeError here means the ML predictor's interface
+            # drifted; the broad-catch + debug-flag-gated print silently
+            # disabled ML inference for the rest of the run. Programmer
+            # errors propagate so the bug surfaces. Operational errors
+            # (KeyError on a sklearn version mismatch, ValueError on
+            # mismatched feature shape) keep the swallow + warn.
+            if isinstance(e, _PROGRAMMER_ERRORS):
+                raise
+            logger.warning(
+                "[ALPHA][ML] Inference skipped: %s: %s",
+                type(e).__name__, e,
+            )
 
         # Legacy hook (kept for backward compat)
         if hasattr(self, "signal_gate"):

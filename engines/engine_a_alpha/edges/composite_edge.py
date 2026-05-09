@@ -1,8 +1,20 @@
+import logging
+
 import pandas as pd
 import numpy as np
 from engines.engine_a_alpha.edge_base import EdgeBase
 from engines.engine_a_alpha.edge_template import EdgeTemplate
 from engines.data_manager.data_manager import DataManager
+
+logger = logging.getLogger(__name__)
+
+# See engines/engine_a_alpha/alpha_engine.py for the rationale (T-005 +
+# T-2026-05-08-011). Programmer errors must propagate so a typo or
+# interface drift in a Discovery-evolved gene surfaces immediately
+# rather than silently dropping the gene from the boolean tree.
+_PROGRAMMER_ERRORS = (
+    TypeError, AttributeError, NameError, AssertionError, ImportError,
+)
 
 class CompositeEdge(EdgeBase, EdgeTemplate):
     """
@@ -73,8 +85,21 @@ class CompositeEdge(EdgeBase, EdgeTemplate):
                         # Only collect for ranking if it's numeric
                         if isinstance(val, (int, float)):
                             gene_all_vals[i].append(val)
-                except Exception:
-                    pass
+                except Exception as e:
+                    # Narrow-catch (T-2026-05-08-011): programmer errors
+                    # in a gene's calc-raw-value path silently drop the
+                    # gene from the boolean tree, distorting Discovery
+                    # scoring. Propagate. Operational data-shape errors
+                    # (KeyError on missing column for one bar,
+                    # IndexError on a sparse panel) keep the swallow +
+                    # debug log so legitimate per-(ticker, gene) data
+                    # gaps don't kill the whole gene-eval loop.
+                    if isinstance(e, _PROGRAMMER_ERRORS):
+                        raise
+                    logger.debug(
+                        "[CompositeEdge] gene[%d] dropped %s: %s: %s",
+                        i, t, type(e).__name__, e,
+                    )
 
         # 3. Evaluation Phase (Ranking & Boolean Logic)
         for t in ticker_gene_vals:
