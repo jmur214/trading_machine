@@ -1,0 +1,89 @@
+{
+  "task": "T-2026-05-08-007",
+  "sleeve_name": "trend_diversified_futures",
+  "universe": [
+    "SPY",
+    "TLT",
+    "GLD",
+    "USO",
+    "UUP",
+    "EEM",
+    "IEF",
+    "DBC"
+  ],
+  "window": [
+    "2021-04-09",
+    "2026-04-17"
+  ],
+  "rebalance_cadence": "monthly",
+  "config": {
+    "lookback_days": 252,
+    "vol_window_days": 63,
+    "top_n": 4,
+    "max_position_weight": 0.3
+  },
+  "n_rebalances": 42,
+  "n_returns": 1220,
+  "metrics": {
+    "sortino": 1.067675777547433,
+    "skewness": -0.9129067273154192,
+    "tail_ratio": 0.8429242456838613,
+    "upside_capture": 0.37057705968640914,
+    "max_drawdown": -0.18048390251985258,
+    "sharpe": 0.8708825077688267,
+    "n_observations": 1220,
+    "hit_rate": null,
+    "avg_winner": null,
+    "avg_loser": null,
+    "has_3x_bet": null,
+    "bootstrap_sortino": {
+      "point_estimate": 1.067675777547433,
+      "mean": 1.1270509775820305,
+      "std": 0.5798338728457735,
+      "median": 1.1128724895876776,
+      "ci_low": 0.027411210734994845,
+      "ci_high": 2.3370443971763835,
+      "p_above_zero": 0.977,
+      "n_iterations": 1000,
+      "block_length": 11
+    }
+  },
+  "gauntlet_verdict": {
+    "bucket": "FAIL",
+    "n_success_criteria_met": 0,
+    "n_success_criteria_total": 4,
+    "failed_criteria": [
+      "sortino",
+      "skewness",
+      "tail_ratio",
+      "upside_capture"
+    ],
+    "triggered_kill_criteria": [
+      "skewness -0.913 \u2264 kill-floor -0.5"
+    ],
+    "explanation": "0/4 success criteria met \u2014 failed: sortino, skewness, tail_ratio, upside_capture \u2014 kills: skewness -0.913 \u2264 kill-floor -0.5"
+  },
+  "criteria": {
+    "sleeve_name": "trend_diversified_futures",
+    "sortino_min_success": 1.2,
+    "skewness_min_success": 0.0,
+    "tail_ratio_min_success": 1.2,
+    "upside_capture_min_success": 0.7,
+    "sortino_kill": 0.5,
+    "max_drawdown_kill": 0.35,
+    "skewness_kill_below": -0.5,
+    "hit_rate_kill_below": 0.25,
+    "avg_winner_kill_below": 2.0,
+    "min_observations": 120,
+    "require_min_3x_bet": false
+  },
+  "correlation_to_spy": 0.4323224551869696,
+  "per_class_contribution_arithmetic_sum": {
+    "currencies": 0.0010666669370928052,
+    "commodities": 0.3228073720946042,
+    "equities": 0.16584761611974225,
+    "bonds": 0.003127178736899932
+  },
+  "total_arithmetic_sum_returns": 0.49284883388833917,
+  "verdict_bucket_dispatch": "FALSIFIED"
+}
