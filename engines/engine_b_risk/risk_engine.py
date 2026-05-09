@@ -2,10 +2,26 @@
 from __future__ import annotations
 from dataclasses import dataclass
 from typing import List, Optional, Dict, Any
+import logging
 import math
 import pandas as pd
 import numpy as np
 from debug_config import is_debug_enabled, is_info_enabled
+
+logger = logging.getLogger(__name__)
+
+# Programmer-error exceptions that MUST propagate through Engine B's
+# narrow-catch sites. Matches the gauntlet remediation (commits 453e04e,
+# ee42ab7), the backtest_controller fix (T-2026-05-08-005, commit
+# 129c7ba), and the Engine A batch (T-2026-05-08-011, commit 7c9dac0).
+# Critical-blast-radius reason for Engine B specifically: a silent
+# TypeError in the drawdown-halt path defeats the kill switch without
+# anyone noticing. That is the catastrophic-failure mode for live
+# trading. Re-raising programmer errors makes the bug surface
+# immediately rather than silently fall back to "no kill."
+_PROGRAMMER_ERRORS = (
+    TypeError, AttributeError, NameError, AssertionError, ImportError,
+)
 
 
 @dataclass
@@ -793,7 +809,25 @@ class RiskEngine:
                 try:
                     if self.portfolio.history:
                         dd_pct = float(self.portfolio.history[-1].get("current_drawdown_pct", 0.0))
-                except Exception:
+                except Exception as e:
+                    # Narrowed-catch (T-2026-05-08-012): the kill switch
+                    # silently defaulting to dd_pct=0.0 on TypeError is
+                    # the catastrophic-failure mode for live trading.
+                    # If Engine C's portfolio_snapshot schema ever
+                    # drifts and emits a non-numeric current_drawdown_pct,
+                    # the kill switch must FAIL LOUD — not silently fall
+                    # back to "no kill." Programmer errors propagate.
+                    # Operational errors (KeyError on a stale history
+                    # shape, ValueError on a malformed numeric) keep the
+                    # 0.0 fallback but warn unconditionally so the
+                    # operator sees the kill-switch path is degraded.
+                    if isinstance(e, _PROGRAMMER_ERRORS):
+                        raise
+                    logger.warning(
+                        "[RISK] Drawdown calc fell back to 0.0 — "
+                        "kill switch may be inert: %s: %s",
+                        type(e).__name__, e,
+                    )
                     dd_pct = 0.0
                 if dd_pct >= self.cfg.drawdown_halt_threshold:
                     self._fail(ticker, "drawdown_halt")
