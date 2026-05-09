@@ -90,6 +90,12 @@ Both arms report:
 | Mean win-rate | | | |
 | Bootstrap Sharpe CI | | | |
 
+### Important caveat: $-PnL drag ≠ Sharpe-net drag
+
+The 2 edges dropped in Arm 2 (`value_earnings_yield_v1`, `accruals_inv_asset_growth_v1`) were dropped on **net realized $-PnL** per `per_edge_contribution_2026_05_08.md`. That's a cash metric, not a risk-adjusted one. There is a non-trivial chance these edges contribute diversification benefit (low/negative correlation with the other 4) that *helps* portfolio Sharpe even when their standalone PnL is negative. If Arm 2 − Arm 1 < 0, that's the most likely explanation — be ready to interpret a "dropping the cash drags made things worse" result as evidence the diversification was load-bearing.
+
+The follow-up 2x2 decomposition below isolates this question.
+
 ### Verdict framing (NOT pre-committed kill thresholds; decision points)
 
 The measurement isn't a pass/fail gauntlet — it's a decision-informer. The verdict bucket interprets the result:
@@ -97,9 +103,22 @@ The measurement isn't a pass/fail gauntlet — it's a decision-informer. The ver
 - **Arm 1 mean Sharpe ≥ 1.0**: substrate-honest baseline is healthy at current 6-active config. The prior 0.5074 was the missing-CSV-gap upper bound; the closure recovered the gap.
 - **Arm 1 mean Sharpe in [0.5, 1.0]**: substrate-honest baseline is moderate. Lifecycle pruning + HMM wire (Arm 2) become more important.
 - **Arm 1 mean Sharpe < 0.5**: prior universe-aware result was real, not a missing-CSV artifact. Closure didn't recover the headline. Substrate concerns stand.
-- **Arm 2 − Arm 1 Sharpe ≥ +0.2**: the recommendations are worth deploying. User decides whether to apply via `journal_apply` + flip `hmm_enabled=True`.
-- **Arm 2 − Arm 1 Sharpe near zero**: pruning + HMM didn't materially help. Either the 2 dropped edges were less of a drag than per-edge $-PnL implied (Sharpe is a different metric), or HMM modulation produced near-baseline behavior. Either way, no recommendation to flip flags.
-- **Arm 2 − Arm 1 Sharpe < 0**: surprising result — recommendations make it worse. Investigate before deploying.
+- **Arm 2 − Arm 1 Sharpe ≥ +0.2**: the recommendations are worth deploying — but FIRST run the contingent 2x2 decomposition below to attribute the lift cleanly. Don't deploy on a bundled signal.
+- **Arm 2 − Arm 1 Sharpe near zero**: pruning + HMM didn't materially help. Either the 2 dropped edges were less of a drag than per-edge $-PnL implied, or HMM modulation produced near-baseline behavior. No recommendation to flip flags.
+- **Arm 2 − Arm 1 Sharpe < 0**: most likely the diversification benefit of the 2 dropped edges was load-bearing. The 2x2 decomposition isolates this. Don't deploy.
+
+### Contingent: 2x2 decomposition follow-up
+
+If Arm 2 − Arm 1 Sharpe ≥ +0.2 (lift threshold) OR < 0 (regression threshold), pre-commit a follow-up 2x2 dispatch to isolate which change drove the result:
+
+| Cell | Edges | HMM |
+|---|---|---|
+| A | 6 | OFF |
+| B | 4 | OFF |
+| C | 6 | ON (minimal_c) |
+| D | 4 | ON (minimal_c) |
+
+Arm 1 = Cell A; Arm 2 = Cell D. Cells B and C run only on the contingent. Adds ~7 hr if triggered. The deployment recommendation (which flag to flip, in which order) requires the 2x2 attribution; bundled lift is not a deployment signal.
 
 ---
 
@@ -136,13 +155,26 @@ Well within agent-dispatch range. Should be one continuous session for the agent
 
 ---
 
-## Spec checklist before dispatch
+## Spec checklist — APPROVED 2026-05-08 by user via dev review
 
-Before I write the agent brief, the following user decisions are open:
+All 4 decisions confirmed:
 
-1. **Approve the universe choice (F6 historical + closure-included)?** Yes / No / Different
-2. **Approve the two-arm design (current 6 + HMM-OFF vs deployable 4 + HMM-ON)?** Yes / No / Different arms
-3. **Approve the cost-layer defaults (slippage on, wash-sale off, lt-hold off, tax informational)?** Yes / No
-4. **Approve dispatching to Agent A or Agent B (my pick is whichever is free first; both bootstrap from `4b7a14e` so both will rebase to current main and pick up all this week's changes)?** Yes / No / specify
+1. ✅ **Universe**: F6 historical + closure-included
+2. ✅ **Two-arm design**: current 6 + HMM-OFF vs deployable 4 + HMM-ON, with contingent 2x2 follow-up if |Δ| ≥ 0.2
+3. ✅ **Cost-layer defaults**: slippage on, wash-sale off, lt-hold off, tax informational
+4. ✅ **Agent**: either; pick whichever is free first
 
-Once those four are answered, I can convert this spec into an agent brief in `data/coordination/agent_<x>_inbox.md` and dispatch.
+## Sequencing decision (added 2026-05-08 per second dev review)
+
+**Run yfinance tz-bug audit FIRST**, BEFORE the substrate measurement. Reasoning: any zero-trade-class bug found by the audit would silently contaminate the substrate measurement. 1-2 hr audit delay is rounding error on 7-11 hr substrate runtime.
+
+Audit covers: `pead_v1`, `pead_short_v1`, `pead_predrift_v1`, `news_sentiment_edge`. Same pattern as the 2026-05-08 `earnings_vol_v1` bug.
+
+## Parallel context dispatches (after audit, alongside substrate)
+
+Per the second dev review, two additional measurements interact with how Arm 1/Arm 2 results should be interpreted:
+
+- **C-collapses-1.5**: concentration-equivalent capital test — answers "is there per-name signal at all, or is everything concentration accident?"
+- **C-collapses-1.25**: factor decomp on `volume_anomaly_v1` + `herding_v1` under substrate-honest universe — answers "do the t>4 alphas survive at t>2 on unbiased substrate?"
+
+Either or both can run on the second agent in parallel with the substrate measurement (substrate-independent; no conflict).
