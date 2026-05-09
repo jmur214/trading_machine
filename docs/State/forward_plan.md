@@ -1,6 +1,114 @@
-# Forward Plan — live (last substantive update 2026-05-08, applying dev review corrections)
+# Forward Plan — live (last substantive update 2026-05-09 evening, structural-review reframe)
 
-> **2026-05-08 — DEV REVIEW CORRECTIONS TO TIER LIST + DISPATCHED PIPELINE STATUS**
+> **2026-05-09 EVENING — STRUCTURAL REVIEW COMPLETE. Engines-first directive anchored.**
+>
+> Today produced two big empirical landings + a strategic correction from the dev review (`docs/Sessions/Other-dev-opinion/05-09-26.md`). The corrected framing supersedes everything below.
+>
+> **The empirical state, honestly stated:**
+>
+> | Measurement | Sharpe (point) | Sharpe ci_low | Status |
+> |---|---:|---:|---|
+> | Foundation Gate (Round 1, static-39) | 1.296 | n/a (pre-CI rule) | KNOWN ARTIFACT (universe bias) |
+> | Universe-aware F6 (static-115, 9 actives) | 0.5074 | n/a | UPPER BOUND (missing-CSV gap) |
+> | C-collapses-1 surviving-6 (static-115) | 0.9154 | n/a | **RETRACTED** — almost certainly contaminated by 2026-05-07 zero-trade regression bug |
+> | **Substrate-honest two-arm Arm 1 (T-002, May 9)** | **0.270** | **−0.383** | **HONEST BASELINE** — bootstrap CI includes zero |
+> | T-004 factor decomp on per-edge streams | n/a | n/a | **0/6 edges have positive factor-adjusted α at t > 2.** 4/6 actively destroy value vs factor ETFs (t between −2.6 and −5.7). |
+>
+> The 1.296 → 0.5074 → 0.9154 → 0.270 sequence is the project converging on its actual signal as measurement geometry got more honest. The 0.9154 was the contamination ghost from a single-bug-class. Substrate-honest 0.270 with `ci_low = −0.383` is the honest read.
+>
+> **The kill thesis (pre-commit: 2025 OOS Sharpe < 0.4 net) is unambiguously triggered. Don't move goalposts.** But "kill thesis triggered" doesn't mean "abandon project" — per pre-commit it means "stop forward feature work and run structural review." That structural review is now complete. Its conclusion:
+>
+> ## The structural review's verdict — engine completion is the load-bearing gap
+>
+> **The full architecture has never operated.** Current production: edges → linear weighted-sum → fixed-fraction sizing → simple position management. Engines C/D/E are scaffolding more than operational layers. **Of course substrate-honest measurement shows weak alpha — most of the architecture isn't allowed to do anything yet.**
+>
+> Per-engine state (per dev review):
+>
+> | Engine | What's shipped | What's genuinely missing |
+> |---|---|---|
+> | A — Alpha | F4 inversion closed; signal_processor refactored | Continuous probability outputs (most edges still binary); explicit edge-horizon metadata; multi-timeframe primitives; orthogonality enforcement |
+> | B — Risk | Asymmetric vol-target clamp; drawdown kill switch (INERT — wired but flag-OFF); 8 bare-except sites narrowed (incl. T-012 today) | **Fixed-fraction `risk_per_trade_pct: 0.025`. No portfolio-level vol-targeting. No correlation-aware sizing. No GARCH/HAR-RV vol forecasting. No event-risk auto-reduction. Drawdown kill switch sits inert.** |
+> | C — Portfolio | HRP optimizer (default OFF, slices 1-3 falsified at small edge count); turnover penalty | **No mean-variance with Ledoit-Wolf shrinkage. No risk parity. No capital efficiency layer. No multi-asset scaffolding active. No tax-aware rebalancing.** |
+> | D — Discovery | Vocabulary fix (Foundry wire + fundamentals-percentile); 25× speedup on Foundry loop | **Still genetic algorithm. Bayesian opt not shipped. Symbolic regression not shipped. Causal discovery not shipped. ZERO promoted edges in project history.** |
+> | E — Regime | Variant C HMM passes leading-AUC | **Default OFF. Not driving a single sizing decision in production.** |
+> | F — Governance | Lifecycle journal Phase 1+2 shipped; three-layer architecture | Mode-of-operation switching not done. Pre-mortem capability not done. |
+>
+> ## The directive going forward
+>
+> Three parallel tracks, all gated on engine completion before Moonshot/AI:
+>
+> ### 1. Engine completion track (load-bearing)
+> - Engine B (propose-first per CLAUDE.md): portfolio-level vol-targeting, correlation-aware sizing, GARCH/HAR-RV vol forecast, drawdown kill switch wire from INERT, event-risk auto-reduction.
+> - Engine C: MV with Ledoit-Wolf shrinkage as alternative to HRP, capital efficiency layer (gross scales with meta-learner confidence), real turnover-vs-alpha tradeoff.
+> - Engine D: Bayesian opt replacing GA (now possible post-vocab-fix), first autonomously-discovered edge through gauntlet, multi-method alpha agreement requirement.
+> - Engine E: Variant C HMM enable A/B (it's already validated; flip the flag), wire HMM into Engine B for regime-conditional sizing, multi-resolution + transition-warning enable.
+> - Engine F: mode-of-operation switching, pre-mortem capability.
+>
+> ### 2. Edge expansion track (parallel, substrate-independent)
+> ~30 missing edges + 12 defensive primitives haven't been built. Add 5-10 per work-week. Foundry pipeline supports cheap addition. Priority order:
+> 1. Calendar anomaly battery (FOMC drift, sell-in-May, pre-holiday, January effect, Santa Claus, triple-witching, tax-loss season) — single file, 6+ features, persistent for 30+ years
+> 2. Pairs trading (10-15 cointegrated pairs: KO/PEP, MA/V, MCD/QSR, HD/LOW, CVX/XOM) — uncorrelated by construction
+> 3. Buyback / dividend-initiation drift — well-documented event drift
+> 4. Cross-sectional momentum AS edges (12-1, 6-1) — currently exist as features only
+> 5. Volatility risk premium (sell SPY weekly puts when IV >> RV)
+> 6. Russell rebalance front-running — known schedule
+>
+> ### 3. Defensive layer track (parallel, partly Engine B)
+> - Real tail hedge sleeve (long 30-delta SPY puts rolled monthly)
+> - Drawdown-conditional gross reduction (wire Engine B's INERT kill switch)
+> - Vol-targeting in Engine B
+> - Dynamic hedge-asset auto-discovery
+> - Event-risk auto-reduction (pre-FOMC, pre-CPI, pre-NFP)
+> - CVaR / Expected Shortfall budgeting
+> - Per-cluster risk budgets
+>
+> ## Re-measure gate (3-6 months out)
+>
+> After engines + defensive layer + 5-10 new edges:
+> - Re-run substrate-honest multi-year under engines-complete geometry
+> - Bootstrap CI on every metric (per CLAUDE.md 6th non-negotiable)
+> - Pre-commit CI-aware kill threshold for THIS gate
+> - Result vs 0.270 baseline tells us whether engine completion delivered the projected +0.55 to +1.25 lift
+> - THEN evaluate Moonshot Sleeve, AI layer
+>
+> ## What's parked until re-measure clears
+>
+> - **Goal C / Moonshot Sleeve.** Same logic as parking AI layer. Building Moonshot on incomplete engines produces another inconclusive verdict (already saw this with Phase 0 trend + LEAPS). Park.
+> - **Sharpe-claiming experiments.** No new headline-Sharpe claims until structural review's re-measure gate. Engineering work continues; alpha measurement pauses.
+> - **DSR / PSR-claiming as headline.** Same reason.
+>
+> ## Why this baseline (0.270) is more useful than it looks
+>
+> It's the comparison point for whether each engine's completion delivers alpha lift. Without 0.270 honestly established, "did Engine B vol-targeting actually help?" has no answer. Each engine's A/B can now be measured against this number. **That's more rigorous than the previous celebrate-then-discover-it-was-an-artifact cycle.**
+>
+> ## Capability re-estimate
+>
+> Per dev review:
+> - Engineering quality: top 1-2% retail
+> - Discipline / falsification: top 1% retail (8-falsification record)
+> - Alpha verification: materially weaker than thought; CI includes zero
+> - Composite: ~55% honest current state, ~75-80% reachable in 3-6 months of disciplined engine work, ~85-90% reachable after Moonshot + LLM layer added on completed bones.
+>
+> ## Today's session ledger (2026-05-09)
+>
+> Merged + pushed:
+> - T-002 substrate-honest two-arm (Arm 1 collapsed, Arm 2 neutral, kill thesis HOT)
+> - T-004 factor decomp (load-bearing alpha falsified post-FF5+Mom)
+> - T-005 backtest_controller narrow-except
+> - T-006 Engine D vocabulary expansion (+24 Foundry columns)
+> - T-007 diversified-futures trend (FALSIFIED — R2's primary recommendation)
+> - T-010 in-code Sharpe gates CI-aware (Engine F + Engine D)
+> - T-011 Engine A bare-except batch (7 sites)
+> - T-012 Engine B drawdown-halt narrow-except (kill-switch defeat closure)
+> - T-013 Engine D Foundry loop vectorization (25.5× speedup, canon md5 invariant)
+> - Cloud parallel-substrate infra (Phase 1-6 verified end-to-end)
+> - CLAUDE.md 6th non-negotiable (bootstrap CI + CI-aware kill thresholds)
+>
+> **9 substantive merges + cloud infra + discipline rule + spec drafts in one day. The engineering ratchet moved forward; the alpha measurement landed honestly weaker; the strategic reframe corrected the next-quarter path.**
+>
+> ---
+
+> **2026-05-08 — DEV REVIEW CORRECTIONS TO TIER LIST + DISPATCHED PIPELINE STATUS** (now superseded by the 2026-05-09 evening structural-review reframe above)
 >
 > The director (this session) drafted a tier list during the substrate-honest re-measurement spec discussion. A dev review surfaced 3 real gaps that this update closes:
 >

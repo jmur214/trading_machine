@@ -22,7 +22,18 @@ then LOW. Within each severity, list newest at the top.
 
 ### HIGH
 
-### [HIGH] Backtests produce zero trades since 2026-05-07 evening — every isolated run lands trades_canon_md5 = `d41d8cd9...` (empty file)
+### [HIGH → RESOLVED-AS-CONTAMINATED 2026-05-09] The 0.9154 surviving-6 result was contaminated by the zero-trade regression
+- Category: measurement integrity / superseded headlines
+- First flagged: 2026-05-09 evening by dev review at `docs/Sessions/Other-dev-opinion/05-09-26.md`. The C-collapses-1 surviving-6 mean Sharpe 0.9154 (PARTIAL bucket, basis for the "6-edge surviving set" narrative) was almost certainly measured during the 2026-05-07 zero-trade-regression window before the bug was caught. **It is RETRACTED.**
+- The honest baseline going forward is the substrate-honest two-arm result T-002 (May 9): **Arm 1 mean Sharpe 0.2702 with bootstrap 95% CI [-0.383, +0.771] — `ci_low` includes zero.** Arm 2 (HMM ON) at 0.294, Δ +0.024, NEUTRAL bucket per pre-commit.
+- Compounding evidence: T-004 factor-decomp on the same trade logs found 0/6 edges have positive factor-adjusted α at t > 2; 4/6 have *significantly negative* factor-adjusted α (t between -2.6 and -5.7). The load-bearing alpha (`volume_anomaly_v1`) is GENUINELY NOISY at t = 0.83, R² = 0.04.
+- Implication: the project now operates against the 0.270 baseline as the comparison point for whether engine completion delivers projected lift. NOT as a kill-thesis death sentence — per pre-commit, kill-thesis trigger means "stop forward feature work and run structural review," and the structural review is now complete (see `docs/State/forward_plan.md` 2026-05-09 evening update).
+- Forward path: engines-first directive anchored. Three parallel tracks (engine completion, edge expansion, defensive layer), all gated on engine completion before Moonshot/AI evaluation.
+
+### [HIGH → RESOLVED 2026-05-08] Backtests produce zero trades since 2026-05-07 evening — every isolated run lands trades_canon_md5 = `d41d8cd9...` (empty file)
+- **RESOLVED 2026-05-08:** root cause was `EarningsVolEdge` raising `TypeError: Cannot compare tz-naive and tz-aware timestamps` — silently swallowed by `backtest_controller.py:389` bare-except. Fix: tz-strip in yfinance cache (commit `4b7a14e`). The bug class is closed by T-005 narrow-except in `backtest_controller.py:389-405` (commit `129c7ba`, merged `4aa634e`); programmer errors now propagate so the next regression of this shape surfaces immediately. Also swept in T-011 (Engine A, 7 sites) and T-012 (Engine B drawdown-halt). Bonus audit at `docs/Audit/bare_except_audit_2026_05_08.md` flagged 188 broader sites; 7 highest-impact closed today.
+
+### [HIGH — historical context only] Original symptom report from 2026-05-08 (pre-fix):
 - Category: governor-state regression / measurement gating
 - First flagged: 2026-05-08 during the missing-CSV closure work. The closure was complete (48/48 sourced, 100% of legitimate names) but the post-closure substrate-honest re-measurement returned Sharpe 0.0 with zero trades. A static-substrate repro yielded the same result. A code-only rollback to commit `7d54de3` (last commit before the 2026-05-07 evening regression window) also yielded zero trades, ruling out the engine/orchestration trees as the cause.
 - Last trade-producing run in `data/trade_logs/`: `35e2f3dd-49e9-45bd-b72f-828efba624a7` at 2026-05-07 01:39 (Sharpe −0.107, 10,581 trade rows). Every subsequent isolated run is empty.
