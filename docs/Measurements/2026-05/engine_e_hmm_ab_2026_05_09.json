@@ -1,0 +1,236 @@
+{
+  "task": "T-2026-05-09-015",
+  "generated": "2026-05-09",
+  "cellA_summary": "Cell A \u2014 HMM OFF, 6 edges (T-002 ARM1_EDGES)",
+  "cellB_summary": "Cell B \u2014 HMM ON Variant C (minimal_c, hmm_minimal_C_v1.pkl), 6 edges (same)",
+  "edges": [
+    "gap_fill_v1",
+    "volume_anomaly_v1",
+    "value_earnings_yield_v1",
+    "value_book_to_market_v1",
+    "accruals_inv_sloan_v1",
+    "accruals_inv_asset_growth_v1"
+  ],
+  "verdict": {
+    "bucket": "WASH",
+    "explanation": "|\u0394Sharpe|=0.0010 < 0.05 \u2014 HMM is a wash on Sharpe axis; keep flag OFF. Sortino delta N/A (harness doesn't capture) (Sortino capture is a deferred follow-up; harness's `summary['Sortino Ratio']` returns None on this code path).",
+    "delta_sharpe": -0.001,
+    "delta_sharpe_ci_low": -0.0022,
+    "delta_sharpe_ci_high": 0.0,
+    "delta_sortino": null,
+    "delta_mdd_pct": 0.0
+  },
+  "cellA": {
+    "per_year": [
+      {
+        "year": 2021,
+        "n_reps": 1,
+        "sharpe_mean": 0.413,
+        "sortino_mean": null,
+        "mdd_mean_pct": -7.74,
+        "win_rate_mean_pct": 56.92,
+        "snapshot_sharpe_mean": 3.9971,
+        "trades_canon_md5_unique": 1,
+        "trades_canon_md5_list": [
+          "bd9ca4e47a7a9505be30150b33c2b4d0"
+        ],
+        "determinism_pass": true
+      },
+      {
+        "year": 2022,
+        "n_reps": 1,
+        "sharpe_mean": 0.116,
+        "sortino_mean": null,
+        "mdd_mean_pct": -2.18,
+        "win_rate_mean_pct": 43.0,
+        "snapshot_sharpe_mean": 2.7886,
+        "trades_canon_md5_unique": 1,
+        "trades_canon_md5_list": [
+          "77e6aa5cab579ce80c8a8b31d33aef52"
+        ],
+        "determinism_pass": true
+      },
+      {
+        "year": 2023,
+        "n_reps": 1,
+        "sharpe_mean": 0.261,
+        "sortino_mean": null,
+        "mdd_mean_pct": -6.19,
+        "win_rate_mean_pct": 55.95,
+        "snapshot_sharpe_mean": 3.8123,
+        "trades_canon_md5_unique": 1,
+        "trades_canon_md5_list": [
+          "b799c65219bb0de18875fc5efdcfb7c7"
+        ],
+        "determinism_pass": true
+      },
+      {
+        "year": 2024,
+        "n_reps": 1,
+        "sharpe_mean": 0.236,
+        "sortino_mean": null,
+        "mdd_mean_pct": -1.83,
+        "win_rate_mean_pct": 41.13,
+        "snapshot_sharpe_mean": 2.9654,
+        "trades_canon_md5_unique": 1,
+        "trades_canon_md5_list": [
+          "cfc02811b20bf4daabeac9fb2c34e347"
+        ],
+        "determinism_pass": true
+      },
+      {
+        "year": 2025,
+        "n_reps": 1,
+        "sharpe_mean": 0.325,
+        "sortino_mean": null,
+        "mdd_mean_pct": -2.56,
+        "win_rate_mean_pct": 50.22,
+        "snapshot_sharpe_mean": 3.0775,
+        "trades_canon_md5_unique": 1,
+        "trades_canon_md5_list": [
+          "f566269b78d297cc603393b0b9327e76"
+        ],
+        "determinism_pass": true
+      }
+    ],
+    "mean_sharpe": 0.27,
+    "mean_sortino": 0.0,
+    "mean_mdd_pct": -4.1,
+    "mean_win_rate_pct": 49.44,
+    "sharpe_ci_low": 0.187,
+    "sharpe_ci_high": 0.36,
+    "sortino_ci_low": 0.0,
+    "sortino_ci_high": 0.0,
+    "n_years": 5
+  },
+  "cellB": {
+    "per_year": [
+      {
+        "year": 2021,
+        "n_reps": 1,
+        "sharpe_mean": 0.413,
+        "sortino_mean": null,
+        "mdd_mean_pct": -7.74,
+        "win_rate_mean_pct": 56.92,
+        "snapshot_sharpe_mean": 3.9971,
+        "trades_canon_md5_unique": 1,
+        "trades_canon_md5_list": [
+          "bd9ca4e47a7a9505be30150b33c2b4d0"
+        ],
+        "determinism_pass": true
+      },
+      {
+        "year": 2022,
+        "n_reps": 1,
+        "sharpe_mean": 0.116,
+        "sortino_mean": null,
+        "mdd_mean_pct": -2.18,
+        "win_rate_mean_pct": 43.0,
+        "snapshot_sharpe_mean": 2.7886,
+        "trades_canon_md5_unique": 1,
+        "trades_canon_md5_list": [
+          "f2e7f6d4862ff9c1cbfc24d9e827c5cb"
+        ],
+        "determinism_pass": true
+      },
+      {
+        "year": 2023,
+        "n_reps": 1,
+        "sharpe_mean": 0.261,
+        "sortino_mean": null,
+        "mdd_mean_pct": -6.19,
+        "win_rate_mean_pct": 55.95,
+        "snapshot_sharpe_mean": 3.8133,
+        "trades_canon_md5_unique": 1,
+        "trades_canon_md5_list": [
+          "f49c2dadd05f26a1e27c1ecae034aff4"
+        ],
+        "determinism_pass": true
+      },
+      {
+        "year": 2024,
+        "n_reps": 1,
+        "sharpe_mean": 0.234,
+        "sortino_mean": null,
+        "mdd_mean_pct": -1.83,
+        "win_rate_mean_pct": 41.51,
+        "snapshot_sharpe_mean": 2.9654,
+        "trades_canon_md5_unique": 1,
+        "trades_canon_md5_list": [
+          "cb215e5e1fb2b70084a315e875bda7ad"
+        ],
+        "determinism_pass": true
+      },
+      {
+        "year": 2025,
+        "n_reps": 1,
+        "sharpe_mean": 0.322,
+        "sortino_mean": null,
+        "mdd_mean_pct": -2.56,
+        "win_rate_mean_pct": 49.83,
+        "snapshot_sharpe_mean": 3.0775,
+        "trades_canon_md5_unique": 1,
+        "trades_canon_md5_list": [
+          "69417f0986d7e5b0175e91b6f7584169"
+        ],
+        "determinism_pass": true
+      }
+    ],
+    "mean_sharpe": 0.269,
+    "mean_sortino": 0.0,
+    "mean_mdd_pct": -4.1,
+    "mean_win_rate_pct": 49.44,
+    "sharpe_ci_low": 0.186,
+    "sharpe_ci_high": 0.359,
+    "sortino_ci_low": 0.0,
+    "sortino_ci_high": 0.0,
+    "n_years": 5
+  },
+  "per_year_delta_sharpe": [
+    {
+      "year": 2021,
+      "delta": 0.0,
+      "delta_sortino": null,
+      "delta_mdd_pct": 0.0,
+      "cellA_canon": "bd9ca4e47a7a9505be30150b33c2b4d0",
+      "cellB_canon": "bd9ca4e47a7a9505be30150b33c2b4d0",
+      "trade_streams_match": true
+    },
+    {
+      "year": 2022,
+      "delta": 0.0,
+      "delta_sortino": null,
+      "delta_mdd_pct": 0.0,
+      "cellA_canon": "77e6aa5cab579ce80c8a8b31d33aef52",
+      "cellB_canon": "f2e7f6d4862ff9c1cbfc24d9e827c5cb",
+      "trade_streams_match": false
+    },
+    {
+      "year": 2023,
+      "delta": 0.0,
+      "delta_sortino": null,
+      "delta_mdd_pct": 0.0,
+      "cellA_canon": "b799c65219bb0de18875fc5efdcfb7c7",
+      "cellB_canon": "f49c2dadd05f26a1e27c1ecae034aff4",
+      "trade_streams_match": false
+    },
+    {
+      "year": 2024,
+      "delta": -0.002,
+      "delta_sortino": null,
+      "delta_mdd_pct": 0.0,
+      "cellA_canon": "cfc02811b20bf4daabeac9fb2c34e347",
+      "cellB_canon": "cb215e5e1fb2b70084a315e875bda7ad",
+      "trade_streams_match": false
+    },
+    {
+      "year": 2025,
+      "delta": -0.003,
+      "delta_sortino": null,
+      "delta_mdd_pct": 0.0,
+      "cellA_canon": "f566269b78d297cc603393b0b9327e76",
+      "cellB_canon": "69417f0986d7e5b0175e91b6f7584169",
+      "trade_streams_match": false
+    }
+  ]
+}
