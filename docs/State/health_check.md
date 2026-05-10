@@ -22,6 +22,13 @@ then LOW. Within each severity, list newest at the top.
 
 ### HIGH
 
+### [HIGH] Paused-tier edge expansion is INERT against the active-edge-dominated ensemble — Discovery cycle is the only lift mechanism for new edges
+- Category: alpha mechanism / forward-path-bottleneck
+- First flagged: 2026-05-10 by T-019 substrate-honest post-edge-expansion measurement. Δ Sharpe = 0.0000 in BOTH arms vs T-002. Bit-identical canon md5s in 15/15 cells per arm. The 5 new paused edges from 2026-05-09 (T-014 calendar features, T-016 momentum × 3, T-017 pairs MA/V, T-018 dividend init) contributed **zero trades** over 5-year substrate-honest — while pre-existing `news_sentiment_edge_v1` at the same 0.25× soft-pause weight produced 451 trades. Infrastructure isn't the filter; signal density at the substrate-honest scale is.
+- Implication: today's edge-expansion track delivered zero substrate-honest alpha. Paused parking provides "post-pause revival evidence" capability — NOT a path to alpha contribution while still paused. **The mechanism for converting today's inventory into headline lift is Discovery's substrate-honest gauntlet (Phase 2.10 + Gates 7/8) promoting edges to `status='active'`.**
+- Forward action: dispatch a Discovery cycle on substrate-honest data; let the gauntlet validate which (if any) of the new paused edges deserve promotion. Adding MORE paused edges is wasted effort until the existing inventory's gauntlet outcome is known.
+
+
 ### [HIGH → RESOLVED-AS-CONTAMINATED 2026-05-09] The 0.9154 surviving-6 result was contaminated by the zero-trade regression
 - Category: measurement integrity / superseded headlines
 - First flagged: 2026-05-09 evening by dev review at `docs/Sessions/Other-dev-opinion/05-09-26.md`. The C-collapses-1 surviving-6 mean Sharpe 0.9154 (PARTIAL bucket, basis for the "6-edge surviving set" narrative) was almost certainly measured during the 2026-05-07 zero-trade-regression window before the bug was caught. **It is RETRACTED.**

@@ -1,6 +1,40 @@
-# Forward Plan — live (last substantive update 2026-05-09 evening, structural-review reframe)
+# Forward Plan — live (last substantive update 2026-05-10, paused-tier-inert finding sharpens the path)
 
-> **2026-05-09 EVENING — STRUCTURAL REVIEW COMPLETE. Engines-first directive anchored.**
+> **2026-05-10 — PAUSED-TIER PARKING IS INERT. Lifecycle promotion via Discovery's substrate-honest gauntlet is THE lift mechanism for edge expansion.**
+>
+> T-2026-05-10-019 ran the full two-arm substrate-honest measurement on post-edge-expansion main HEAD. **Result: Δ Sharpe = 0.0000 in BOTH arms vs T-002. Bit-identical canon md5s in 15/15 cells per arm.** The 5 new paused edges added 2026-05-09 (T-014 calendar features, T-016 momentum × 3, T-017 pairs_trading_MA_V, T-018 dividend_initiation_drift_v1) contributed **zero trades** over the full 5-year substrate-honest window — while pre-existing `news_sentiment_edge_v1` at the same 0.25× soft-pause weight produced 451 trades, confirming the infrastructure isn't the filter.
+>
+> **The mechanism:** paused-tier edges in inventory can be loaded into the alpha pipeline at 0.25× but they only contribute when their signals beat the active-edge ensemble's threshold. New edges with sparse signal density (dividend-initiation, lookback-constrained momentum, single-pair statistical arbitrage) lose to 6 actives producing thousands of trades. Soft-pause provides "post-pause revival evidence" capability — NOT a path to alpha contribution while still paused.
+>
+> **The path to lift is lifecycle PROMOTION through Discovery's substrate-honest gauntlet** (Phase 2.10 + Gates 7/8 wired 2026-05-07). Edges must clear the 8-gate evaluation to reach `status='active'` where they get full weight. Once active, they trade competitively with the existing 6.
+>
+> ### Bonus signal: T-013 vectorization landed real
+>
+> T-019 ran 30 backtests in ~50 min wall, vs T-002's ~10 hr for the same 30 backtests. **~12× speedup** from the Foundry feature loop vectorization that B shipped 2026-05-09 (commit `e141161`). This is reproducible engineering value that survives substrate-honest measurement. Multi-year measurement cycles are now materially cheaper.
+>
+> ## Updated next-step priority
+>
+> Per the engines-first directive (`docs/Sessions/Other-dev-opinion/05-09-26.md`) PLUS today's T-019 evidence, the directive sharpens:
+>
+> 1. **Discovery cycle on substrate-honest data** — the gauntlet's job is to validate which paused edges (T-016 momentum, T-017 MA/V pair, T-018 dividend init, T-014 features) deserve promotion to `status='active'`. Without this, today's edge inventory stays inert. **First post-consolidation dispatch.**
+> 2. **Engine D Bayesian opt swap** (per dev review) — replaces GA with Bayesian opt over the now-expanded Foundry vocabulary. More likely to find candidates GA missed. Engine D autonomy lane.
+> 3. **Engine completion track** — Engine B vol-targeting STAYS ON HOLD per A's T-003 evidence (selection-dominant alpha that has no factor-adjusted significance). Multiplying noise gives noise. Re-evaluate after Discovery cycle.
+> 4. **More edge expansion** — DEFER unless/until Discovery cycle proves the existing inventory has gauntlet-clearing potential. Adding more paused inventory adds nothing.
+>
+> ## Today's session ledger (continued, 2026-05-10)
+>
+> Merged + pushed since the 2026-05-09 evening entry below:
+> - T-018 dividend_initiation_drift_v1 (buyback scoped out — no data source)
+> - T-017 pairs trading (1/12 cointegrate, MA/V only survivor)
+> - T-003 concentration-equivalent test (SELECTION-DOMINANT verdict)
+> - statsmodels==0.14.6 dependency add (USER-APPROVED)
+> - **T-019 substrate-honest post-edge-expansion (Δ Sharpe 0.0000)**
+>
+> Plus the Engine B portfolio vol-targeting spec drafted but UN-DISPATCHED (committed `2e51389`, awaiting engine-completion-track re-evaluation post-Discovery).
+>
+> ---
+
+> **2026-05-09 EVENING — STRUCTURAL REVIEW COMPLETE. Engines-first directive anchored.** (Still load-bearing; below remains valid context for the engines-first reframe.)
 >
 > Today produced two big empirical landings + a strategic correction from the dev review (`docs/Sessions/Other-dev-opinion/05-09-26.md`). The corrected framing supersedes everything below.
 >
