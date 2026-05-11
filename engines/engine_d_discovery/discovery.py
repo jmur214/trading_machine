@@ -275,17 +275,31 @@ class DiscoveryEngine:
         """
         Creates a random Gene (Condition) using expanded vocabulary.
 
-        Categories (weighted selection):
-        - Technical (35%): RSI, Volatility, SMA Distance, SMA Cross, Donchian,
-          Pivot, Momentum ROC, Residual Momentum, Vol Diff
-        - Macro (10%): Yield curve (T10Y2Y), VIX level, unemployment delta
-        - Earnings (5%): EPS surprise % look-back
-        - Fundamental (10%): PE, PS, PB, PFCF, Debt
+        Categories (weighted selection — post-T-022 distribution):
+        - Regime (5%): Bull/bear/vol context
         - Calendar (10%): Day-of-week, month, quarter-end, opex proximity
         - Microstructure (10%): Overnight gap, close location, intraday range
         - Intermarket (10%): SPY/TLT/GLD returns, SPY-TLT correlation
-        - Regime (5%): Bull/bear/vol context
+        - Macro (10%): Yield curve (T10Y2Y), VIX level, unemployment delta
+        - Earnings (5%): EPS surprise % look-back
         - Behavioral (5%): Panic score, herding breadth
+        - Fundamental (10%): PE, PS, PB, PFCF, Debt
+        - **Foundry feature (20%, NEW T-022)**: any feature_id in
+          `core.feature_foundry.get_feature_registry()`. Includes post-T-006
+          (mom_12_1, mom_6_1, vol_regime_5_60, ma_cross_50_200, dist_52w_high,
+          drawdown_60d, etc.) + post-T-014 (fomc_drift, pre_holiday,
+          sell_in_may_halloween, january_effect, triple_witching_premium,
+          tax_loss_season). Most numerically-valued features support
+          top/bottom percentile + greater/less operators.
+        - Technical (15%, reduced from 35%): RSI, Volatility, SMA Distance,
+          SMA Cross, Donchian, Pivot, Momentum ROC, Residual Momentum, Vol Diff
+
+        T-022 (2026-05-11): added `foundry_feature` bucket so Discovery's GA
+        can sample the post-T-006 + post-T-014 Foundry vocabulary. Pre-T-022,
+        Discovery emitted only rsi_bounce_v1 mutations on substrate-honest
+        substrate (T-021 finding) regardless of how many features the Foundry
+        accumulated. Determinism preserved: same `random` source, same call
+        order on existing buckets up to `roll < 0.65`.
         """
         roll = random.random()
 
@@ -415,7 +429,58 @@ class DiscoveryEngine:
                     gene["threshold"] = 1.0
             return gene
 
-        # --- Technical (35% — remainder) ---
+        # --- Foundry feature (20%, T-022) — sample any registered Foundry
+        # feature (post-T-006 + post-T-014 vocabulary). Heavily favors
+        # percentile operators because Foundry feature scales vary widely
+        # and percentile ranking is universally meaningful; greater/less
+        # operators get a 30% share for the absolute-comparison case
+        # (return-like / score-like features). Picks feature_id from the
+        # tier-A + tier-B registry — adversarial-tier features are
+        # excluded since they're permuted twins, not signal-bearing.
+        if roll < 0.85:
+            try:
+                from core.feature_foundry import get_feature_registry
+                reg = get_feature_registry()
+                # Force-import the features package so it registers if
+                # this is the first import in the process.
+                import core.feature_foundry.features  # noqa: F401
+                all_feats = list(reg._features.values())
+                eligible_ids = [
+                    f.feature_id for f in all_feats
+                    if f.tier in ("A", "B")
+                ]
+            except Exception:
+                eligible_ids = []
+            if not eligible_ids:
+                # Foundry not importable in this context — fall through
+                # to the technical bucket so the gene factory always
+                # returns a gene (preserves caller contract).
+                roll = 0.95  # forces technical path below
+            else:
+                feature_id = random.choice(sorted(eligible_ids))
+                if random.random() < 0.70:
+                    # Percentile operator path (cross-sectional ranking)
+                    operator = random.choice(
+                        ["top_percentile", "bottom_percentile"]
+                    )
+                    threshold = (
+                        random.choice([80, 90, 95])
+                        if operator == "top_percentile"
+                        else random.choice([5, 10, 20])
+                    )
+                else:
+                    # Absolute-comparison path (works best for
+                    # return-like / score-like features)
+                    operator = random.choice(["greater", "less"])
+                    threshold = 0.0
+                return {
+                    "type": "foundry_feature",
+                    "feature_id": feature_id,
+                    "operator": operator,
+                    "threshold": threshold,
+                }
+
+        # --- Technical (15% — remainder) ---
         indicators = [
             "rsi", "volatility", "sma_dist_pct",
             "sma_cross", "donchian_breakout", "pivot_position", "momentum_roc",

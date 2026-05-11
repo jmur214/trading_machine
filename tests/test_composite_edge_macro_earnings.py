@@ -184,10 +184,16 @@ def test_gene_vocabulary_distribution():
     macro_pct = counts.get("macro", 0) / total
     earnings_pct = counts.get("earnings", 0) / total
     technical_pct = counts.get("technical", 0) / total
-    # Macro should be ~10%, earnings ~5%, technical ~35%
+    foundry_pct = counts.get("foundry_feature", 0) / total
+    # Post-T-022 distribution: macro ~10%, earnings ~5%, technical ~15%
+    # (down from 35% to absorb the 20% foundry_feature bucket), foundry
+    # ~20%. The foundry_feature bucket makes the post-T-006 + post-T-014
+    # Foundry vocabulary reachable to Discovery's GA (T-021 found that
+    # pre-T-022 only rsi_bounce_v1 mutations were emitted).
     assert 0.07 < macro_pct < 0.13, f"macro={macro_pct:.1%}"
     assert 0.03 < earnings_pct < 0.09, f"earnings={earnings_pct:.1%}"
-    assert 0.28 < technical_pct < 0.42, f"technical={technical_pct:.1%}"
+    assert 0.10 < technical_pct < 0.22, f"technical={technical_pct:.1%}"
+    assert 0.15 < foundry_pct < 0.26, f"foundry_feature={foundry_pct:.1%}"
 
 
 # ---------------------------------------------------------------------------
