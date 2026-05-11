@@ -22,6 +22,25 @@ then LOW. Within each severity, list newest at the top.
 
 ### HIGH
 
+### [HIGH] Engine D gene encoding is single-archetype — Discovery cannot emit candidates from expanded Foundry vocabulary
+- Category: Engine D structural / autonomous-discovery gap
+- First flagged: 2026-05-11 by T-2026-05-10-021 (first-ever Discovery cycle on substrate-honest). All 3 candidates were `rsi_bounce_v1` mutations. The post-T-006 Foundry features + post-T-014 calendar features (mom_12_1, mom_6_1, vol_regime, ma_cross, dist_52w_high, drawdown, hyg_lqd_spread, FOMC drift, sell-in-May, etc.) are NOT REACHABLE by the GA's gene encoding.
+- Implication: vocabulary expansion (T-006, T-013, T-014) delivered zero benefit to Discovery's autonomous candidate-search until gene encoding is extended. **This is the primary structural blocker for the engines-first lift path.** Highest-leverage Engine D work going forward.
+- Forward action: dispatch Engine D gene-encoding extension (next dispatch, ~6-10 hr Engine D autonomy lane).
+
+### [HIGH] Gate 1 (Sharpe-contribution-to-ensemble) wall-time makes Discovery cycles intractable at cap=30
+- Category: Engine D performance / Discovery-cycle feasibility
+- First flagged: 2026-05-11 by T-2026-05-10-021. Per-candidate wall-time 3,240-6,689 sec (Gate 1 runs full ModeController backtest). Cap=30 candidates → 37+ hr. **Cap=30 is infeasible without Gate 1 caching.**
+- Forward action: cached signal-collector replay (compute active-ensemble signal stream ONCE per (universe, window), then replay candidate contributions layered on top) — B's estimate: 10-50× speedup. Makes cap=30+ Discovery runs tractable in 6-8 hr.
+- T-013's vectorization doesn't help here — different code path (Discovery Gate 1 vs Foundry feature loop).
+
+### [HIGH] 0/11 edges clear FF5+Mom t > 2 gate on substrate-honest — universal pattern, not edge-specific
+- Category: alpha mechanism / threshold calibration question
+- First flagged: 2026-05-09 by T-004 (0/6 active edges). Confirmed 2026-05-10 by T-020 (0/5 new paused edges either, despite 5/5 generating trades at full isolation). Max α t-stat across all 11 edges: 1.76 on short_term_reversal_v1.
+- Implication: raw Sharpe in this system is Mkt + Mom factor exposure, not idiosyncratic alpha. EITHER (a) the t > 2 threshold is inherently incompatible with retail-scale substrate-honest universes, OR (b) the project genuinely has no factor-adjusted alpha. Per the discipline framework, we don't relax thresholds after data lands — but the threshold-calibration question is worth ~2-3 hr director analysis (comparison against SPY's own factor-adjusted alpha on the same window; original calibration context).
+- Closest-miss watchlist: short_term_reversal_v1 (t=1.76, 2022 zero-Sharpe cell suspicious), pairs_trading_MA_V_v1 (α point +18%, t=1.41 limited by n=167 trades).
+- Forward action: keep all 5 new paused edges at paused/feature (no manual promotion). Optional follow-ups: STR re-measurement (~2 hr) + pairs inventory expansion (~4 hr) to tighten the t-stats on the closest-miss edges.
+
 ### [HIGH] Paused-tier edge expansion is INERT against the active-edge-dominated ensemble — Discovery cycle is the only lift mechanism for new edges
 - Category: alpha mechanism / forward-path-bottleneck
 - First flagged: 2026-05-10 by T-019 substrate-honest post-edge-expansion measurement. Δ Sharpe = 0.0000 in BOTH arms vs T-002. Bit-identical canon md5s in 15/15 cells per arm. The 5 new paused edges from 2026-05-09 (T-014 calendar features, T-016 momentum × 3, T-017 pairs MA/V, T-018 dividend init) contributed **zero trades** over 5-year substrate-honest — while pre-existing `news_sentiment_edge_v1` at the same 0.25× soft-pause weight produced 451 trades. Infrastructure isn't the filter; signal density at the substrate-honest scale is.

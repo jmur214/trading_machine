@@ -1,4 +1,62 @@
-# Forward Plan — live (last substantive update 2026-05-10, paused-tier-inert finding sharpens the path)
+# Forward Plan — live (last substantive update 2026-05-11, edge-expansion gauntlet outcome doubled-down)
+
+> **2026-05-11 EARLY — EDGE EXPANSION GAUNTLET HAS TWO STRUCTURAL BLOCKERS. T-020 + T-021 together define the next-step priority.**
+>
+> T-2026-05-10-020 (per-edge isolation diagnostic) and T-2026-05-10-021 (first-ever Discovery cycle on substrate-honest) landed in parallel and answer the strategic question definitively.
+>
+> ### Finding 1: 0/11 edges clear the FF5+Mom t > 2 gate on substrate-honest
+>
+> - **T-004 (May 9):** 0/6 active edges have positive factor-adjusted α at t > 2
+> - **T-020 (May 10):** 0/5 NEW paused edges clear t > 2 either, despite 5/5 generating trades at full isolation weight (raw Sharpe 0.28-0.45). Max α t-stat: 1.76 on `short_term_reversal_v1`.
+> - **Combined: 0 of 11 edges tested produce idiosyncratic alpha at t > 2.** Raw Sharpe is Mkt + Mom factor exposure.
+> - Closest-miss watchlist: `short_term_reversal_v1` (t=+1.76 with a suspicious 2022 zero-Sharpe cell worth 2-3 rep re-measurement), `pairs_trading_MA_V_v1` (α point +18%, t=1.41 limited by n=167 trades; expanding pairs inventory tightens the t-stat).
+>
+> ### Finding 2: Discovery's gene encoding is single-archetype
+>
+> - T-021's 3 candidates were ALL `rsi_bounce_v1` mutations. The post-T-006 Foundry features + post-T-014 calendar features are **invisible to Discovery's gene encoding**.
+> - Gate 1 (Sharpe-contribution-to-ensemble) killed 3/3 candidates: raw Sharpe 0.54-0.72 but marginal ensemble contribution < 0.1 threshold. Same dynamic as T-019.
+> - Per-candidate wall-time: 3,240-6,689 sec (Gate 1 runs full ModeController backtest). Cap=30 → 37+ hr. **Cap=30 is infeasible without Gate 1 caching.**
+>
+> ### The reframed next-step priority
+>
+> The dev review's projected +0.1 to +0.3 Sharpe from "5-10 new uncorrelated edges that survive gauntlet" is at risk because:
+> 1. **Hand-written edges** don't survive Gate 6 (FF5+Mom t > 2) — universal pattern across all 11 edges tested
+> 2. **Discovery-generated candidates** don't even reach Gate 6 — gene encoding can't emit candidates from the expanded vocabulary; all candidates are rsi_bounce_v1 variants
+> 3. **Gate 1 wall-time** makes Discovery cycles intractable at cap=30 without caching
+>
+> ### The directive sharpens twice
+>
+> #### Primary structural fix: Engine D gene-encoding extension
+>
+> Engine D's GA emits candidates from a narrow gene encoding (technical indicators only — RSI/MACD/ATR/Bollinger). The Foundry features T-006 added (mom_12_1, mom_6_1, vol_regime_5_60, ma_cross_50_200, dist_52w_high, drawdown_60d, hyg_lqd_spread, dxy_change_20d, calendar/regime/macro features) and the calendar features T-014 added (FOMC drift, sell-in-May, pre-holiday, January effect, Santa Claus, triple-witching, tax-loss season) are NOT REACHABLE by the GA's gene encoding. **Vocabulary expansion delivered zero benefit to Discovery's candidate-search; gene encoding is the gating constraint.**
+>
+> This is now the highest-leverage Engine D work. Next dispatch (T-022 or similar) should extend gene encoding to emit candidates that consume the expanded vocabulary. Without this, every additional Foundry feature is invisible to autonomous discovery.
+>
+> #### Secondary structural fix: Gate 1 caching (cached signal-collector replay)
+>
+> Each candidate runs a full ModeController backtest in Gate 1 to compute Sharpe-contribution-to-ensemble. A signal-collector cache (compute the active-ensemble signal stream ONCE per (universe, window), then for each candidate just replay the candidate's contribution layered on top) would deliver 10-50× speedup per B's estimate. Makes cap=30+ Discovery runs tractable in 6-8 hr instead of 37+ hr.
+>
+> #### Threshold reconsideration (lower-priority, director-side)
+>
+> If 0/11 edges clear FF5+Mom t > 2 on substrate-honest, the threshold may be inherently incompatible with the retail-scale substrate-honest universe. **NOT goalpost-moving** because no Sharpe-claiming decision is being made — it's a threshold-calibration question. Worth ~2-3 hr director analysis to compare against e.g. SPY's own factor-adjusted alpha on the same window, or to check whether the bar was originally calibrated against institutional substrates.
+>
+> ### What stays on hold
+>
+> - **Engine B portfolio vol-targeting** stays on hold. Multiplying selection-dominant alpha that has no factor-adjusted significance lifts nothing.
+> - **More edge expansion in isolation** — adding more hand-written edges that fail the same t > 2 gate adds zero. STR re-measurement + pairs MA/V inventory expansion (~6 hr combined) are the only edge-track follow-ups worth doing in the closest-miss territory.
+> - **Moonshot Sleeve, AI layer** — still parked per engines-first directive.
+>
+> ### Today's session ledger (continued, 2026-05-11)
+>
+> Merged + pushed since the 2026-05-10 entry below:
+> - T-020 per-edge isolation diagnostic (5/5 keep-paused; pairs MA/V + STR flagged as closest-miss for follow-up)
+> - T-021 Discovery cycle on substrate-honest (3 candidates, 100% Gate 1 kill, GA single-archetype)
+>
+> Surfaces for user attention:
+> - B recommends `python -m scripts.run_isolated --save-anchor` after T-020 merges so the `isolated()` stale-anchor edges.yml workaround isn't needed for future measurements. Propose-first per CLAUDE.md governor rule.
+> - Disk-fill incident at cell 14/25 in T-020 grid (ENOSPC) — accumulated trade_logs across worktrees. Recovery succeeded via incremental persistence. Going forward: **each agent worktree's `data/trade_logs/` needs hygienic cleanup at session end** to avoid surprise disk-exhaustion. Adding to lessons.
+>
+> ---
 
 > **2026-05-10 — PAUSED-TIER PARKING IS INERT. Lifecycle promotion via Discovery's substrate-honest gauntlet is THE lift mechanism for edge expansion.**
 >
