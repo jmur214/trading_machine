@@ -44,6 +44,9 @@ WINDOWS = {
     "2023": ("2023-01-01", "2023-12-31"),
     "2024H2": ("2024-07-01", "2024-12-31"),
     "2024H1": ("2024-01-01", "2024-06-30"),
+    # T-2026-05-10-021 substrate-honest cycle: 2021-2024 in-sample,
+    # Engine D's WFO inside validate_candidate handles 2025 OOS embargo.
+    "2021-2024": ("2021-01-01", "2024-12-31"),
 }
 
 
@@ -61,6 +64,15 @@ def main() -> int:
                         help="Directory for the per-candidate jsonl emission.")
     parser.add_argument("--no-isolated", action="store_true",
                         help="Skip the determinism harness (only for debugging the script itself).")
+    parser.add_argument("--substrate-honest", action="store_true",
+                        help="Run on F6 historical S&P 500 universe with missing-CSV "
+                             "closure (substrate-honest substrate). Required for "
+                             "T-021-class measurements; default is the static-config "
+                             "universe.")
+    parser.add_argument("--apply-journal-at-end", action="store_true",
+                        help="F11 journal-mode: route lifecycle decisions through "
+                             "the LifecycleJournal at end of run instead of mutating "
+                             "edges.yml directly. Required for T-021 hard constraint.")
     args = parser.parse_args()
 
     start, end = WINDOWS[args.window]
@@ -97,13 +109,15 @@ def main() -> int:
             override_start=start,
             override_end=end,
             discover=True,
+            use_historical_universe=args.substrate_honest,
+            apply_journal_at_end=args.apply_journal_at_end,
         )
 
     t0 = time.time()
     if args.no_isolated:
         summary = _do_run()
     else:
-        with isolated():
+        with isolated(journal_mode=args.apply_journal_at_end):
             summary = _do_run()
     elapsed = time.time() - t0
 

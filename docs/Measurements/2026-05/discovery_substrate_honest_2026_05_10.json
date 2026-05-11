@@ -1,0 +1,60 @@
+{
+  "jsonl_path": "docs/Audit/discovery_diagnostic_run_2026_05_20260510T182650.jsonl",
+  "n_records": 3,
+  "first_failed_histogram": {
+    "gate_1": 3
+  },
+  "per_gate_pass_rate": {
+    "gate_1": {
+      "evaluated": 3,
+      "passed": 0
+    }
+  },
+  "wall_time_stats": {
+    "n": 3,
+    "min_sec": 3239.598,
+    "max_sec": 6689.681,
+    "mean_sec": 4457.889666666667,
+    "total_min": 222.89448333333334
+  },
+  "candidate_origin_distribution": {
+    "rsi_bounce_v1": 3
+  },
+  "gene_type_distribution": {},
+  "gauntlet_survival_ci": {
+    "n": 3,
+    "n_survived": 0,
+    "point": 0.0,
+    "ci_low": 0.0,
+    "ci_high": 0.0
+  },
+  "per_candidate": [
+    {
+      "candidate_id": "rsi_bounce_v1_mut_9187",
+      "first_failed_gate": "gate_1",
+      "wall_seconds_total": 6689.681,
+      "sharpe": 0.7191322052792276,
+      "sortino": 1.014334070135271,
+      "benchmark_threshold": 0.1,
+      "factor_alpha_tstat": 0.0
+    },
+    {
+      "candidate_id": "rsi_bounce_v1_mut_2e63",
+      "first_failed_gate": "gate_1",
+      "wall_seconds_total": 3444.39,
+      "sharpe": 0.5407202966423823,
+      "sortino": 0.6546851250064083,
+      "benchmark_threshold": 0.1,
+      "factor_alpha_tstat": 0.0
+    },
+    {
+      "candidate_id": "rsi_bounce_v1_mut_68e5",
+      "first_failed_gate": "gate_1",
+      "wall_seconds_total": 3239.598,
+      "sharpe": 0.5643660615072147,
+      "sortino": 0.7898971999162367,
+      "benchmark_threshold": 0.1,
+      "factor_alpha_tstat": 0.0
+    }
+  ]
+}
