@@ -22,6 +22,14 @@ then LOW. Within each severity, list newest at the top.
 
 ### HIGH
 
+### [MEDIUM] Lifecycle gauntlet doesn't check factor-adjusted α — edges with positive raw PnL but significantly negative factor-adjusted α stay active
+- Category: Engine F autonomous-decision gap / lifecycle retirement scope
+- First flagged: 2026-05-11 by director-side threshold-calibration audit (`docs/Audit/factor_decomp_threshold_calibration_2026_05_11.md`).
+- The `lifecycle_manager.py:_check_retirement` gate (line 655+) uses raw Sharpe-vs-benchmark with CI-aware reading (T-010's update). It catches edges with negative raw PnL/Sharpe. But it does NOT check factor-adjusted α.
+- Concrete miss: `value_book_to_market_v1` has +$2,082 raw PnL over 5 years but FF5+Mom α = -2.20% / t = -2.60 (significantly negative idiosyncratic α). It's winning ONLY by buying Mkt+Mom factor exposure that factor ETFs sell cheaper. Lifecycle keeps it active despite the structural-evidence retirement case.
+- Future T-026-or-similar dispatch: extend the lifecycle gauntlet's retirement gate to ALSO check factor-adjusted α (HAC t < -2 OR α ci_low < some-negative-threshold). Would catch the value/accruals cluster cleanly. Engine F change — propose-first per CLAUDE.md interpretation since it changes autonomous decision logic; spec needed before dispatch.
+- Note: lifecycle hasn't fired on substrate-honest data yet (`data/governor/decision_diary.jsonl` only shows measurement_run entries through 2026-05-10, no lifecycle decisions). So the 3 raw-PnL-negative edges (value_earnings_yield, accruals_inv_sloan, accruals_inv_asset_growth) would auto-retire on the next lifecycle cycle that runs on substrate-honest. Value_book_to_market would stay alive without the factor-adjusted gate.
+
 ### [HIGH] Engine D gene encoding is single-archetype — Discovery cannot emit candidates from expanded Foundry vocabulary
 - Category: Engine D structural / autonomous-discovery gap
 - First flagged: 2026-05-11 by T-2026-05-10-021 (first-ever Discovery cycle on substrate-honest). All 3 candidates were `rsi_bounce_v1` mutations. The post-T-006 Foundry features + post-T-014 calendar features (mom_12_1, mom_6_1, vol_regime, ma_cross, dist_52w_high, drawdown, hyg_lqd_spread, FOMC drift, sell-in-May, etc.) are NOT REACHABLE by the GA's gene encoding.
