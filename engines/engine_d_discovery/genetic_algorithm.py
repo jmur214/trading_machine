@@ -40,6 +40,14 @@ class GeneticAlgorithm:
         tournament_k: int = 3,
         max_genes: int = 4,
         gene_factory: Optional[Callable[[], Dict[str, Any]]] = None,
+        # T-2026-05-11-024: number of random genomes to inject into
+        # generation 0 alongside the registry-seeded baseline. With
+        # T-022's `foundry_feature` gene type emitting at ~21.7%, a
+        # default of 5 random genomes virtually guarantees ≥1 generation-0
+        # genome contains Foundry-feature genes (P(≥1) ≈ 1 − (1 − 0.217×3)^5
+        # ≈ 1 − 0.10 ≈ 0.90 assuming 3 genes/genome). Set to 0 to
+        # restore pre-T-024 registry-only seeding behavior.
+        seed_random_count: int = 5,
     ):
         self.population_path = Path(population_path)
         self.population_size = population_size
@@ -49,6 +57,7 @@ class GeneticAlgorithm:
         self.tournament_k = tournament_k
         self.max_genes = max_genes
         self.gene_factory = gene_factory  # Callable that creates a random gene
+        self.seed_random_count = int(seed_random_count)
 
         self.population: List[Dict[str, Any]] = []
         self.generation: int = 0
@@ -99,9 +108,17 @@ class GeneticAlgorithm:
 
     def seed_from_registry(self, registry_specs: List[Dict[str, Any]]) -> None:
         """
-        Seed Gen 0 from existing composite edges in the registry.
+        Seed Gen 0 from existing composite edges in the registry, then
+        (post-T-024) inject `self.seed_random_count` random genomes
+        produced by `self.gene_factory` for population diversity.
+
+        Pre-T-024 behavior preserved: with `seed_random_count=0` (or
+        no `gene_factory` configured), this method only appends the
+        registry-derived genomes — bit-identical to the legacy path.
+
         Only imports specs with "genes" in params (CompositeEdge format).
         """
+        n_registry_before = len(self.population)
         for spec in registry_specs:
             params = spec.get("params", {})
             if "genes" in params:
@@ -111,8 +128,46 @@ class GeneticAlgorithm:
                     "direction": params.get("direction", "long"),
                 }
                 self.population.append(genome)
+        n_from_registry = len(self.population) - n_registry_before
 
-        logger.info(f"[GA] Seeded {len(self.population)} genomes from registry.")
+        n_random = self._seed_random_genomes(self.seed_random_count)
+
+        logger.info(
+            f"[GA] Seeded {len(self.population)} genomes "
+            f"({n_from_registry} from registry + {n_random} random "
+            f"per seed_random_count={self.seed_random_count})."
+        )
+
+    def _seed_random_genomes(self, n: int) -> int:
+        """T-2026-05-11-024: append N random genomes to the population
+        using `self.gene_factory`. Each genome has random gene count in
+        [1, max_genes] and a randomized direction (10% short, 10%
+        market_neutral, 80% long — matching the discovery.py random-fill
+        loop's distribution).
+
+        Returns the actual number appended (0 if no gene_factory or n<=0).
+        """
+        if n <= 0 or self.gene_factory is None:
+            return 0
+        added = 0
+        for _ in range(n):
+            n_genes = random.randint(1, max(1, self.max_genes))
+            genes = [self.gene_factory() for _ in range(n_genes)]
+            suffix = "".join(random.choices("abcdef0123456789", k=6))
+            r = random.random()
+            if r < 0.10:
+                direction = "short"
+            elif r < 0.20:
+                direction = "market_neutral"
+            else:
+                direction = "long"
+            self.population.append({
+                "edge_id": f"composite_seed_random_{suffix}",
+                "genes": genes,
+                "direction": direction,
+            })
+            added += 1
+        return added
 
     # ------------------------------------------------------------------
     # Selection
