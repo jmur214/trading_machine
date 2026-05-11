@@ -1,0 +1,708 @@
+{
+  "task_id": "T-2026-05-10-020",
+  "generated_at": "2026-05-11T00:19:02",
+  "factors_meta": {
+    "start": "1963-07-01",
+    "end": "2026-02-27",
+    "n_rows": 15770
+  },
+  "per_edge": [
+    {
+      "edge_id": "momentum_12_1_v1",
+      "n_trades": 5277,
+      "per_year_sharpes": [
+        0.566,
+        0.256,
+        0.229,
+        0.499,
+        0.226
+      ],
+      "sharpe_ci": {
+        "point_estimate": 0.35519999999999996,
+        "ci_low": 0.2332,
+        "ci_high": 0.48519999999999996,
+        "n_obs": 5,
+        "p_above_zero": 1.0
+      },
+      "decomp": {
+        "edge": "momentum_12_1_v1",
+        "n_obs": 1041,
+        "lag_neweywest": 6,
+        "alpha_daily": 2.954283584545446e-05,
+        "alpha_annualized": 0.007444794633054524,
+        "alpha_se_daily_hac": 8.239708303212293e-05,
+        "alpha_se_annualized_hac": 0.02076406492409498,
+        "alpha_tstat_hac": 0.3585422536612981,
+        "alpha_ci_low_analytic": -0.03325277261817164,
+        "alpha_ci_high_analytic": 0.048142361884280685,
+        "alpha_ci_low_bootstrap": -0.03188298637786745,
+        "alpha_ci_high_bootstrap": 0.045340504682250454,
+        "alpha_p_above_zero_bootstrap": 0.591,
+        "r_squared": 0.17277738762040495,
+        "raw_sharpe": 1.170285568507123,
+        "betas": {
+          "MktRF": {
+            "beta": 0.06926167541023563,
+            "se": 0.008166804943433692,
+            "t_stat": 8.480877881860481
+          },
+          "SMB": {
+            "beta": 0.004899826657215909,
+            "se": 0.011586621981249068,
+            "t_stat": 0.42288655530019237
+          },
+          "HML": {
+            "beta": 0.0435120313396831,
+            "se": 0.015500777696700593,
+            "t_stat": 2.8070869856384575
+          },
+          "RMW": {
+            "beta": -0.028170131422649992,
+            "se": 0.012730693711868676,
+            "t_stat": -2.212772694106002
+          },
+          "CMA": {
+            "beta": -0.029726578777966747,
+            "se": 0.019327661676016798,
+            "t_stat": -1.538032860687628
+          },
+          "Mom": {
+            "beta": 0.03364460294620407,
+            "se": 0.008928173364997153,
+            "t_stat": 3.7683635353797587
+          }
+        },
+        "ok": true
+      },
+      "verdict": "keep-paused (sharpe_ci_low=0.233, \u03b1_t=0.36, \u03b1_annualized=0.0074; signal too weak post-factor for promotion)"
+    },
+    {
+      "edge_id": "momentum_6_1_v1",
+      "n_trades": 5432,
+      "per_year_sharpes": [
+        0.469,
+        0.179,
+        0.397,
+        0.36,
+        0.284
+      ],
+      "sharpe_ci": {
+        "point_estimate": 0.3378,
+        "ci_low": 0.2514,
+        "ci_high": 0.4184,
+        "n_obs": 5,
+        "p_above_zero": 1.0
+      },
+      "decomp": {
+        "edge": "momentum_6_1_v1",
+        "n_obs": 1054,
+        "lag_neweywest": 6,
+        "alpha_daily": -8.029614688645881e-05,
+        "alpha_annualized": -0.020234629015387622,
+        "alpha_se_daily_hac": 7.968920230633835e-05,
+        "alpha_se_annualized_hac": 0.020081678981197264,
+        "alpha_tstat_hac": -1.0076163967332397,
+        "alpha_ci_low_analytic": -0.05959471981853426,
+        "alpha_ci_high_analytic": 0.019125461787759018,
+        "alpha_ci_low_bootstrap": -0.06220140540625563,
+        "alpha_ci_high_bootstrap": 0.017031916504933776,
+        "alpha_p_above_zero_bootstrap": 0.13,
+        "r_squared": 0.16725167826604392,
+        "raw_sharpe": 0.4393571559915697,
+        "betas": {
+          "MktRF": {
+            "beta": 0.07143790656591141,
+            "se": 0.011023401952122973,
+            "t_stat": 6.48056805659285
+          },
+          "SMB": {
+            "beta": -0.007512098809691468,
+            "se": 0.009578190433540404,
+            "t_stat": -0.7842920708055664
+          },
+          "HML": {
+            "beta": 0.03285052844754551,
+            "se": 0.01041675522596549,
+            "t_stat": 3.1536239198229525
+          },
+          "RMW": {
+            "beta": -0.02235889426504052,
+            "se": 0.008883970778830524,
+            "t_stat": -2.516768100849587
+          },
+          "CMA": {
+            "beta": 0.012557217805141015,
+            "se": 0.012406621743882268,
+            "t_stat": 1.0121383616239454
+          },
+          "Mom": {
+            "beta": 0.008568128806026885,
+            "se": 0.004957443077408179,
+            "t_stat": 1.7283362959976587
+          }
+        },
+        "ok": true
+      },
+      "verdict": "keep-paused (sharpe_ci_low=0.251, \u03b1_t=-1.01, \u03b1_annualized=-0.0202; signal too weak post-factor for promotion)"
+    },
+    {
+      "edge_id": "short_term_reversal_v1",
+      "n_trades": 3302,
+      "per_year_sharpes": [
+        0.357,
+        0.0,
+        0.365,
+        0.382,
+        0.303
+      ],
+      "sharpe_ci": {
+        "point_estimate": 0.2814,
+        "ci_low": 0.1444,
+        "ci_high": 0.36860000000000004,
+        "n_obs": 5,
+        "p_above_zero": 1.0
+      },
+      "decomp": {
+        "edge": "short_term_reversal_v1",
+        "n_obs": 1019,
+        "lag_neweywest": 6,
+        "alpha_daily": 0.00013456331259822143,
+        "alpha_annualized": 0.033909954774751803,
+        "alpha_se_daily_hac": 7.642966459190379e-05,
+        "alpha_se_annualized_hac": 0.019260275477159756,
+        "alpha_tstat_hac": 1.7606162910268188,
+        "alpha_ci_low_analytic": -0.0038401851604813186,
+        "alpha_ci_high_analytic": 0.07166009470998493,
+        "alpha_ci_low_bootstrap": -0.002090927290685335,
+        "alpha_ci_high_bootstrap": 0.0703299204180137,
+        "alpha_p_above_zero_bootstrap": 0.966,
+        "r_squared": 0.13937133126321266,
+        "raw_sharpe": 2.2590824027982315,
+        "betas": {
+          "MktRF": {
+            "beta": 0.06172014955284228,
+            "se": 0.007637998669354018,
+            "t_stat": 8.080670372526033
+          },
+          "SMB": {
+            "beta": 0.0016257089230556302,
+            "se": 0.012505061291162172,
+            "t_stat": 0.13000407476647746
+          },
+          "HML": {
+            "beta": 0.03297348383764194,
+            "se": 0.009997120462413788,
+            "t_stat": 3.29829814111098
+          },
+          "RMW": {
+            "beta": -0.010812702380149976,
+            "se": 0.011066322426845989,
+            "t_stat": -0.9770818130076572
+          },
+          "CMA": {
+            "beta": 0.018256785972548657,
+            "se": 0.012579618775692707,
+            "t_stat": 1.4512988269426577
+          },
+          "Mom": {
+            "beta": -0.010345595473874196,
+            "se": 0.006933087373469387,
+            "t_stat": -1.492206129330396
+          }
+        },
+        "ok": true
+      },
+      "verdict": "keep-paused (sharpe_ci_low=0.144, \u03b1_t=1.76, \u03b1_annualized=0.0339; signal too weak post-factor for promotion)"
+    },
+    {
+      "edge_id": "pairs_trading_MA_V_v1",
+      "n_trades": 167,
+      "per_year_sharpes": [
+        0.38,
+        0.321,
+        0.451,
+        0.431,
+        0.343
+      ],
+      "sharpe_ci": {
+        "point_estimate": 0.38520000000000004,
+        "ci_low": 0.346,
+        "ci_high": 0.4288,
+        "n_obs": 5,
+        "p_above_zero": 1.0
+      },
+      "decomp": {
+        "edge": "pairs_trading_MA_V_v1",
+        "n_obs": 62,
+        "lag_neweywest": 3,
+        "alpha_daily": 0.0007130409001835476,
+        "alpha_annualized": 0.17968630684625397,
+        "alpha_se_daily_hac": 0.0005061424884134609,
+        "alpha_se_annualized_hac": 0.12754790708019215,
+        "alpha_tstat_hac": 1.4087750317477281,
+        "alpha_ci_low_analytic": -0.07030759103092263,
+        "alpha_ci_high_analytic": 0.4296802047234306,
+        "alpha_ci_low_bootstrap": -0.04586418751022649,
+        "alpha_ci_high_bootstrap": 0.4237160949551106,
+        "alpha_p_above_zero_bootstrap": 0.937,
+        "r_squared": 0.07619282056057708,
+        "raw_sharpe": 3.3493890555863057,
+        "betas": {
+          "MktRF": {
+            "beta": 0.08496197679503927,
+            "se": 0.040707379466250054,
+            "t_stat": 2.087139430468132
+          },
+          "SMB": {
+            "beta": 0.04731236456476056,
+            "se": 0.059623413976447825,
+            "t_stat": 0.7935198843771287
+          },
+          "HML": {
+            "beta": 0.07241678619233732,
+            "se": 0.055078362450824044,
+            "t_stat": 1.3147955561858553
+          },
+          "RMW": {
+            "beta": 0.009446585423822451,
+            "se": 0.050203554164307926,
+            "t_stat": 0.1881656703608143
+          },
+          "CMA": {
+            "beta": 0.015473835979784944,
+            "se": 0.06155194272297315,
+            "t_stat": 0.25139476181000564
+          },
+          "Mom": {
+            "beta": -0.03842453138744522,
+            "se": 0.046285744209905035,
+            "t_stat": -0.8301590920347018
+          }
+        },
+        "ok": true
+      },
+      "verdict": "keep-paused (sharpe_ci_low=0.346, \u03b1_t=1.41, \u03b1_annualized=0.1797; signal too weak post-factor for promotion)"
+    },
+    {
+      "edge_id": "dividend_initiation_drift_v1",
+      "n_trades": 253,
+      "per_year_sharpes": [
+        0.378,
+        0.841,
+        0.383,
+        0.344,
+        0.291
+      ],
+      "sharpe_ci": {
+        "point_estimate": 0.4473999999999999,
+        "ci_low": 0.3258,
+        "ci_high": 0.65,
+        "n_obs": 5,
+        "p_above_zero": 1.0
+      },
+      "decomp": {
+        "edge": "dividend_initiation_drift_v1",
+        "n_obs": 158,
+        "lag_neweywest": 4,
+        "alpha_daily": 0.0008817570161917932,
+        "alpha_annualized": 0.22220276808033187,
+        "alpha_se_daily_hac": 0.0007364895735546864,
+        "alpha_se_annualized_hac": 0.18559537253578096,
+        "alpha_tstat_hac": 1.197243040299905,
+        "alpha_ci_low_analytic": -0.1415641620897988,
+        "alpha_ci_high_analytic": 0.5859696982504625,
+        "alpha_ci_low_bootstrap": -0.15901911707949334,
+        "alpha_ci_high_bootstrap": 0.5904884033725133,
+        "alpha_p_above_zero_bootstrap": 0.864,
+        "r_squared": 0.1802328888144037,
+        "raw_sharpe": 0.8344518491450035,
+        "betas": {
+          "MktRF": {
+            "beta": 0.30192933377831993,
+            "se": 0.05555653878460915,
+            "t_stat": 5.434631825227448
+          },
+          "SMB": {
+            "beta": -0.08811279786310028,
+            "se": 0.1072742516097105,
+            "t_stat": -0.8213788168262017
+          },
+          "HML": {
+            "beta": 0.12267867710699092,
+            "se": 0.11758670768682744,
+            "t_stat": 1.0433039543357663
+          },
+          "RMW": {
+            "beta": 0.014596422304178836,
+            "se": 0.18234672548207648,
+            "t_stat": 0.08004762501541916
+          },
+          "CMA": {
+            "beta": -0.11846535344564411,
+            "se": 0.1755376114215234,
+            "t_stat": -0.6748716271475856
+          },
+          "Mom": {
+            "beta": 0.0387561760852888,
+            "se": 0.09980217577505467,
+            "t_stat": 0.3883299716094548
+          }
+        },
+        "ok": true
+      },
+      "verdict": "keep-paused (sharpe_ci_low=0.326, \u03b1_t=1.20, \u03b1_annualized=0.2222; signal too weak post-factor for promotion)"
+    }
+  ],
+  "grid_records": [
+    {
+      "edge_id": "momentum_12_1_v1",
+      "year": 2021,
+      "run_id": "d4058acf-cf7f-404a-9e3c-b8cbbf0db157",
+      "sharpe": 0.566,
+      "sortino": null,
+      "cagr_pct": null,
+      "max_drawdown_pct": -13.51,
+      "win_rate_pct": 62.54,
+      "total_trades": null,
+      "trades_canon_md5": "51545c4d4a4d92994b46244741df8e34",
+      "wall_time_seconds": 380.0,
+      "ok": true
+    },
+    {
+      "edge_id": "momentum_12_1_v1",
+      "year": 2022,
+      "run_id": "832b5cfd-73db-4b24-87a6-52eed96ee070",
+      "sharpe": 0.256,
+      "sortino": null,
+      "cagr_pct": null,
+      "max_drawdown_pct": -3.55,
+      "win_rate_pct": 41.89,
+      "total_trades": null,
+      "trades_canon_md5": "7177115439db02c1c17602120d33114a",
+      "wall_time_seconds": 401.8,
+      "ok": true
+    },
+    {
+      "edge_id": "momentum_12_1_v1",
+      "year": 2023,
+      "run_id": "b87a30ff-0643-4f00-9396-4021ab5e985b",
+      "sharpe": 0.229,
+      "sortino": null,
+      "cagr_pct": null,
+      "max_drawdown_pct": -5.74,
+      "win_rate_pct": 56.8,
+      "total_trades": null,
+      "trades_canon_md5": "052c5754682ee4ccaeec9d2f384cdce6",
+      "wall_time_seconds": 402.7,
+      "ok": true
+    },
+    {
+      "edge_id": "momentum_12_1_v1",
+      "year": 2024,
+      "run_id": "eb7ad3a9-ea09-414d-a1f8-d830ebbb8aa5",
+      "sharpe": 0.499,
+      "sortino": null,
+      "cagr_pct": null,
+      "max_drawdown_pct": -11.1,
+      "win_rate_pct": 56.9,
+      "total_trades": null,
+      "trades_canon_md5": "815c55839e6c667ff00610b318748dca",
+      "wall_time_seconds": 415.6,
+      "ok": true
+    },
+    {
+      "edge_id": "momentum_12_1_v1",
+      "year": 2025,
+      "run_id": "9e00423c-8c9e-4a04-a189-a1f908a05222",
+      "sharpe": 0.226,
+      "sortino": null,
+      "cagr_pct": null,
+      "max_drawdown_pct": -4.39,
+      "win_rate_pct": 46.99,
+      "total_trades": null,
+      "trades_canon_md5": "a4c537336b7f2a8996182c7ec7fe07cf",
+      "wall_time_seconds": 420.6,
+      "ok": true
+    },
+    {
+      "edge_id": "momentum_6_1_v1",
+      "year": 2021,
+      "run_id": "182a2c48-d5a5-45b3-b69f-2bb09b7dc54a",
+      "sharpe": 0.469,
+      "sortino": null,
+      "cagr_pct": null,
+      "max_drawdown_pct": -11.21,
+      "win_rate_pct": 59.59,
+      "total_trades": null,
+      "trades_canon_md5": "c7ced1e2587afed06976ee2854ce7344",
+      "wall_time_seconds": 382.9,
+      "ok": true
+    },
+    {
+      "edge_id": "momentum_6_1_v1",
+      "year": 2022,
+      "run_id": "307a9c18-859b-46a3-adcf-ba009e5e27f4",
+      "sharpe": 0.179,
+      "sortino": null,
+      "cagr_pct": null,
+      "max_drawdown_pct": -2.08,
+      "win_rate_pct": 38.48,
+      "total_trades": null,
+      "trades_canon_md5": "6eed92b6834ffe0120a0e6daeee0f859",
+      "wall_time_seconds": 401.8,
+      "ok": true
+    },
+    {
+      "edge_id": "momentum_6_1_v1",
+      "year": 2023,
+      "run_id": "0430c338-5de1-4680-acc4-f0f641e91809",
+      "sharpe": 0.397,
+      "sortino": null,
+      "cagr_pct": null,
+      "max_drawdown_pct": -7.34,
+      "win_rate_pct": 57.05,
+      "total_trades": null,
+      "trades_canon_md5": "f6718c3ba0b0654cb8bab735201ead06",
+      "wall_time_seconds": 404.8,
+      "ok": true
+    },
+    {
+      "edge_id": "momentum_6_1_v1",
+      "year": 2024,
+      "run_id": "6a2c7e03-accd-4491-a063-bbeddb4f99fa",
+      "sharpe": 0.36,
+      "sortino": null,
+      "cagr_pct": null,
+      "max_drawdown_pct": -6.52,
+      "win_rate_pct": 49.45,
+      "total_trades": null,
+      "trades_canon_md5": "4e222cdff43f97227b5c450fcfc6c83a",
+      "wall_time_seconds": 433.5,
+      "ok": true
+    },
+    {
+      "edge_id": "momentum_6_1_v1",
+      "year": 2025,
+      "run_id": "70b822af-6acb-446f-b6d9-1db82e2e07cb",
+      "sharpe": 0.284,
+      "sortino": null,
+      "cagr_pct": null,
+      "max_drawdown_pct": -1.61,
+      "win_rate_pct": 43.87,
+      "total_trades": null,
+      "trades_canon_md5": "476e6185e5e1608ba2bbd7ba30f96eab",
+      "wall_time_seconds": 434.5,
+      "ok": true
+    },
+    {
+      "edge_id": "short_term_reversal_v1",
+      "year": 2021,
+      "run_id": "6b349146-143c-4c8f-9f5b-123ac88a19cf",
+      "sharpe": 0.357,
+      "sortino": null,
+      "cagr_pct": null,
+      "max_drawdown_pct": -8.02,
+      "win_rate_pct": 67.12,
+      "total_trades": null,
+      "trades_canon_md5": "357f8817c804a0bf97a72fd63d8b1657",
+      "wall_time_seconds": 397.3,
+      "ok": true
+    },
+    {
+      "edge_id": "short_term_reversal_v1",
+      "year": 2022,
+      "run_id": "7693cf71-ccd1-4ed1-8f3a-037daf035bc6",
+      "sharpe": 0.0,
+      "sortino": null,
+      "cagr_pct": null,
+      "max_drawdown_pct": null,
+      "win_rate_pct": 42.03,
+      "total_trades": null,
+      "trades_canon_md5": "2d6793fa3b31e5892a67064d9c25a7c8",
+      "wall_time_seconds": 436.1,
+      "ok": true
+    },
+    {
+      "edge_id": "short_term_reversal_v1",
+      "year": 2023,
+      "run_id": "5daa56bb-c6ca-41ca-826c-0b0a13fb536f",
+      "sharpe": 0.365,
+      "sortino": null,
+      "cagr_pct": null,
+      "max_drawdown_pct": -6.74,
+      "win_rate_pct": 64.27,
+      "total_trades": null,
+      "trades_canon_md5": "bd67e3c1fbc3501c029378ffa8215abd",
+      "wall_time_seconds": 435.2,
+      "ok": true
+    },
+    {
+      "edge_id": "short_term_reversal_v1",
+      "year": 2024,
+      "run_id": "f8540b65-376b-49cc-9866-fa85f52f3df1",
+      "sharpe": 0.382,
+      "sortino": null,
+      "cagr_pct": null,
+      "max_drawdown_pct": -8.5,
+      "win_rate_pct": 57.95,
+      "total_trades": null,
+      "trades_canon_md5": "88d48a329adf3dac8def84e0fa1edfe4",
+      "wall_time_seconds": 453.3,
+      "ok": true
+    },
+    {
+      "edge_id": "short_term_reversal_v1",
+      "year": 2025,
+      "run_id": "155c1c6d-33a0-463d-b0f0-224400bbbb77",
+      "sharpe": 0.303,
+      "sortino": null,
+      "cagr_pct": null,
+      "max_drawdown_pct": -6.94,
+      "win_rate_pct": 60.81,
+      "total_trades": null,
+      "trades_canon_md5": "bb7adbb34cacc33d68b2603919268a2b",
+      "wall_time_seconds": 455.4,
+      "ok": true
+    },
+    {
+      "edge_id": "pairs_trading_MA_V_v1",
+      "year": 2021,
+      "run_id": "722ba4a0-12a3-4b6a-b781-edd24fef1407",
+      "sharpe": 0.38,
+      "sortino": null,
+      "cagr_pct": null,
+      "max_drawdown_pct": -0.55,
+      "win_rate_pct": 50.0,
+      "total_trades": null,
+      "trades_canon_md5": "f607d199280fb7484ce5247b70d0bd07",
+      "wall_time_seconds": 302.7,
+      "ok": true
+    },
+    {
+      "edge_id": "pairs_trading_MA_V_v1",
+      "year": 2022,
+      "run_id": "9e92086e-da21-4b5a-aef8-0bcc2665f089",
+      "sharpe": 0.321,
+      "sortino": null,
+      "cagr_pct": null,
+      "max_drawdown_pct": -0.69,
+      "win_rate_pct": 70.0,
+      "total_trades": null,
+      "trades_canon_md5": "3c2ff68074a166a79df0d58c6e018448",
+      "wall_time_seconds": 311.9,
+      "ok": true
+    },
+    {
+      "edge_id": "pairs_trading_MA_V_v1",
+      "year": 2023,
+      "run_id": "4d450f47-7972-42d1-9969-2c126b084e66",
+      "sharpe": 0.451,
+      "sortino": null,
+      "cagr_pct": null,
+      "max_drawdown_pct": -0.78,
+      "win_rate_pct": 53.85,
+      "total_trades": null,
+      "trades_canon_md5": "397fc61536f09ce120a435a650392a0c",
+      "wall_time_seconds": 330.1,
+      "ok": true
+    },
+    {
+      "edge_id": "pairs_trading_MA_V_v1",
+      "year": 2024,
+      "run_id": "e20b7d0b-23ac-457a-8cb5-ca4b42468fcf",
+      "sharpe": 0.431,
+      "sortino": null,
+      "cagr_pct": null,
+      "max_drawdown_pct": -9.54,
+      "win_rate_pct": 61.34,
+      "total_trades": null,
+      "trades_canon_md5": "3145cbb668ecd84f3d9b6478e6198f6e",
+      "wall_time_seconds": 360.9,
+      "ok": true
+    },
+    {
+      "edge_id": "pairs_trading_MA_V_v1",
+      "year": 2025,
+      "run_id": "12267b74-6d51-4253-8b49-9322fa10b987",
+      "sharpe": 0.343,
+      "sortino": null,
+      "cagr_pct": null,
+      "max_drawdown_pct": -0.46,
+      "win_rate_pct": 77.78,
+      "total_trades": null,
+      "trades_canon_md5": "2ae3a5c8ac7c530d1fcf0b7e7cef9d19",
+      "wall_time_seconds": 342.6,
+      "ok": true
+    },
+    {
+      "edge_id": "dividend_initiation_drift_v1",
+      "year": 2021,
+      "run_id": "903571dd-05bf-4793-b1e1-4ca5c299ef28",
+      "sharpe": 0.378,
+      "sortino": null,
+      "cagr_pct": null,
+      "max_drawdown_pct": -2.86,
+      "win_rate_pct": 64.0,
+      "total_trades": null,
+      "trades_canon_md5": "c17f1b5fba51997279552a902c1b2d49",
+      "wall_time_seconds": 750.4,
+      "ok": true
+    },
+    {
+      "edge_id": "dividend_initiation_drift_v1",
+      "year": 2022,
+      "run_id": "6fc11041-7423-419a-b4fe-7efe434e2027",
+      "sharpe": 0.841,
+      "sortino": null,
+      "cagr_pct": null,
+      "max_drawdown_pct": -0.22,
+      "win_rate_pct": 30.0,
+      "total_trades": null,
+      "trades_canon_md5": "bc605421d963f6cb46bff5c9b4e3323e",
+      "wall_time_seconds": 691.5,
+      "ok": true
+    },
+    {
+      "edge_id": "dividend_initiation_drift_v1",
+      "year": 2023,
+      "run_id": "fcce92d8-0d30-4244-860e-8835372494fc",
+      "sharpe": 0.383,
+      "sortino": null,
+      "cagr_pct": null,
+      "max_drawdown_pct": -6.91,
+      "win_rate_pct": 55.26,
+      "total_trades": null,
+      "trades_canon_md5": "33685d45030cb56e886df986a61c36b3",
+      "wall_time_seconds": 714.5,
+      "ok": true
+    },
+    {
+      "edge_id": "dividend_initiation_drift_v1",
+      "year": 2024,
+      "run_id": "dfe5c781-553d-400a-8975-a40b86e33ed4",
+      "sharpe": 0.344,
+      "sortino": null,
+      "cagr_pct": null,
+      "max_drawdown_pct": -7.49,
+      "win_rate_pct": 56.49,
+      "total_trades": null,
+      "trades_canon_md5": "9f620853f3ebd9c374c11300fe495ac4",
+      "wall_time_seconds": 746.9,
+      "ok": true
+    },
+    {
+      "edge_id": "dividend_initiation_drift_v1",
+      "year": 2025,
+      "run_id": "24242e71-17da-4dc4-8981-a9815fa30d27",
+      "sharpe": 0.291,
+      "sortino": null,
+      "cagr_pct": null,
+      "max_drawdown_pct": -7.38,
+      "win_rate_pct": 55.1,
+      "total_trades": null,
+      "trades_canon_md5": "fe9b555e6368027b8280b80037232ca3",
+      "wall_time_seconds": 733.5,
+      "ok": true
+    }
+  ]
+}
