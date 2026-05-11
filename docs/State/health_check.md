@@ -22,6 +22,14 @@ then LOW. Within each severity, list newest at the top.
 
 ### HIGH
 
+### [HIGH] Worktree anchor divergence — director/A/B have different `_isolated_anchor/edges.yml`, inflating apparent canon-md5 drift
+- Category: harness state / cross-worktree measurement comparability
+- First flagged: 2026-05-11 by A's T-024 outbox (Q1 canon shifted 182af6a1 → 28cfa38f, Sharpe 0.127 → 0.281). Director-side investigation found root cause: each worktree's `data/governor/_isolated_anchor/edges.yml` has diverged. Director + B have md5 `818330dc...` (size 86,674, mtimes May 7-8); A has md5 `8da9ce85...` (size 88,278, mtime May 10). A's anchor is 1,604 bytes larger — almost certainly the auto-registered T-014/T-016/T-017/T-018 paused edges appended to A's anchor's edges.yml during a recent backtest run (which suggests one or more measurement runs had end-of-run edges.yml mutations NOT gated by journal-mode).
+- Implication: T-019's "paused-tier inert" conclusion needs reframing. T-019 measured ~Δ Sharpe 0.0000 vs T-002 on the OLD anchor (without the new paused edges). The new paused edges weren't being loaded at all, NOT producing 0 trades through soft-pause. T-020's per-edge isolation used `exact_edge_ids` so it bypassed this and correctly showed 5/5 generate trades at full weight.
+- A's current canon (28cfa38f) IS the production state on the NEW anchor: 5 paused edges loaded, soft-pause applies 0.25× weight, they contribute trades, lifting Q1 Sharpe by +0.154. This is the real measurement going forward.
+- Forward action: standardize on A's anchor as the canonical one (it reflects post-T-014/T-016/T-017/T-018 production reality). Re-save anchor in director + B worktrees via `python -m scripts.run_isolated --save-anchor`. Per CLAUDE.md, --save-anchor is propose-first-equivalent since it changes governor state — director executes after explicit user nod.
+- Open question: HOW did A's edges.yml get those 1,604 bytes? Auto-register-on-import shouldn't write to edges.yml. Possibly an end-of-run lifecycle mutation in a non-journal-mode run. Worth a brief code audit (~30 min) to find the mutation path.
+
 ### [MEDIUM] Lifecycle gauntlet doesn't check factor-adjusted α — edges with positive raw PnL but significantly negative factor-adjusted α stay active
 - Category: Engine F autonomous-decision gap / lifecycle retirement scope
 - First flagged: 2026-05-11 by director-side threshold-calibration audit (`docs/Audit/factor_decomp_threshold_calibration_2026_05_11.md`).
