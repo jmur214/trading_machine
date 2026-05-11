@@ -1,0 +1,90 @@
+{
+  "task_id": "T-2026-05-11-023",
+  "generated_at": "2026-05-11T15:07:58",
+  "setup": {
+    "window_start": "2024-01-01",
+    "window_end": "2024-03-31",
+    "n_tickers_loaded": 10,
+    "n_candidates": 3,
+    "candidate_ids": [
+      "momentum_12_1_v1",
+      "short_term_reversal_v1",
+      "momentum_6_1_v1"
+    ]
+  },
+  "uncached_records": [
+    {
+      "edge_id": "momentum_12_1_v1",
+      "baseline_sharpe": 0.6491323776095795,
+      "with_candidate_sharpe": 0.6491323776095795,
+      "contribution_sharpe": 0.0,
+      "wall_seconds": 26.71
+    },
+    {
+      "edge_id": "short_term_reversal_v1",
+      "baseline_sharpe": 0.6491323776095795,
+      "with_candidate_sharpe": 0.6491323776095795,
+      "contribution_sharpe": 0.0,
+      "wall_seconds": 8.24
+    },
+    {
+      "edge_id": "momentum_6_1_v1",
+      "baseline_sharpe": 0.6491323776095795,
+      "with_candidate_sharpe": 0.6491323776095795,
+      "contribution_sharpe": 0.0,
+      "wall_seconds": 8.25
+    }
+  ],
+  "cached_records": [
+    {
+      "edge_id": "momentum_12_1_v1",
+      "baseline_sharpe": 0.0,
+      "with_candidate_sharpe": 0.0,
+      "contribution_sharpe": 0.0,
+      "wall_seconds": 0.33
+    },
+    {
+      "edge_id": "short_term_reversal_v1",
+      "baseline_sharpe": 0.0,
+      "with_candidate_sharpe": 0.0,
+      "contribution_sharpe": 0.0,
+      "wall_seconds": 0.29
+    },
+    {
+      "edge_id": "momentum_6_1_v1",
+      "baseline_sharpe": 0.0,
+      "with_candidate_sharpe": 0.0,
+      "contribution_sharpe": 0.0,
+      "wall_seconds": 0.33
+    }
+  ],
+  "deltas": [
+    {
+      "edge_id": "momentum_12_1_v1",
+      "delta_baseline_sharpe": 0.6491323776095795,
+      "delta_with_candidate_sharpe": 0.6491323776095795,
+      "delta_contribution_sharpe": 0.0,
+      "within_tol_1e9": true
+    },
+    {
+      "edge_id": "short_term_reversal_v1",
+      "delta_baseline_sharpe": 0.6491323776095795,
+      "delta_with_candidate_sharpe": 0.6491323776095795,
+      "delta_contribution_sharpe": 0.0,
+      "within_tol_1e9": true
+    },
+    {
+      "edge_id": "momentum_6_1_v1",
+      "delta_baseline_sharpe": 0.6491323776095795,
+      "delta_with_candidate_sharpe": 0.6491323776095795,
+      "delta_contribution_sharpe": 0.0,
+      "within_tol_1e9": true
+    }
+  ],
+  "wall_uncached_total_seconds": 43.2,
+  "wall_cached_total_seconds": 0.95,
+  "speedup_ratio": 45.37,
+  "determinism_pass": true,
+  "speedup_verdict": "SHIP \u2014 speedup target hit",
+  "overall_verdict": "SHIP"
+}
