@@ -53,6 +53,32 @@ class DiscoveryEngine:
             EarningsVolEdge,
         ]
 
+        # Gate 1 signal-collector cache (T-2026-05-11-023). Persists
+        # across validate_candidate calls within a single Discovery
+        # cycle so the baseline ensemble's per-(edge, bar) signals are
+        # computed ONCE and reused across all N candidates. The cache
+        # naturally clears when the DiscoveryEngine instance is rebuilt
+        # at the next cycle. Initialized to None here so tests that
+        # bypass __init__ via `DiscoveryEngine.__new__(DiscoveryEngine)`
+        # don't trip an AttributeError; `_get_gate1_signal_cache()`
+        # lazy-initializes on first access.
+        self._gate1_signal_cache = None  # type: ignore[assignment]
+
+    def _get_gate1_signal_cache(self):
+        """Return the Gate 1 signal cache, lazy-initializing on first
+        access. Defensive against tests that bypass __init__ via
+        `DiscoveryEngine.__new__(DiscoveryEngine)`."""
+        if getattr(self, "_gate1_signal_cache", None) is None:
+            from engines.engine_d_discovery.gate1_signal_cache import Gate1SignalCache
+            self._gate1_signal_cache = Gate1SignalCache()
+        return self._gate1_signal_cache
+
+    def clear_gate1_signal_cache(self) -> None:
+        """Drop all cached baseline-edge wrappers. Call between cycles
+        or whenever universe/window/active-edge set changes."""
+        if getattr(self, "_gate1_signal_cache", None) is not None:
+            self._gate1_signal_cache.clear()
+
     def hunt(
         self,
         data_map: Dict[str, pd.DataFrame],
@@ -772,6 +798,17 @@ class DiscoveryEngine:
         # selection-bias correction, identical to legacy behavior.
         n_trials_for_dsr: int = 1,
         gate8_dsr_threshold: float = 0.95,
+        # ---- Gate 1 signal-collector cache (T-2026-05-11-023) ----
+        # When True (default), the baseline ensemble's per-(edge, bar)
+        # compute_signals outputs are memoized in `self._gate1_signal_cache`
+        # so the second-through-Nth candidate's with-candidate backtest
+        # skips re-computing the baseline edges. The candidate edge runs
+        # fresh on every call. Determinism is preserved by construction
+        # (edges are pure functions of (data_map, now, params)).
+        #
+        # Set False to disable caching; used by determinism cross-check
+        # harnesses and by callers that need bitwise-equivalent paths.
+        use_signal_cache: bool = True,
     ) -> Dict[str, float]:
         """Production-equivalent multi-gate validation (architectural-fix v2).
 
@@ -977,9 +1014,29 @@ class DiscoveryEngine:
                 exclude_edge_ids={cand_id},
             )
 
+            # Gate 1 signal-collector caching (T-2026-05-11-023).
+            # Wrap baseline edges with memoizing wrappers so subsequent
+            # candidates (and the with-candidate backtest within this
+            # call) reuse per-(edge, bar) signals instead of recomputing.
+            # The candidate edge itself is NEVER wrapped — it's new per
+            # call so caching has no benefit.
+            #
+            # The cache key includes the window so a window change
+            # between cycles auto-invalidates. (Universe change reaches
+            # us via a different data_map; same window + different
+            # data_map → cache hits would return stale tickers, but
+            # within a Discovery cycle the data_map is constant.)
+            if use_signal_cache:
+                _cache_fingerprint = f"{start_date}|{end_date}|{','.join(sorted(baseline_edges.keys()))}"
+                wrapped_baseline = self._get_gate1_signal_cache().wrap_edges(
+                    baseline_edges, fingerprint=_cache_fingerprint,
+                )
+            else:
+                wrapped_baseline = baseline_edges
+
             # Build the with-candidate ensemble (baseline + candidate at default weight)
             cand_edge = self._instantiate_candidate(candidate_spec)
-            with_edges = dict(baseline_edges)
+            with_edges = dict(wrapped_baseline)
             with_edges[cand_id] = cand_edge
             with_weights = dict(baseline_weights)
             with_weights[cand_id] = float(candidate_default_weight)
@@ -1002,7 +1059,7 @@ class DiscoveryEngine:
 
             _g1_t0 = _time.time()
             baseline_result = local_cache.get_or_run(
-                edges=baseline_edges,
+                edges=wrapped_baseline,
                 edge_weights=baseline_weights,
                 **run_kwargs,
             )
