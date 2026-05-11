@@ -182,8 +182,44 @@ class CompositeEdge(EdgeBase, EdgeTemplate):
             return self._calc_macro_val(as_of, gene)
         elif g_type == "earnings":
             return self._calc_earnings_val(ticker, as_of, gene)
+        elif g_type == "foundry_feature":
+            return self._calc_foundry_feature_val(ticker, as_of, gene)
 
         return None
+
+    def _calc_foundry_feature_val(self, ticker, as_of, gene):
+        """Look up `feature_id` in the Foundry registry and call its
+        `func(ticker, date) -> Optional[float]`. Returns the float value
+        or None for abstain (when the feature has no data for this
+        ticker/date or the registry is uninitialized).
+
+        Added 2026-05-11 (T-022) to let Discovery's GA emit candidates
+        that consume the post-T-006 + post-T-014 Foundry vocabulary —
+        the spec-defined fix for the substrate-honest 0/3 promotion +
+        single-archetype-mutation finding from T-021.
+        """
+        try:
+            from core.feature_foundry import get_feature_registry
+            import core.feature_foundry.features  # noqa: F401  trigger register
+            reg = get_feature_registry()
+        except Exception:
+            return None
+        feature_id = gene.get("feature_id")
+        if not feature_id:
+            return None
+        feat = reg.get(feature_id)
+        if feat is None:
+            return None
+        # Normalize as_of to a datetime.date — Foundry features take
+        # `date`, but composite_edge sometimes passes pd.Timestamp.
+        if hasattr(as_of, "date") and callable(as_of.date):
+            dt = as_of.date()
+        else:
+            dt = as_of
+        try:
+            return feat(ticker, dt)
+        except Exception:
+            return None
 
     def _calc_technical_val(self, df, gene):
         indicator = gene.get("indicator")
