@@ -4,7 +4,7 @@ import yaml
 import pandas as pd
 import logging
 from pathlib import Path
-from typing import List, Dict, Any, Optional, Type
+from typing import List, Dict, Any, Optional, Tuple, Type
 
 # Import Template Interface from Engine A
 from engines.engine_a_alpha.edge_template import EdgeTemplate
@@ -201,11 +201,77 @@ class DiscoveryEngine:
                 }
                 candidates.append(spec)
 
-        # 2. Composite Evolution via Genetic Algorithm
-        ga_candidates = self._run_ga_evolution(n_mutations)
-        candidates.extend(ga_candidates)
+        # 2. Composite candidate search — GA or Bayesian opt per config flag.
+        # T-028 (2026-05-11): the candidate-search strategy is now
+        # selectable. Default is `use_bayesian_opt=False` (GA, the
+        # pre-T-028 behavior). Setting True routes to BayesianOptimizer
+        # which uses skopt's GP + EI acquisition over a flat per-gene
+        # encoding. Backwards-compat: flag-OFF preserves bit-identical
+        # GA behavior; the surrogate model never instantiates when off.
+        search_candidates = self._run_search(n_mutations)
+        candidates.extend(search_candidates)
 
         return candidates
+
+    def _run_search(self, n_mutations: int) -> List[Dict[str, Any]]:
+        """Dispatch to GA or Bayesian-opt candidate generation per config
+        flag. T-028 addition; default flag is OFF so this is a no-op
+        wrapper around `_run_ga_evolution` for backwards compatibility.
+
+        Config source: reads `use_bayesian_opt` from `self.cfg` if
+        present; otherwise from `config/discovery_settings.json` if
+        readable; otherwise defaults to False.
+        """
+        use_bayesian = False
+        if hasattr(self, "cfg") and isinstance(self.cfg, dict):
+            use_bayesian = bool(self.cfg.get("use_bayesian_opt", False))
+        else:
+            try:
+                import json
+                from pathlib import Path
+                cfg_path = (
+                    Path(__file__).resolve().parents[2]
+                    / "config" / "discovery_settings.json"
+                )
+                if cfg_path.exists():
+                    cfg = json.loads(cfg_path.read_text())
+                    use_bayesian = bool(cfg.get("use_bayesian_opt", False))
+            except Exception:
+                use_bayesian = False
+
+        if not use_bayesian:
+            return self._run_ga_evolution(n_mutations)
+
+        # Bayesian opt path — lazy-import skopt so the flag-OFF case
+        # doesn't pay the import cost.
+        from engines.engine_d_discovery.bayesian_optimizer import (
+            BayesianOptimizer,
+        )
+        opt = BayesianOptimizer(random_state=None)  # uses PYTHONHASHSEED
+        # Warm-start from existing ga_population.yml fitness_cache if
+        # present (matches spec section 5).
+        try:
+            from engines.engine_d_discovery.genetic_algorithm import (
+                GeneticAlgorithm,
+            )
+            ga = GeneticAlgorithm(gene_factory=self._create_random_gene)
+            if ga.load_population():
+                entries: List[Tuple[Dict[str, Any], float]] = []
+                for genome in ga.population:
+                    genes = genome.get("genes", [])
+                    if not genes:
+                        continue
+                    score = float(ga.fitness_cache.get(
+                        genome.get("edge_id", ""), 0.0
+                    ))
+                    # T-028a single-gene per candidate; use first gene
+                    entries.append((genes[0], score))
+                if entries:
+                    opt.warm_start(entries)
+        except Exception as e:
+            print(f"[BAYES] warm_start skipped: {e}")
+
+        return opt.suggest_candidates(n_mutations)
 
     def _run_ga_evolution(self, n_random_seed: int = 5) -> List[Dict[str, Any]]:
         """
