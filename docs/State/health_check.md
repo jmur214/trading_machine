@@ -64,12 +64,21 @@ then LOW. Within each severity, list newest at the top.
 - Forward action: dispatch a Discovery cycle on substrate-honest data; let the gauntlet validate which (if any) of the new paused edges deserve promotion. Adding MORE paused edges is wasted effort until the existing inventory's gauntlet outcome is known.
 
 
-### [HIGH → RESOLVED-AS-CONTAMINATED 2026-05-09] The 0.9154 surviving-6 result was contaminated by the zero-trade regression
+### [HIGH → RE-CORRECTED 2026-05-12 BY T-035] The substrate-honest baseline is 0.598, not 0.270
+- Category: measurement integrity / canonical baseline
+- 2026-05-12 update: T-2026-05-12-035 re-measured T-002 Arm 1 with the cockpit metrics-pipeline fix (T-034) applied. **Corrected mean Arm 1 Sharpe = 0.598** (vs T-002 reported 0.270, Δ +0.328). The shift is from bug-correction, not substrate change.
+- The cockpit bug was bi-directional: winning years inflated (peak_equity is monotone non-decreasing, lower variance than real equity; the metric reader was reading peak-as-equity, inflating Sharpe) and losing years zeroed (peak stays at starting capital while real equity falls → flat equity read → Sharpe ≈ 0). Director's prediction "barely fires in small-MDD cells" was REFUTED.
+- Per-year corrected | T-002 → T-035: 2021 0.413 → **1.791** | 2022 0.116 → **0.294** | 2023 0.261 → **1.221** | 2024 0.236 → **-0.613** | 2025 0.325 → **0.297** | mean 0.270 → **0.598**.
+- **No single year clears `ci_low > 0`** even at corrected level. Per CLAUDE.md 6th non-negotiable: 0.598 mean Sharpe is better than 0.270 but the strategy is **bull-conditional with material 2024-style downside** that was previously hidden.
+- All prior bear-year Sharpe-bearing audits remain SUSPECT until re-measured: T-002 Arm 2, T-019 paused-tier-inert, T-029 per-regime decomp, T-020 per-edge isolation, F6 multi-year, T-030 STR. T-036 (in flight) takes highest-priority subset (STR + per-regime adverse cells).
+- The "0.9154 surviving-6 contaminated" finding (below, retained for history) is still correct: that was the zero-trade-regression bug, NOT the cockpit bug. They are two distinct measurement-integrity issues; both retract their respective headlines.
+
+### [HIGH → RESOLVED-AS-CONTAMINATED 2026-05-09 (historical, see entry above for the corrected 0.598 baseline as of 2026-05-12)] The 0.9154 surviving-6 result was contaminated by the zero-trade regression
 - Category: measurement integrity / superseded headlines
 - First flagged: 2026-05-09 evening by dev review at `docs/Sessions/Other-dev-opinion/05-09-26.md`. The C-collapses-1 surviving-6 mean Sharpe 0.9154 (PARTIAL bucket, basis for the "6-edge surviving set" narrative) was almost certainly measured during the 2026-05-07 zero-trade-regression window before the bug was caught. **It is RETRACTED.**
-- The honest baseline going forward is the substrate-honest two-arm result T-002 (May 9): **Arm 1 mean Sharpe 0.2702 with bootstrap 95% CI [-0.383, +0.771] — `ci_low` includes zero.** Arm 2 (HMM ON) at 0.294, Δ +0.024, NEUTRAL bucket per pre-commit.
-- Compounding evidence: T-004 factor-decomp on the same trade logs found 0/6 edges have positive factor-adjusted α at t > 2; 4/6 have *significantly negative* factor-adjusted α (t between -2.6 and -5.7). The load-bearing alpha (`volume_anomaly_v1`) is GENUINELY NOISY at t = 0.83, R² = 0.04.
-- Implication: the project now operates against the 0.270 baseline as the comparison point for whether engine completion delivers projected lift. NOT as a kill-thesis death sentence — per pre-commit, kill-thesis trigger means "stop forward feature work and run structural review," and the structural review is now complete (see `docs/State/forward_plan.md` 2026-05-09 evening update).
+- The honest baseline going forward is the substrate-honest two-arm result T-002 (May 9): **Arm 1 mean Sharpe 0.2702 with bootstrap 95% CI [-0.383, +0.771] — `ci_low` includes zero.** Arm 2 (HMM ON) at 0.294, Δ +0.024, NEUTRAL bucket per pre-commit. **(SUPERSEDED 2026-05-12 by T-035 corrected 0.598 — see entry above.)**
+- Compounding evidence: T-004 factor-decomp on the same trade logs found 0/6 edges have positive factor-adjusted α at t > 2; 4/6 have *significantly negative* factor-adjusted α (t between -2.6 and -5.7). The load-bearing alpha (`volume_anomaly_v1`) is GENUINELY NOISY at t = 0.83, R² = 0.04. (Factor decomp uses real equity returns, not the buggy metric — so this finding is INDEPENDENT of the cockpit bug and remains valid.)
+- Implication: the project now operates against the **0.598** baseline (corrected 2026-05-12) as the comparison point for whether engine completion delivers projected lift.
 - Forward path: engines-first directive anchored. Three parallel tracks (engine completion, edge expansion, defensive layer), all gated on engine completion before Moonshot/AI evaluation.
 
 ### [HIGH → RESOLVED 2026-05-08] Backtests produce zero trades since 2026-05-07 evening — every isolated run lands trades_canon_md5 = `d41d8cd9...` (empty file)

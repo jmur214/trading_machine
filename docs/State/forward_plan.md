@@ -1,4 +1,58 @@
-# Forward Plan — live (last substantive update 2026-05-11, edge-expansion gauntlet outcome doubled-down)
+# Forward Plan — live (last substantive update 2026-05-12, canonical baseline shifts 0.270 → 0.598)
+
+> **2026-05-12 — CANONICAL SUBSTRATE-HONEST BASELINE CORRECTED: 0.270 → 0.598 (+0.328). T-002's reading was contaminated by the cockpit metrics-pipeline bug, BI-DIRECTIONALLY (winning years inflated AS WELL AS losing years zeroed).**
+>
+> T-2026-05-12-034 fixed the bug (`cockpit/logger.py` field-count alignment + `cockpit/metrics.py` fail-loud assert). T-2026-05-12-035 re-measured T-002 Arm 1 with the fix applied — single-arm, identical grid (6 active edges × 5 years × 3 reps × F6 historical S&P 500 union).
+>
+> ### What the bug was actually doing
+>
+> The pre-T-034 writer emitted 11 fields against a 9-column header, causing `pandas.read_csv` to mis-align column positions. The `peak_equity` series (monotone non-decreasing — only ratchets upward) landed in the `equity` slot.
+>
+> - **Winning years**: peak_equity has lower variance than real equity (real equity dips during intra-year drawdowns; peak doesn't). Reading peak-as-equity systematically inflated Sharpe. 2021 was 0.413 reported → **1.791 corrected** (+1.378).
+> - **Losing years**: peak_equity stays glued at the starting capital while real equity falls; the metric read like flat equity → Sharpe ≈ 0. 2024 was 0.236 reported → **-0.613 corrected** (-0.849).
+>
+> My pre-T-035 prediction "the bug barely fires in small-MDD cells" was **WRONG**. The contamination was bi-directional and present in BOTH winning and losing cells.
+>
+> ### Corrected canonical baseline
+>
+> | Year | T-002 reported | T-035 corrected | Δ | T-035 ci_low |
+> |------|----------------|-----------------|---|--------------|
+> | 2021 | 0.413 | 1.791 | +1.378 | 0.014 |
+> | 2022 | 0.116 | 0.294 | +0.178 | -2.220 |
+> | 2023 | 0.261 | 1.221 | +0.960 | -0.788 |
+> | 2024 | 0.236 | **-0.613** | -0.849 | -2.437 |
+> | 2025 | 0.325 | 0.297 | -0.028 | -1.323 |
+> | **mean** | **0.270** | **0.598** | **+0.328** | — |
+>
+> Per CLAUDE.md 6th non-negotiable: `ci_low` is the gate-relevant number, not `point_estimate`. **No single year clears `ci_low > 0`** even at the corrected level. The honest read is: mean 0.598 is BETTER than 0.270, but the strategy is **bull-conditional with material 2024-style downside** — 2024's -0.613 was previously hidden by the bug.
+>
+> ### What this changes vs the 2026-05-11 entry below
+>
+> 1. **The 0.270 comparison-point in the engines-first directive becomes 0.598.** Every "did this engine-completion deliver projected +0.55 to +1.25 lift" comparison gets re-anchored. The structural review still holds (engines C/D/E are still scaffolding); only the comparison number shifts.
+> 2. **All prior bear-year Sharpe-bearing audits remain SUSPECT** until re-measured: T-002 Arm 2, T-019 paused-tier-inert, T-029 per-regime decomp, T-020 per-edge isolation, F6 multi-year, STR T-030. T-2026-05-12-036 (in flight) takes the highest-priority subset (STR + per-regime adverse cells). Remaining queued.
+> 3. **The "8-falsification pattern" framing in lessons_learned needs nuancing**: at least 1 of those 8 falsifications (T-002 Arm 1 → 0.270) was partly an artifact of the cockpit bug, not pure substrate-honesty improvement. The lesson "every time measurement gets more honest, apparent alpha shrinks" still holds for substrate/universe changes; it does NOT hold cleanly for T-002 → T-035 (where the substrate didn't change; only the metric reader did).
+> 4. **2024 regime fragility is now load-bearing.** The corrected -0.613 means our 6-edge active set has real failure modes in regimes resembling 2024 (rising-rates-late-bull-into-soft-Q4 — your eye for the pattern is correct). Engine E regime work + Engine B regime-conditional de-grossing remain on hold per engines-first directive, but the BUSINESS case for them just strengthened.
+>
+> ### What stays on hold (unchanged from 2026-05-11)
+>
+> - Engine B portfolio vol-targeting (still gated on factor-significant alpha)
+> - Engine D gene-encoding extension and Gate 1 caching remain the next structural fixes
+> - Moonshot Sleeve, AI layer — still parked per engines-first directive
+>
+> ### What was just dispatched (waiting)
+>
+> - T-036 Part A (STR re-measurement with cockpit fix) — running, ~105 min
+> - T-036 Part B (per-regime factor decomp regenerate) — chains after Part A
+> - B's T-038 (Discovery cycle re-run on cleaned anchor + cockpit fix) — disk + sync gates now CLEAR, awaiting user ping
+>
+> ### What got drafted today (specs, not yet dispatched)
+>
+> 1. **T-039** observability layer relocation (`cockpit/logger.py` + `cockpit/metrics.py` → `core/observability/`) — propose-first
+> 2. **T-040** trade-log storage migration (CSV → Parquet + retention + DuckDB query layer) — propose-first
+> 3. **T-041** spin-off reversion edge (Engine A; first retail-only structural edge) — Engine A autonomous-improvement scope but drafted for visibility
+> 4. **T-042** Engine D input-library expansion (insider audit + short interest + GDELT regime feed) — propose-first
+>
+> ---
 
 > **2026-05-11 EARLY — EDGE EXPANSION GAUNTLET HAS TWO STRUCTURAL BLOCKERS. T-020 + T-021 together define the next-step priority.**
 >
