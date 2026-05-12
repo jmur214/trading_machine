@@ -129,11 +129,18 @@ def test_restore_without_anchor_raises(tmp_worktree: Path):
 
 
 def test_isolated_files_list_covers_phase_210d_mutations():
-    """Documenting which files MUST be in the isolation set. Phase 2.10d
-    Task A (lifecycle triggers) introduced edges.yml + lifecycle_history.csv
-    mutations; Task B left edge_weights.json + regime_edge_performance.json
-    as before. If a future task adds another mutable governor file, this
-    test fails until the harness is updated."""
+    """Documenting which files MUST be in the isolation set.
+
+    Historical additions:
+    - Phase 2.10d Task A (lifecycle triggers) added edges.yml +
+      lifecycle_history.csv mutations.
+    - Task B kept edge_weights.json + regime_edge_performance.json.
+    - T-2026-05-11-026 added ga_population.yml to prevent stale GA
+      population from skipping `seed_from_registry` on Discovery cycle
+      start (root cause of T-025's 0% foundry_feature gene composition).
+
+    If a future task adds another mutable governor file, this test
+    fails until the harness is updated."""
     mod_path = Path(__file__).resolve().parents[1] / "scripts" / "run_isolated.py"
     spec = importlib.util.spec_from_file_location("_isolated_const", mod_path)
     m = importlib.util.module_from_spec(spec)
@@ -143,6 +150,7 @@ def test_isolated_files_list_covers_phase_210d_mutations():
         "edge_weights.json",
         "regime_edge_performance.json",
         "lifecycle_history.csv",
+        "ga_population.yml",
     }
     assert set(m.ISOLATED_FILES) == expected, (
         "ISOLATED_FILES drifted from the documented set. "
@@ -150,3 +158,62 @@ def test_isolated_files_list_covers_phase_210d_mutations():
         "If this is intentional, update the test AND the audit doc "
         "(docs/Audit/determinism_floor_restore_2026_05.md)."
     )
+
+
+def test_ga_population_yml_isolated_when_anchor_lacks_it(tmp_worktree: Path):
+    """Regression test for T-2026-05-11-026.
+
+    Models the T-025 failure mode: live tree has a generation-N
+    `ga_population.yml` from prior Discovery cycles; the anchor was
+    captured before that population existed. `restore_anchor()` must
+    DELETE the live file so the next Discovery cycle starts from the
+    same clean state the anchor describes, forcing GA's
+    `seed_from_registry` fallback to fire deterministically.
+    """
+    mod = _load_module(tmp_worktree)
+    # Save anchor with NO ga_population.yml in the live tree.
+    mod.save_anchor()
+    assert not (mod.ISOLATED_ANCHOR / "ga_population.yml").exists()
+
+    # Simulate Discovery running and writing a stale population.
+    pop_path = mod.GOV_DIR / "ga_population.yml"
+    pop_path.write_text(
+        "generation: 3\n"
+        "population_size: 20\n"
+        "population:\n"
+        "- edge_id: composite_gen0_deadbeef\n"
+        "  genes:\n"
+        "  - type: technical\n"
+        "    indicator: rsi\n"
+        "    operator: less\n"
+        "    threshold: 30\n"
+        "  direction: long\n"
+    )
+    assert pop_path.exists()
+
+    mod.restore_anchor()
+    assert not pop_path.exists(), (
+        "restore_anchor() must DELETE live ga_population.yml when the "
+        "anchor lacks it — recurrence guard for the T-025 stale-"
+        "population bug."
+    )
+
+
+def test_ga_population_yml_restored_from_anchor_when_present(tmp_worktree: Path):
+    """Symmetric case: if the anchor DID capture a `ga_population.yml`,
+    `restore_anchor()` puts it back byte-for-byte. Confirms the round-
+    trip works whether or not the anchor has the file."""
+    mod = _load_module(tmp_worktree)
+    pop_path = mod.GOV_DIR / "ga_population.yml"
+    seed_text = (
+        "generation: 0\n"
+        "population_size: 5\n"
+        "population: []\n"
+    )
+    pop_path.write_text(seed_text)
+    mod.save_anchor()
+    assert (mod.ISOLATED_ANCHOR / "ga_population.yml").exists()
+    # Mutate the live file
+    pop_path.write_text("generation: 99\npopulation: []\n")
+    mod.restore_anchor()
+    assert pop_path.read_text() == seed_text

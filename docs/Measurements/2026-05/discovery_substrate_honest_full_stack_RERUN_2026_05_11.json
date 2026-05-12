@@ -1,0 +1,1485 @@
+{
+  "task_id": "T-2026-05-11-026",
+  "status": "PARTIAL_BLOCKED",
+  "generated_at": "2026-05-12T03:10:00",
+  "comparison_baseline_task_id": "T-2026-05-11-025",
+  "setup": {
+    "window_start": "2021-01-01",
+    "window_end": "2024-12-31",
+    "substrate": "F6 historical S&P 500",
+    "use_historical_universe": true,
+    "apply_journal_at_end": true,
+    "pythonhashseed": "0",
+    "candidate_cap": 30,
+    "anchor_edges_yml_md5": "818330dc05e5e58804fa5cace7973640",
+    "anchor_note": "OLD anchor; contains 20 stale composite_gen0_* specs from pre-T-022 cycles"
+  },
+  "harness_fix_evidence": {
+    "isolated_files_extended_with": "ga_population.yml",
+    "regression_tests_added": [
+      "test_ga_population_yml_isolated_when_anchor_lacks_it",
+      "test_ga_population_yml_restored_from_anchor_when_present"
+    ],
+    "all_tests_pass": true,
+    "canon_md5_invariant": true,
+    "canon_md5": "182af6a1240da35055f716ef9dfcd333"
+  },
+  "gate_failure_histogram": {
+    "gate_1": 30,
+    "gate_2_to_8": 0
+  },
+  "gene_type_composition_across_validated_batch": {
+    "technical": 4,
+    "calendar": 2
+  },
+  "foundry_feature_candidates_in_validated_batch": 0,
+  "block_trigger_per_brief": "Acceptance criterion 2: zero foundry_feature genes appeared \u2192 BLOCK and investigate",
+  "root_cause_summary": "OLD anchor edges.yml contains 20 stale composite_gen0_* specs at status=candidate. isolated() restores them at run-start, which pre-empts GA seed-from-foundry where T-022 foundry_feature emission lives.",
+  "class_distribution": {
+    "RSIBounceEdge": 3,
+    "ValueTrapEdge": 3,
+    "FundamentalRatioEdge": 3,
+    "SeasonalityEdge": 3,
+    "GapEdge": 3,
+    "VolumeAnomalyEdge": 3,
+    "PanicEdge": 3,
+    "HerdingEdge": 3,
+    "EarningsVolEdge": 3,
+    "CompositeEdge": 3
+  },
+  "wall_time": {
+    "per_candidate_min_sec": 2.268,
+    "per_candidate_median_sec": 2.454,
+    "per_candidate_max_sec": 5.733,
+    "per_candidate_sum_sec": 76.576,
+    "discovery_validation_total_minutes": 1.2762666666666667
+  },
+  "bootstrap_survival_ci": {
+    "survival_rate_point": 0.0,
+    "ci_low": 0.0,
+    "ci_high": 0.0,
+    "wilson_upper_bound_95pct": 0.095,
+    "note": "degenerate CI at N=30 0/30"
+  },
+  "records": [
+    {
+      "candidate_id": "rsi_bounce_v1_mut_9187",
+      "module": "engines.engine_a_alpha.edges.rsi_bounce",
+      "class": "RSIBounceEdge",
+      "category": "mean_reversion",
+      "origin": "discovery_engine",
+      "gene_count": 0,
+      "gene_types": [],
+      "direction": null,
+      "wall_seconds_total": 5.733,
+      "gate_seconds": {
+        "gate_1": 5.644
+      },
+      "gates_run": [
+        "gate_1"
+      ],
+      "first_failed_gate": "gate_1",
+      "error": null,
+      "metrics": {
+        "sharpe": 0.0,
+        "sortino": 0.0,
+        "robustness_survival": 0.0,
+        "wfo_degradation": 0.0,
+        "wfo_oos_sharpe": 0.0,
+        "wfo_is_sharpe": 0.0,
+        "significance_p": 1.0,
+        "benchmark_threshold": 0.1,
+        "universe_b_sharpe": NaN,
+        "universe_b_n_tickers": 0,
+        "factor_alpha_annualized": 0.0,
+        "factor_alpha_tstat": 0.0,
+        "factor_alpha_reason": ""
+      },
+      "gate_passed": {
+        "gate_1": false,
+        "gate_2": false,
+        "gate_3_evaluated": false,
+        "gate_4": false,
+        "gate_5": false,
+        "gate_6": false,
+        "gate_7": true,
+        "gate_7_evaluated": false,
+        "gate_8": true,
+        "gate_8_evaluated": false
+      },
+      "passed_all_gates": false
+    },
+    {
+      "candidate_id": "rsi_bounce_v1_mut_2e63",
+      "module": "engines.engine_a_alpha.edges.rsi_bounce",
+      "class": "RSIBounceEdge",
+      "category": "mean_reversion",
+      "origin": "discovery_engine",
+      "gene_count": 0,
+      "gene_types": [],
+      "direction": null,
+      "wall_seconds_total": 2.478,
+      "gate_seconds": {
+        "gate_1": 2.391
+      },
+      "gates_run": [
+        "gate_1"
+      ],
+      "first_failed_gate": "gate_1",
+      "error": null,
+      "metrics": {
+        "sharpe": 0.0,
+        "sortino": 0.0,
+        "robustness_survival": 0.0,
+        "wfo_degradation": 0.0,
+        "wfo_oos_sharpe": 0.0,
+        "wfo_is_sharpe": 0.0,
+        "significance_p": 1.0,
+        "benchmark_threshold": 0.1,
+        "universe_b_sharpe": NaN,
+        "universe_b_n_tickers": 0,
+        "factor_alpha_annualized": 0.0,
+        "factor_alpha_tstat": 0.0,
+        "factor_alpha_reason": ""
+      },
+      "gate_passed": {
+        "gate_1": false,
+        "gate_2": false,
+        "gate_3_evaluated": false,
+        "gate_4": false,
+        "gate_5": false,
+        "gate_6": false,
+        "gate_7": true,
+        "gate_7_evaluated": false,
+        "gate_8": true,
+        "gate_8_evaluated": false
+      },
+      "passed_all_gates": false
+    },
+    {
+      "candidate_id": "rsi_bounce_v1_mut_68e5",
+      "module": "engines.engine_a_alpha.edges.rsi_bounce",
+      "class": "RSIBounceEdge",
+      "category": "mean_reversion",
+      "origin": "discovery_engine",
+      "gene_count": 0,
+      "gene_types": [],
+      "direction": null,
+      "wall_seconds_total": 2.294,
+      "gate_seconds": {
+        "gate_1": 2.21
+      },
+      "gates_run": [
+        "gate_1"
+      ],
+      "first_failed_gate": "gate_1",
+      "error": null,
+      "metrics": {
+        "sharpe": 0.0,
+        "sortino": 0.0,
+        "robustness_survival": 0.0,
+        "wfo_degradation": 0.0,
+        "wfo_oos_sharpe": 0.0,
+        "wfo_is_sharpe": 0.0,
+        "significance_p": 1.0,
+        "benchmark_threshold": 0.1,
+        "universe_b_sharpe": NaN,
+        "universe_b_n_tickers": 0,
+        "factor_alpha_annualized": 0.0,
+        "factor_alpha_tstat": 0.0,
+        "factor_alpha_reason": ""
+      },
+      "gate_passed": {
+        "gate_1": false,
+        "gate_2": false,
+        "gate_3_evaluated": false,
+        "gate_4": false,
+        "gate_5": false,
+        "gate_6": false,
+        "gate_7": true,
+        "gate_7_evaluated": false,
+        "gate_8": true,
+        "gate_8_evaluated": false
+      },
+      "passed_all_gates": false
+    },
+    {
+      "candidate_id": "value_trap_v1_mut_1b03",
+      "module": "engines.engine_a_alpha.edges.fundamental_value",
+      "class": "ValueTrapEdge",
+      "category": "value",
+      "origin": "discovery_engine",
+      "gene_count": 0,
+      "gene_types": [],
+      "direction": null,
+      "wall_seconds_total": 2.446,
+      "gate_seconds": {
+        "gate_1": 2.362
+      },
+      "gates_run": [
+        "gate_1"
+      ],
+      "first_failed_gate": "gate_1",
+      "error": null,
+      "metrics": {
+        "sharpe": 0.0,
+        "sortino": 0.0,
+        "robustness_survival": 0.0,
+        "wfo_degradation": 0.0,
+        "wfo_oos_sharpe": 0.0,
+        "wfo_is_sharpe": 0.0,
+        "significance_p": 1.0,
+        "benchmark_threshold": 0.1,
+        "universe_b_sharpe": NaN,
+        "universe_b_n_tickers": 0,
+        "factor_alpha_annualized": 0.0,
+        "factor_alpha_tstat": 0.0,
+        "factor_alpha_reason": ""
+      },
+      "gate_passed": {
+        "gate_1": false,
+        "gate_2": false,
+        "gate_3_evaluated": false,
+        "gate_4": false,
+        "gate_5": false,
+        "gate_6": false,
+        "gate_7": true,
+        "gate_7_evaluated": false,
+        "gate_8": true,
+        "gate_8_evaluated": false
+      },
+      "passed_all_gates": false
+    },
+    {
+      "candidate_id": "value_trap_v1_mut_17e6",
+      "module": "engines.engine_a_alpha.edges.fundamental_value",
+      "class": "ValueTrapEdge",
+      "category": "value",
+      "origin": "discovery_engine",
+      "gene_count": 0,
+      "gene_types": [],
+      "direction": null,
+      "wall_seconds_total": 2.392,
+      "gate_seconds": {
+        "gate_1": 2.309
+      },
+      "gates_run": [
+        "gate_1"
+      ],
+      "first_failed_gate": "gate_1",
+      "error": null,
+      "metrics": {
+        "sharpe": 0.0,
+        "sortino": 0.0,
+        "robustness_survival": 0.0,
+        "wfo_degradation": 0.0,
+        "wfo_oos_sharpe": 0.0,
+        "wfo_is_sharpe": 0.0,
+        "significance_p": 1.0,
+        "benchmark_threshold": 0.1,
+        "universe_b_sharpe": NaN,
+        "universe_b_n_tickers": 0,
+        "factor_alpha_annualized": 0.0,
+        "factor_alpha_tstat": 0.0,
+        "factor_alpha_reason": ""
+      },
+      "gate_passed": {
+        "gate_1": false,
+        "gate_2": false,
+        "gate_3_evaluated": false,
+        "gate_4": false,
+        "gate_5": false,
+        "gate_6": false,
+        "gate_7": true,
+        "gate_7_evaluated": false,
+        "gate_8": true,
+        "gate_8_evaluated": false
+      },
+      "passed_all_gates": false
+    },
+    {
+      "candidate_id": "value_trap_v1_mut_5074",
+      "module": "engines.engine_a_alpha.edges.fundamental_value",
+      "class": "ValueTrapEdge",
+      "category": "value",
+      "origin": "discovery_engine",
+      "gene_count": 0,
+      "gene_types": [],
+      "direction": null,
+      "wall_seconds_total": 2.363,
+      "gate_seconds": {
+        "gate_1": 2.279
+      },
+      "gates_run": [
+        "gate_1"
+      ],
+      "first_failed_gate": "gate_1",
+      "error": null,
+      "metrics": {
+        "sharpe": 0.0,
+        "sortino": 0.0,
+        "robustness_survival": 0.0,
+        "wfo_degradation": 0.0,
+        "wfo_oos_sharpe": 0.0,
+        "wfo_is_sharpe": 0.0,
+        "significance_p": 1.0,
+        "benchmark_threshold": 0.1,
+        "universe_b_sharpe": NaN,
+        "universe_b_n_tickers": 0,
+        "factor_alpha_annualized": 0.0,
+        "factor_alpha_tstat": 0.0,
+        "factor_alpha_reason": ""
+      },
+      "gate_passed": {
+        "gate_1": false,
+        "gate_2": false,
+        "gate_3_evaluated": false,
+        "gate_4": false,
+        "gate_5": false,
+        "gate_6": false,
+        "gate_7": true,
+        "gate_7_evaluated": false,
+        "gate_8": true,
+        "gate_8_evaluated": false
+      },
+      "passed_all_gates": false
+    },
+    {
+      "candidate_id": "fundamental_ratio_v1_mut_5b8d",
+      "module": "engines.engine_a_alpha.edges.fundamental_ratio",
+      "class": "FundamentalRatioEdge",
+      "category": "generic",
+      "origin": "discovery_engine",
+      "gene_count": 0,
+      "gene_types": [],
+      "direction": null,
+      "wall_seconds_total": 2.506,
+      "gate_seconds": {
+        "gate_1": 2.422
+      },
+      "gates_run": [
+        "gate_1"
+      ],
+      "first_failed_gate": "gate_1",
+      "error": null,
+      "metrics": {
+        "sharpe": 0.0,
+        "sortino": 0.0,
+        "robustness_survival": 0.0,
+        "wfo_degradation": 0.0,
+        "wfo_oos_sharpe": 0.0,
+        "wfo_is_sharpe": 0.0,
+        "significance_p": 1.0,
+        "benchmark_threshold": 0.1,
+        "universe_b_sharpe": NaN,
+        "universe_b_n_tickers": 0,
+        "factor_alpha_annualized": 0.0,
+        "factor_alpha_tstat": 0.0,
+        "factor_alpha_reason": ""
+      },
+      "gate_passed": {
+        "gate_1": false,
+        "gate_2": false,
+        "gate_3_evaluated": false,
+        "gate_4": false,
+        "gate_5": false,
+        "gate_6": false,
+        "gate_7": true,
+        "gate_7_evaluated": false,
+        "gate_8": true,
+        "gate_8_evaluated": false
+      },
+      "passed_all_gates": false
+    },
+    {
+      "candidate_id": "fundamental_ratio_v1_mut_b252",
+      "module": "engines.engine_a_alpha.edges.fundamental_ratio",
+      "class": "FundamentalRatioEdge",
+      "category": "generic",
+      "origin": "discovery_engine",
+      "gene_count": 0,
+      "gene_types": [],
+      "direction": null,
+      "wall_seconds_total": 2.371,
+      "gate_seconds": {
+        "gate_1": 2.287
+      },
+      "gates_run": [
+        "gate_1"
+      ],
+      "first_failed_gate": "gate_1",
+      "error": null,
+      "metrics": {
+        "sharpe": 0.0,
+        "sortino": 0.0,
+        "robustness_survival": 0.0,
+        "wfo_degradation": 0.0,
+        "wfo_oos_sharpe": 0.0,
+        "wfo_is_sharpe": 0.0,
+        "significance_p": 1.0,
+        "benchmark_threshold": 0.1,
+        "universe_b_sharpe": NaN,
+        "universe_b_n_tickers": 0,
+        "factor_alpha_annualized": 0.0,
+        "factor_alpha_tstat": 0.0,
+        "factor_alpha_reason": ""
+      },
+      "gate_passed": {
+        "gate_1": false,
+        "gate_2": false,
+        "gate_3_evaluated": false,
+        "gate_4": false,
+        "gate_5": false,
+        "gate_6": false,
+        "gate_7": true,
+        "gate_7_evaluated": false,
+        "gate_8": true,
+        "gate_8_evaluated": false
+      },
+      "passed_all_gates": false
+    },
+    {
+      "candidate_id": "fundamental_ratio_v1_mut_1303",
+      "module": "engines.engine_a_alpha.edges.fundamental_ratio",
+      "class": "FundamentalRatioEdge",
+      "category": "generic",
+      "origin": "discovery_engine",
+      "gene_count": 0,
+      "gene_types": [],
+      "direction": null,
+      "wall_seconds_total": 2.432,
+      "gate_seconds": {
+        "gate_1": 2.345
+      },
+      "gates_run": [
+        "gate_1"
+      ],
+      "first_failed_gate": "gate_1",
+      "error": null,
+      "metrics": {
+        "sharpe": 0.0,
+        "sortino": 0.0,
+        "robustness_survival": 0.0,
+        "wfo_degradation": 0.0,
+        "wfo_oos_sharpe": 0.0,
+        "wfo_is_sharpe": 0.0,
+        "significance_p": 1.0,
+        "benchmark_threshold": 0.1,
+        "universe_b_sharpe": NaN,
+        "universe_b_n_tickers": 0,
+        "factor_alpha_annualized": 0.0,
+        "factor_alpha_tstat": 0.0,
+        "factor_alpha_reason": ""
+      },
+      "gate_passed": {
+        "gate_1": false,
+        "gate_2": false,
+        "gate_3_evaluated": false,
+        "gate_4": false,
+        "gate_5": false,
+        "gate_6": false,
+        "gate_7": true,
+        "gate_7_evaluated": false,
+        "gate_8": true,
+        "gate_8_evaluated": false
+      },
+      "passed_all_gates": false
+    },
+    {
+      "candidate_id": "seasonality_v1_mut_a9eb",
+      "module": "engines.engine_a_alpha.edges.seasonality_edge",
+      "class": "SeasonalityEdge",
+      "category": "seasonality",
+      "origin": "discovery_engine",
+      "gene_count": 0,
+      "gene_types": [],
+      "direction": null,
+      "wall_seconds_total": 2.499,
+      "gate_seconds": {
+        "gate_1": 2.295
+      },
+      "gates_run": [
+        "gate_1"
+      ],
+      "first_failed_gate": "gate_1",
+      "error": null,
+      "metrics": {
+        "sharpe": 0.0,
+        "sortino": 0.0,
+        "robustness_survival": 0.0,
+        "wfo_degradation": 0.0,
+        "wfo_oos_sharpe": 0.0,
+        "wfo_is_sharpe": 0.0,
+        "significance_p": 1.0,
+        "benchmark_threshold": 0.1,
+        "universe_b_sharpe": NaN,
+        "universe_b_n_tickers": 0,
+        "factor_alpha_annualized": 0.0,
+        "factor_alpha_tstat": 0.0,
+        "factor_alpha_reason": ""
+      },
+      "gate_passed": {
+        "gate_1": false,
+        "gate_2": false,
+        "gate_3_evaluated": false,
+        "gate_4": false,
+        "gate_5": false,
+        "gate_6": false,
+        "gate_7": true,
+        "gate_7_evaluated": false,
+        "gate_8": true,
+        "gate_8_evaluated": false
+      },
+      "passed_all_gates": false
+    },
+    {
+      "candidate_id": "seasonality_v1_mut_8788",
+      "module": "engines.engine_a_alpha.edges.seasonality_edge",
+      "class": "SeasonalityEdge",
+      "category": "seasonality",
+      "origin": "discovery_engine",
+      "gene_count": 0,
+      "gene_types": [],
+      "direction": null,
+      "wall_seconds_total": 2.514,
+      "gate_seconds": {
+        "gate_1": 2.429
+      },
+      "gates_run": [
+        "gate_1"
+      ],
+      "first_failed_gate": "gate_1",
+      "error": null,
+      "metrics": {
+        "sharpe": 0.0,
+        "sortino": 0.0,
+        "robustness_survival": 0.0,
+        "wfo_degradation": 0.0,
+        "wfo_oos_sharpe": 0.0,
+        "wfo_is_sharpe": 0.0,
+        "significance_p": 1.0,
+        "benchmark_threshold": 0.1,
+        "universe_b_sharpe": NaN,
+        "universe_b_n_tickers": 0,
+        "factor_alpha_annualized": 0.0,
+        "factor_alpha_tstat": 0.0,
+        "factor_alpha_reason": ""
+      },
+      "gate_passed": {
+        "gate_1": false,
+        "gate_2": false,
+        "gate_3_evaluated": false,
+        "gate_4": false,
+        "gate_5": false,
+        "gate_6": false,
+        "gate_7": true,
+        "gate_7_evaluated": false,
+        "gate_8": true,
+        "gate_8_evaluated": false
+      },
+      "passed_all_gates": false
+    },
+    {
+      "candidate_id": "seasonality_v1_mut_e678",
+      "module": "engines.engine_a_alpha.edges.seasonality_edge",
+      "class": "SeasonalityEdge",
+      "category": "seasonality",
+      "origin": "discovery_engine",
+      "gene_count": 0,
+      "gene_types": [],
+      "direction": null,
+      "wall_seconds_total": 2.462,
+      "gate_seconds": {
+        "gate_1": 2.378
+      },
+      "gates_run": [
+        "gate_1"
+      ],
+      "first_failed_gate": "gate_1",
+      "error": null,
+      "metrics": {
+        "sharpe": 0.0,
+        "sortino": 0.0,
+        "robustness_survival": 0.0,
+        "wfo_degradation": 0.0,
+        "wfo_oos_sharpe": 0.0,
+        "wfo_is_sharpe": 0.0,
+        "significance_p": 1.0,
+        "benchmark_threshold": 0.1,
+        "universe_b_sharpe": NaN,
+        "universe_b_n_tickers": 0,
+        "factor_alpha_annualized": 0.0,
+        "factor_alpha_tstat": 0.0,
+        "factor_alpha_reason": ""
+      },
+      "gate_passed": {
+        "gate_1": false,
+        "gate_2": false,
+        "gate_3_evaluated": false,
+        "gate_4": false,
+        "gate_5": false,
+        "gate_6": false,
+        "gate_7": true,
+        "gate_7_evaluated": false,
+        "gate_8": true,
+        "gate_8_evaluated": false
+      },
+      "passed_all_gates": false
+    },
+    {
+      "candidate_id": "gap_fill_v1_mut_1498",
+      "module": "engines.engine_a_alpha.edges.gap_edge",
+      "class": "GapEdge",
+      "category": "mean_reversion",
+      "origin": "discovery_engine",
+      "gene_count": 0,
+      "gene_types": [],
+      "direction": null,
+      "wall_seconds_total": 2.268,
+      "gate_seconds": {
+        "gate_1": 2.184
+      },
+      "gates_run": [
+        "gate_1"
+      ],
+      "first_failed_gate": "gate_1",
+      "error": null,
+      "metrics": {
+        "sharpe": 0.0,
+        "sortino": 0.0,
+        "robustness_survival": 0.0,
+        "wfo_degradation": 0.0,
+        "wfo_oos_sharpe": 0.0,
+        "wfo_is_sharpe": 0.0,
+        "significance_p": 1.0,
+        "benchmark_threshold": 0.1,
+        "universe_b_sharpe": NaN,
+        "universe_b_n_tickers": 0,
+        "factor_alpha_annualized": 0.0,
+        "factor_alpha_tstat": 0.0,
+        "factor_alpha_reason": ""
+      },
+      "gate_passed": {
+        "gate_1": false,
+        "gate_2": false,
+        "gate_3_evaluated": false,
+        "gate_4": false,
+        "gate_5": false,
+        "gate_6": false,
+        "gate_7": true,
+        "gate_7_evaluated": false,
+        "gate_8": true,
+        "gate_8_evaluated": false
+      },
+      "passed_all_gates": false
+    },
+    {
+      "candidate_id": "gap_fill_v1_mut_b3fd",
+      "module": "engines.engine_a_alpha.edges.gap_edge",
+      "class": "GapEdge",
+      "category": "mean_reversion",
+      "origin": "discovery_engine",
+      "gene_count": 0,
+      "gene_types": [],
+      "direction": null,
+      "wall_seconds_total": 2.385,
+      "gate_seconds": {
+        "gate_1": 2.3
+      },
+      "gates_run": [
+        "gate_1"
+      ],
+      "first_failed_gate": "gate_1",
+      "error": null,
+      "metrics": {
+        "sharpe": 0.0,
+        "sortino": 0.0,
+        "robustness_survival": 0.0,
+        "wfo_degradation": 0.0,
+        "wfo_oos_sharpe": 0.0,
+        "wfo_is_sharpe": 0.0,
+        "significance_p": 1.0,
+        "benchmark_threshold": 0.1,
+        "universe_b_sharpe": NaN,
+        "universe_b_n_tickers": 0,
+        "factor_alpha_annualized": 0.0,
+        "factor_alpha_tstat": 0.0,
+        "factor_alpha_reason": ""
+      },
+      "gate_passed": {
+        "gate_1": false,
+        "gate_2": false,
+        "gate_3_evaluated": false,
+        "gate_4": false,
+        "gate_5": false,
+        "gate_6": false,
+        "gate_7": true,
+        "gate_7_evaluated": false,
+        "gate_8": true,
+        "gate_8_evaluated": false
+      },
+      "passed_all_gates": false
+    },
+    {
+      "candidate_id": "gap_fill_v1_mut_d6f7",
+      "module": "engines.engine_a_alpha.edges.gap_edge",
+      "class": "GapEdge",
+      "category": "mean_reversion",
+      "origin": "discovery_engine",
+      "gene_count": 0,
+      "gene_types": [],
+      "direction": null,
+      "wall_seconds_total": 2.542,
+      "gate_seconds": {
+        "gate_1": 2.457
+      },
+      "gates_run": [
+        "gate_1"
+      ],
+      "first_failed_gate": "gate_1",
+      "error": null,
+      "metrics": {
+        "sharpe": 0.0,
+        "sortino": 0.0,
+        "robustness_survival": 0.0,
+        "wfo_degradation": 0.0,
+        "wfo_oos_sharpe": 0.0,
+        "wfo_is_sharpe": 0.0,
+        "significance_p": 1.0,
+        "benchmark_threshold": 0.1,
+        "universe_b_sharpe": NaN,
+        "universe_b_n_tickers": 0,
+        "factor_alpha_annualized": 0.0,
+        "factor_alpha_tstat": 0.0,
+        "factor_alpha_reason": ""
+      },
+      "gate_passed": {
+        "gate_1": false,
+        "gate_2": false,
+        "gate_3_evaluated": false,
+        "gate_4": false,
+        "gate_5": false,
+        "gate_6": false,
+        "gate_7": true,
+        "gate_7_evaluated": false,
+        "gate_8": true,
+        "gate_8_evaluated": false
+      },
+      "passed_all_gates": false
+    },
+    {
+      "candidate_id": "volume_anomaly_v1_mut_3824",
+      "module": "engines.engine_a_alpha.edges.volume_anomaly_edge",
+      "class": "VolumeAnomalyEdge",
+      "category": "volume",
+      "origin": "discovery_engine",
+      "gene_count": 0,
+      "gene_types": [],
+      "direction": null,
+      "wall_seconds_total": 2.454,
+      "gate_seconds": {
+        "gate_1": 2.364
+      },
+      "gates_run": [
+        "gate_1"
+      ],
+      "first_failed_gate": "gate_1",
+      "error": null,
+      "metrics": {
+        "sharpe": 0.0,
+        "sortino": 0.0,
+        "robustness_survival": 0.0,
+        "wfo_degradation": 0.0,
+        "wfo_oos_sharpe": 0.0,
+        "wfo_is_sharpe": 0.0,
+        "significance_p": 1.0,
+        "benchmark_threshold": 0.1,
+        "universe_b_sharpe": NaN,
+        "universe_b_n_tickers": 0,
+        "factor_alpha_annualized": 0.0,
+        "factor_alpha_tstat": 0.0,
+        "factor_alpha_reason": ""
+      },
+      "gate_passed": {
+        "gate_1": false,
+        "gate_2": false,
+        "gate_3_evaluated": false,
+        "gate_4": false,
+        "gate_5": false,
+        "gate_6": false,
+        "gate_7": true,
+        "gate_7_evaluated": false,
+        "gate_8": true,
+        "gate_8_evaluated": false
+      },
+      "passed_all_gates": false
+    },
+    {
+      "candidate_id": "volume_anomaly_v1_mut_30f9",
+      "module": "engines.engine_a_alpha.edges.volume_anomaly_edge",
+      "class": "VolumeAnomalyEdge",
+      "category": "volume",
+      "origin": "discovery_engine",
+      "gene_count": 0,
+      "gene_types": [],
+      "direction": null,
+      "wall_seconds_total": 2.786,
+      "gate_seconds": {
+        "gate_1": 2.701
+      },
+      "gates_run": [
+        "gate_1"
+      ],
+      "first_failed_gate": "gate_1",
+      "error": null,
+      "metrics": {
+        "sharpe": 0.0,
+        "sortino": 0.0,
+        "robustness_survival": 0.0,
+        "wfo_degradation": 0.0,
+        "wfo_oos_sharpe": 0.0,
+        "wfo_is_sharpe": 0.0,
+        "significance_p": 1.0,
+        "benchmark_threshold": 0.1,
+        "universe_b_sharpe": NaN,
+        "universe_b_n_tickers": 0,
+        "factor_alpha_annualized": 0.0,
+        "factor_alpha_tstat": 0.0,
+        "factor_alpha_reason": ""
+      },
+      "gate_passed": {
+        "gate_1": false,
+        "gate_2": false,
+        "gate_3_evaluated": false,
+        "gate_4": false,
+        "gate_5": false,
+        "gate_6": false,
+        "gate_7": true,
+        "gate_7_evaluated": false,
+        "gate_8": true,
+        "gate_8_evaluated": false
+      },
+      "passed_all_gates": false
+    },
+    {
+      "candidate_id": "volume_anomaly_v1_mut_cbd6",
+      "module": "engines.engine_a_alpha.edges.volume_anomaly_edge",
+      "class": "VolumeAnomalyEdge",
+      "category": "volume",
+      "origin": "discovery_engine",
+      "gene_count": 0,
+      "gene_types": [],
+      "direction": null,
+      "wall_seconds_total": 2.386,
+      "gate_seconds": {
+        "gate_1": 2.301
+      },
+      "gates_run": [
+        "gate_1"
+      ],
+      "first_failed_gate": "gate_1",
+      "error": null,
+      "metrics": {
+        "sharpe": 0.0,
+        "sortino": 0.0,
+        "robustness_survival": 0.0,
+        "wfo_degradation": 0.0,
+        "wfo_oos_sharpe": 0.0,
+        "wfo_is_sharpe": 0.0,
+        "significance_p": 1.0,
+        "benchmark_threshold": 0.1,
+        "universe_b_sharpe": NaN,
+        "universe_b_n_tickers": 0,
+        "factor_alpha_annualized": 0.0,
+        "factor_alpha_tstat": 0.0,
+        "factor_alpha_reason": ""
+      },
+      "gate_passed": {
+        "gate_1": false,
+        "gate_2": false,
+        "gate_3_evaluated": false,
+        "gate_4": false,
+        "gate_5": false,
+        "gate_6": false,
+        "gate_7": true,
+        "gate_7_evaluated": false,
+        "gate_8": true,
+        "gate_8_evaluated": false
+      },
+      "passed_all_gates": false
+    },
+    {
+      "candidate_id": "panic_v1_mut_be0a",
+      "module": "engines.engine_a_alpha.edges.panic_edge",
+      "class": "PanicEdge",
+      "category": "mean_reversion",
+      "origin": "discovery_engine",
+      "gene_count": 0,
+      "gene_types": [],
+      "direction": null,
+      "wall_seconds_total": 2.522,
+      "gate_seconds": {
+        "gate_1": 2.438
+      },
+      "gates_run": [
+        "gate_1"
+      ],
+      "first_failed_gate": "gate_1",
+      "error": null,
+      "metrics": {
+        "sharpe": 0.0,
+        "sortino": 0.0,
+        "robustness_survival": 0.0,
+        "wfo_degradation": 0.0,
+        "wfo_oos_sharpe": 0.0,
+        "wfo_is_sharpe": 0.0,
+        "significance_p": 1.0,
+        "benchmark_threshold": 0.1,
+        "universe_b_sharpe": NaN,
+        "universe_b_n_tickers": 0,
+        "factor_alpha_annualized": 0.0,
+        "factor_alpha_tstat": 0.0,
+        "factor_alpha_reason": ""
+      },
+      "gate_passed": {
+        "gate_1": false,
+        "gate_2": false,
+        "gate_3_evaluated": false,
+        "gate_4": false,
+        "gate_5": false,
+        "gate_6": false,
+        "gate_7": true,
+        "gate_7_evaluated": false,
+        "gate_8": true,
+        "gate_8_evaluated": false
+      },
+      "passed_all_gates": false
+    },
+    {
+      "candidate_id": "panic_v1_mut_1835",
+      "module": "engines.engine_a_alpha.edges.panic_edge",
+      "class": "PanicEdge",
+      "category": "mean_reversion",
+      "origin": "discovery_engine",
+      "gene_count": 0,
+      "gene_types": [],
+      "direction": null,
+      "wall_seconds_total": 2.529,
+      "gate_seconds": {
+        "gate_1": 2.43
+      },
+      "gates_run": [
+        "gate_1"
+      ],
+      "first_failed_gate": "gate_1",
+      "error": null,
+      "metrics": {
+        "sharpe": 0.0,
+        "sortino": 0.0,
+        "robustness_survival": 0.0,
+        "wfo_degradation": 0.0,
+        "wfo_oos_sharpe": 0.0,
+        "wfo_is_sharpe": 0.0,
+        "significance_p": 1.0,
+        "benchmark_threshold": 0.1,
+        "universe_b_sharpe": NaN,
+        "universe_b_n_tickers": 0,
+        "factor_alpha_annualized": 0.0,
+        "factor_alpha_tstat": 0.0,
+        "factor_alpha_reason": ""
+      },
+      "gate_passed": {
+        "gate_1": false,
+        "gate_2": false,
+        "gate_3_evaluated": false,
+        "gate_4": false,
+        "gate_5": false,
+        "gate_6": false,
+        "gate_7": true,
+        "gate_7_evaluated": false,
+        "gate_8": true,
+        "gate_8_evaluated": false
+      },
+      "passed_all_gates": false
+    },
+    {
+      "candidate_id": "panic_v1_mut_31c1",
+      "module": "engines.engine_a_alpha.edges.panic_edge",
+      "class": "PanicEdge",
+      "category": "mean_reversion",
+      "origin": "discovery_engine",
+      "gene_count": 0,
+      "gene_types": [],
+      "direction": null,
+      "wall_seconds_total": 2.444,
+      "gate_seconds": {
+        "gate_1": 2.345
+      },
+      "gates_run": [
+        "gate_1"
+      ],
+      "first_failed_gate": "gate_1",
+      "error": null,
+      "metrics": {
+        "sharpe": 0.0,
+        "sortino": 0.0,
+        "robustness_survival": 0.0,
+        "wfo_degradation": 0.0,
+        "wfo_oos_sharpe": 0.0,
+        "wfo_is_sharpe": 0.0,
+        "significance_p": 1.0,
+        "benchmark_threshold": 0.1,
+        "universe_b_sharpe": NaN,
+        "universe_b_n_tickers": 0,
+        "factor_alpha_annualized": 0.0,
+        "factor_alpha_tstat": 0.0,
+        "factor_alpha_reason": ""
+      },
+      "gate_passed": {
+        "gate_1": false,
+        "gate_2": false,
+        "gate_3_evaluated": false,
+        "gate_4": false,
+        "gate_5": false,
+        "gate_6": false,
+        "gate_7": true,
+        "gate_7_evaluated": false,
+        "gate_8": true,
+        "gate_8_evaluated": false
+      },
+      "passed_all_gates": false
+    },
+    {
+      "candidate_id": "herding_v1_mut_8404",
+      "module": "engines.engine_a_alpha.edges.herding_edge",
+      "class": "HerdingEdge",
+      "category": "contrarian",
+      "origin": "discovery_engine",
+      "gene_count": 0,
+      "gene_types": [],
+      "direction": null,
+      "wall_seconds_total": 2.271,
+      "gate_seconds": {
+        "gate_1": 2.187
+      },
+      "gates_run": [
+        "gate_1"
+      ],
+      "first_failed_gate": "gate_1",
+      "error": null,
+      "metrics": {
+        "sharpe": 0.0,
+        "sortino": 0.0,
+        "robustness_survival": 0.0,
+        "wfo_degradation": 0.0,
+        "wfo_oos_sharpe": 0.0,
+        "wfo_is_sharpe": 0.0,
+        "significance_p": 1.0,
+        "benchmark_threshold": 0.1,
+        "universe_b_sharpe": NaN,
+        "universe_b_n_tickers": 0,
+        "factor_alpha_annualized": 0.0,
+        "factor_alpha_tstat": 0.0,
+        "factor_alpha_reason": ""
+      },
+      "gate_passed": {
+        "gate_1": false,
+        "gate_2": false,
+        "gate_3_evaluated": false,
+        "gate_4": false,
+        "gate_5": false,
+        "gate_6": false,
+        "gate_7": true,
+        "gate_7_evaluated": false,
+        "gate_8": true,
+        "gate_8_evaluated": false
+      },
+      "passed_all_gates": false
+    },
+    {
+      "candidate_id": "herding_v1_mut_5fae",
+      "module": "engines.engine_a_alpha.edges.herding_edge",
+      "class": "HerdingEdge",
+      "category": "contrarian",
+      "origin": "discovery_engine",
+      "gene_count": 0,
+      "gene_types": [],
+      "direction": null,
+      "wall_seconds_total": 2.471,
+      "gate_seconds": {
+        "gate_1": 2.386
+      },
+      "gates_run": [
+        "gate_1"
+      ],
+      "first_failed_gate": "gate_1",
+      "error": null,
+      "metrics": {
+        "sharpe": 0.0,
+        "sortino": 0.0,
+        "robustness_survival": 0.0,
+        "wfo_degradation": 0.0,
+        "wfo_oos_sharpe": 0.0,
+        "wfo_is_sharpe": 0.0,
+        "significance_p": 1.0,
+        "benchmark_threshold": 0.1,
+        "universe_b_sharpe": NaN,
+        "universe_b_n_tickers": 0,
+        "factor_alpha_annualized": 0.0,
+        "factor_alpha_tstat": 0.0,
+        "factor_alpha_reason": ""
+      },
+      "gate_passed": {
+        "gate_1": false,
+        "gate_2": false,
+        "gate_3_evaluated": false,
+        "gate_4": false,
+        "gate_5": false,
+        "gate_6": false,
+        "gate_7": true,
+        "gate_7_evaluated": false,
+        "gate_8": true,
+        "gate_8_evaluated": false
+      },
+      "passed_all_gates": false
+    },
+    {
+      "candidate_id": "herding_v1_mut_3438",
+      "module": "engines.engine_a_alpha.edges.herding_edge",
+      "class": "HerdingEdge",
+      "category": "contrarian",
+      "origin": "discovery_engine",
+      "gene_count": 0,
+      "gene_types": [],
+      "direction": null,
+      "wall_seconds_total": 2.316,
+      "gate_seconds": {
+        "gate_1": 2.232
+      },
+      "gates_run": [
+        "gate_1"
+      ],
+      "first_failed_gate": "gate_1",
+      "error": null,
+      "metrics": {
+        "sharpe": 0.0,
+        "sortino": 0.0,
+        "robustness_survival": 0.0,
+        "wfo_degradation": 0.0,
+        "wfo_oos_sharpe": 0.0,
+        "wfo_is_sharpe": 0.0,
+        "significance_p": 1.0,
+        "benchmark_threshold": 0.1,
+        "universe_b_sharpe": NaN,
+        "universe_b_n_tickers": 0,
+        "factor_alpha_annualized": 0.0,
+        "factor_alpha_tstat": 0.0,
+        "factor_alpha_reason": ""
+      },
+      "gate_passed": {
+        "gate_1": false,
+        "gate_2": false,
+        "gate_3_evaluated": false,
+        "gate_4": false,
+        "gate_5": false,
+        "gate_6": false,
+        "gate_7": true,
+        "gate_7_evaluated": false,
+        "gate_8": true,
+        "gate_8_evaluated": false
+      },
+      "passed_all_gates": false
+    },
+    {
+      "candidate_id": "earnings_vol_v1_mut_b35c",
+      "module": "engines.engine_a_alpha.edges.earnings_vol_edge",
+      "class": "EarningsVolEdge",
+      "category": "event_driven",
+      "origin": "discovery_engine",
+      "gene_count": 0,
+      "gene_types": [],
+      "direction": null,
+      "wall_seconds_total": 2.455,
+      "gate_seconds": {
+        "gate_1": 2.37
+      },
+      "gates_run": [
+        "gate_1"
+      ],
+      "first_failed_gate": "gate_1",
+      "error": null,
+      "metrics": {
+        "sharpe": 0.0,
+        "sortino": 0.0,
+        "robustness_survival": 0.0,
+        "wfo_degradation": 0.0,
+        "wfo_oos_sharpe": 0.0,
+        "wfo_is_sharpe": 0.0,
+        "significance_p": 1.0,
+        "benchmark_threshold": 0.1,
+        "universe_b_sharpe": NaN,
+        "universe_b_n_tickers": 0,
+        "factor_alpha_annualized": 0.0,
+        "factor_alpha_tstat": 0.0,
+        "factor_alpha_reason": ""
+      },
+      "gate_passed": {
+        "gate_1": false,
+        "gate_2": false,
+        "gate_3_evaluated": false,
+        "gate_4": false,
+        "gate_5": false,
+        "gate_6": false,
+        "gate_7": true,
+        "gate_7_evaluated": false,
+        "gate_8": true,
+        "gate_8_evaluated": false
+      },
+      "passed_all_gates": false
+    },
+    {
+      "candidate_id": "earnings_vol_v1_mut_a736",
+      "module": "engines.engine_a_alpha.edges.earnings_vol_edge",
+      "class": "EarningsVolEdge",
+      "category": "event_driven",
+      "origin": "discovery_engine",
+      "gene_count": 0,
+      "gene_types": [],
+      "direction": null,
+      "wall_seconds_total": 2.38,
+      "gate_seconds": {
+        "gate_1": 2.295
+      },
+      "gates_run": [
+        "gate_1"
+      ],
+      "first_failed_gate": "gate_1",
+      "error": null,
+      "metrics": {
+        "sharpe": 0.0,
+        "sortino": 0.0,
+        "robustness_survival": 0.0,
+        "wfo_degradation": 0.0,
+        "wfo_oos_sharpe": 0.0,
+        "wfo_is_sharpe": 0.0,
+        "significance_p": 1.0,
+        "benchmark_threshold": 0.1,
+        "universe_b_sharpe": NaN,
+        "universe_b_n_tickers": 0,
+        "factor_alpha_annualized": 0.0,
+        "factor_alpha_tstat": 0.0,
+        "factor_alpha_reason": ""
+      },
+      "gate_passed": {
+        "gate_1": false,
+        "gate_2": false,
+        "gate_3_evaluated": false,
+        "gate_4": false,
+        "gate_5": false,
+        "gate_6": false,
+        "gate_7": true,
+        "gate_7_evaluated": false,
+        "gate_8": true,
+        "gate_8_evaluated": false
+      },
+      "passed_all_gates": false
+    },
+    {
+      "candidate_id": "earnings_vol_v1_mut_1883",
+      "module": "engines.engine_a_alpha.edges.earnings_vol_edge",
+      "class": "EarningsVolEdge",
+      "category": "event_driven",
+      "origin": "discovery_engine",
+      "gene_count": 0,
+      "gene_types": [],
+      "direction": null,
+      "wall_seconds_total": 2.697,
+      "gate_seconds": {
+        "gate_1": 2.61
+      },
+      "gates_run": [
+        "gate_1"
+      ],
+      "first_failed_gate": "gate_1",
+      "error": null,
+      "metrics": {
+        "sharpe": 0.0,
+        "sortino": 0.0,
+        "robustness_survival": 0.0,
+        "wfo_degradation": 0.0,
+        "wfo_oos_sharpe": 0.0,
+        "wfo_is_sharpe": 0.0,
+        "significance_p": 1.0,
+        "benchmark_threshold": 0.1,
+        "universe_b_sharpe": NaN,
+        "universe_b_n_tickers": 0,
+        "factor_alpha_annualized": 0.0,
+        "factor_alpha_tstat": 0.0,
+        "factor_alpha_reason": ""
+      },
+      "gate_passed": {
+        "gate_1": false,
+        "gate_2": false,
+        "gate_3_evaluated": false,
+        "gate_4": false,
+        "gate_5": false,
+        "gate_6": false,
+        "gate_7": true,
+        "gate_7_evaluated": false,
+        "gate_8": true,
+        "gate_8_evaluated": false
+      },
+      "passed_all_gates": false
+    },
+    {
+      "candidate_id": "composite_gen0_a79029",
+      "module": "engines.engine_a_alpha.edges.composite_edge",
+      "class": "CompositeEdge",
+      "category": "evolutionary",
+      "origin": "genetic_algorithm",
+      "gene_count": 1,
+      "gene_types": [
+        "technical"
+      ],
+      "direction": "long",
+      "wall_seconds_total": 2.344,
+      "gate_seconds": {
+        "gate_1": 2.252
+      },
+      "gates_run": [
+        "gate_1"
+      ],
+      "first_failed_gate": "gate_1",
+      "error": null,
+      "metrics": {
+        "sharpe": 0.0,
+        "sortino": 0.0,
+        "robustness_survival": 0.0,
+        "wfo_degradation": 0.0,
+        "wfo_oos_sharpe": 0.0,
+        "wfo_is_sharpe": 0.0,
+        "significance_p": 1.0,
+        "benchmark_threshold": 0.1,
+        "universe_b_sharpe": NaN,
+        "universe_b_n_tickers": 0,
+        "factor_alpha_annualized": 0.0,
+        "factor_alpha_tstat": 0.0,
+        "factor_alpha_reason": ""
+      },
+      "gate_passed": {
+        "gate_1": false,
+        "gate_2": false,
+        "gate_3_evaluated": false,
+        "gate_4": false,
+        "gate_5": false,
+        "gate_6": false,
+        "gate_7": true,
+        "gate_7_evaluated": false,
+        "gate_8": true,
+        "gate_8_evaluated": false
+      },
+      "passed_all_gates": false
+    },
+    {
+      "candidate_id": "composite_gen0_7e9b70",
+      "module": "engines.engine_a_alpha.edges.composite_edge",
+      "class": "CompositeEdge",
+      "category": "evolutionary",
+      "origin": "genetic_algorithm",
+      "gene_count": 3,
+      "gene_types": [
+        "calendar",
+        "technical",
+        "technical"
+      ],
+      "direction": "short",
+      "wall_seconds_total": 2.469,
+      "gate_seconds": {
+        "gate_1": 2.385
+      },
+      "gates_run": [
+        "gate_1"
+      ],
+      "first_failed_gate": "gate_1",
+      "error": null,
+      "metrics": {
+        "sharpe": 0.0,
+        "sortino": 0.0,
+        "robustness_survival": 0.0,
+        "wfo_degradation": 0.0,
+        "wfo_oos_sharpe": 0.0,
+        "wfo_is_sharpe": 0.0,
+        "significance_p": 1.0,
+        "benchmark_threshold": 0.1,
+        "universe_b_sharpe": NaN,
+        "universe_b_n_tickers": 0,
+        "factor_alpha_annualized": 0.0,
+        "factor_alpha_tstat": 0.0,
+        "factor_alpha_reason": ""
+      },
+      "gate_passed": {
+        "gate_1": false,
+        "gate_2": false,
+        "gate_3_evaluated": false,
+        "gate_4": false,
+        "gate_5": false,
+        "gate_6": false,
+        "gate_7": true,
+        "gate_7_evaluated": false,
+        "gate_8": true,
+        "gate_8_evaluated": false
+      },
+      "passed_all_gates": false
+    },
+    {
+      "candidate_id": "composite_gen0_eaa429",
+      "module": "engines.engine_a_alpha.edges.composite_edge",
+      "class": "CompositeEdge",
+      "category": "evolutionary",
+      "origin": "genetic_algorithm",
+      "gene_count": 2,
+      "gene_types": [
+        "technical",
+        "calendar"
+      ],
+      "direction": "long",
+      "wall_seconds_total": 2.367,
+      "gate_seconds": {
+        "gate_1": 2.283
+      },
+      "gates_run": [
+        "gate_1"
+      ],
+      "first_failed_gate": "gate_1",
+      "error": null,
+      "metrics": {
+        "sharpe": 0.0,
+        "sortino": 0.0,
+        "robustness_survival": 0.0,
+        "wfo_degradation": 0.0,
+        "wfo_oos_sharpe": 0.0,
+        "wfo_is_sharpe": 0.0,
+        "significance_p": 1.0,
+        "benchmark_threshold": 0.1,
+        "universe_b_sharpe": NaN,
+        "universe_b_n_tickers": 0,
+        "factor_alpha_annualized": 0.0,
+        "factor_alpha_tstat": 0.0,
+        "factor_alpha_reason": ""
+      },
+      "gate_passed": {
+        "gate_1": false,
+        "gate_2": false,
+        "gate_3_evaluated": false,
+        "gate_4": false,
+        "gate_5": false,
+        "gate_6": false,
+        "gate_7": true,
+        "gate_7_evaluated": false,
+        "gate_8": true,
+        "gate_8_evaluated": false
+      },
+      "passed_all_gates": false
+    }
+  ]
+}
