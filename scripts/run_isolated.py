@@ -72,11 +72,23 @@ def _reexec_if_hashseed_unset() -> None:
 # Files in data/governor/ that mutate end-of-run under any non-no-governor
 # code path. Snapshotting just these keeps the harness fast (skip the
 # meta-learner pickles etc., which only change when the trainer runs).
+#
+# ga_population.yml added 2026-05-11 (T-2026-05-11-026): Discovery's
+# `GeneticAlgorithm.load_population()` reads this file on cycle start;
+# if it exists with a saved population, the GA skips its
+# `seed_from_registry` path entirely (which is where T-022 foundry_feature
+# gene emission + T-024 enrichment fire). T-025's Discovery cycle
+# inherited a stale generation-3 population from a pre-T-022 run, which
+# meant the new vocabulary never got exercised. Isolating
+# ga_population.yml ensures each isolated() run starts from the anchor
+# state (typically: no file → GA falls back to seed_from_registry →
+# T-022/T-024 logic fires deterministically).
 ISOLATED_FILES = [
     "edges.yml",
     "edge_weights.json",
     "regime_edge_performance.json",
     "lifecycle_history.csv",
+    "ga_population.yml",
 ]
 
 # Additional files snapshotted ONLY when --journal-mode is active.
