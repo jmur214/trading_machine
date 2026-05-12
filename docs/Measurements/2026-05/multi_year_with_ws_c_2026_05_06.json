@@ -1,0 +1,15 @@
+[
+  {
+    "year": 2021,
+    "rep": 1,
+    "run_id": "eabf72fc-158a-4320-8c46-4a2ff4087db0",
+    "sharpe": 1.666,
+    "cagr_pct": 7.58,
+    "max_drawdown_pct": -3.58,
+    "win_rate_pct": 51.13,
+    "total_trades": null,
+    "trades_canon_md5": "d84603459fc6a51dacdda05175684b3c",
+    "wall_time_seconds": 290.5,
+    "ok": true
+  }
+]
