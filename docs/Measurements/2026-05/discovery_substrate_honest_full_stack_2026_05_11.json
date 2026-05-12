@@ -1,0 +1,317 @@
+{
+  "jsonl_path": "docs/Audit/discovery_diagnostic_run_2026_05_20260511T154314.jsonl",
+  "n_records": 30,
+  "first_failed_histogram": {
+    "gate_1": 30
+  },
+  "per_gate_pass_rate": {
+    "gate_1": {
+      "evaluated": 30,
+      "passed": 0
+    }
+  },
+  "wall_time_stats": {
+    "n": 30,
+    "min_sec": 2.252,
+    "max_sec": 6.498,
+    "mean_sec": 2.6543,
+    "total_min": 1.32715
+  },
+  "candidate_origin_distribution": {
+    "rsi_bounce_v1": 3,
+    "value_trap_v1": 3,
+    "fundamental_ratio_v1": 3,
+    "seasonality_v1": 3,
+    "gap_fill_v1": 3,
+    "volume_anomaly_v1": 3,
+    "panic_v1": 3,
+    "herding_v1": 3,
+    "earnings_vol_v1": 3,
+    "composite_gen0_a79029": 1,
+    "composite_gen0_7e9b70": 1,
+    "composite_gen0_eaa429": 1
+  },
+  "gene_type_distribution": {
+    "technical": 4,
+    "calendar": 2
+  },
+  "gauntlet_survival_ci": {
+    "n": 30,
+    "n_survived": 0,
+    "point": 0.0,
+    "ci_low": 0.0,
+    "ci_high": 0.0
+  },
+  "per_candidate": [
+    {
+      "candidate_id": "rsi_bounce_v1_mut_9187",
+      "first_failed_gate": "gate_1",
+      "wall_seconds_total": 6.498,
+      "sharpe": 0.0,
+      "sortino": 0.0,
+      "benchmark_threshold": 0.1,
+      "factor_alpha_tstat": 0.0
+    },
+    {
+      "candidate_id": "rsi_bounce_v1_mut_2e63",
+      "first_failed_gate": "gate_1",
+      "wall_seconds_total": 2.664,
+      "sharpe": 0.0,
+      "sortino": 0.0,
+      "benchmark_threshold": 0.1,
+      "factor_alpha_tstat": 0.0
+    },
+    {
+      "candidate_id": "rsi_bounce_v1_mut_68e5",
+      "first_failed_gate": "gate_1",
+      "wall_seconds_total": 2.445,
+      "sharpe": 0.0,
+      "sortino": 0.0,
+      "benchmark_threshold": 0.1,
+      "factor_alpha_tstat": 0.0
+    },
+    {
+      "candidate_id": "value_trap_v1_mut_1b03",
+      "first_failed_gate": "gate_1",
+      "wall_seconds_total": 2.464,
+      "sharpe": 0.0,
+      "sortino": 0.0,
+      "benchmark_threshold": 0.1,
+      "factor_alpha_tstat": 0.0
+    },
+    {
+      "candidate_id": "value_trap_v1_mut_17e6",
+      "first_failed_gate": "gate_1",
+      "wall_seconds_total": 2.51,
+      "sharpe": 0.0,
+      "sortino": 0.0,
+      "benchmark_threshold": 0.1,
+      "factor_alpha_tstat": 0.0
+    },
+    {
+      "candidate_id": "value_trap_v1_mut_5074",
+      "first_failed_gate": "gate_1",
+      "wall_seconds_total": 2.496,
+      "sharpe": 0.0,
+      "sortino": 0.0,
+      "benchmark_threshold": 0.1,
+      "factor_alpha_tstat": 0.0
+    },
+    {
+      "candidate_id": "fundamental_ratio_v1_mut_5b8d",
+      "first_failed_gate": "gate_1",
+      "wall_seconds_total": 2.573,
+      "sharpe": 0.0,
+      "sortino": 0.0,
+      "benchmark_threshold": 0.1,
+      "factor_alpha_tstat": 0.0
+    },
+    {
+      "candidate_id": "fundamental_ratio_v1_mut_b252",
+      "first_failed_gate": "gate_1",
+      "wall_seconds_total": 2.616,
+      "sharpe": 0.0,
+      "sortino": 0.0,
+      "benchmark_threshold": 0.1,
+      "factor_alpha_tstat": 0.0
+    },
+    {
+      "candidate_id": "fundamental_ratio_v1_mut_1303",
+      "first_failed_gate": "gate_1",
+      "wall_seconds_total": 2.501,
+      "sharpe": 0.0,
+      "sortino": 0.0,
+      "benchmark_threshold": 0.1,
+      "factor_alpha_tstat": 0.0
+    },
+    {
+      "candidate_id": "seasonality_v1_mut_a9eb",
+      "first_failed_gate": "gate_1",
+      "wall_seconds_total": 2.51,
+      "sharpe": 0.0,
+      "sortino": 0.0,
+      "benchmark_threshold": 0.1,
+      "factor_alpha_tstat": 0.0
+    },
+    {
+      "candidate_id": "seasonality_v1_mut_8788",
+      "first_failed_gate": "gate_1",
+      "wall_seconds_total": 2.615,
+      "sharpe": 0.0,
+      "sortino": 0.0,
+      "benchmark_threshold": 0.1,
+      "factor_alpha_tstat": 0.0
+    },
+    {
+      "candidate_id": "seasonality_v1_mut_e678",
+      "first_failed_gate": "gate_1",
+      "wall_seconds_total": 2.535,
+      "sharpe": 0.0,
+      "sortino": 0.0,
+      "benchmark_threshold": 0.1,
+      "factor_alpha_tstat": 0.0
+    },
+    {
+      "candidate_id": "gap_fill_v1_mut_1498",
+      "first_failed_gate": "gate_1",
+      "wall_seconds_total": 2.418,
+      "sharpe": 0.0,
+      "sortino": 0.0,
+      "benchmark_threshold": 0.1,
+      "factor_alpha_tstat": 0.0
+    },
+    {
+      "candidate_id": "gap_fill_v1_mut_b3fd",
+      "first_failed_gate": "gate_1",
+      "wall_seconds_total": 2.484,
+      "sharpe": 0.0,
+      "sortino": 0.0,
+      "benchmark_threshold": 0.1,
+      "factor_alpha_tstat": 0.0
+    },
+    {
+      "candidate_id": "gap_fill_v1_mut_d6f7",
+      "first_failed_gate": "gate_1",
+      "wall_seconds_total": 2.523,
+      "sharpe": 0.0,
+      "sortino": 0.0,
+      "benchmark_threshold": 0.1,
+      "factor_alpha_tstat": 0.0
+    },
+    {
+      "candidate_id": "volume_anomaly_v1_mut_3824",
+      "first_failed_gate": "gate_1",
+      "wall_seconds_total": 2.633,
+      "sharpe": 0.0,
+      "sortino": 0.0,
+      "benchmark_threshold": 0.1,
+      "factor_alpha_tstat": 0.0
+    },
+    {
+      "candidate_id": "volume_anomaly_v1_mut_30f9",
+      "first_failed_gate": "gate_1",
+      "wall_seconds_total": 2.512,
+      "sharpe": 0.0,
+      "sortino": 0.0,
+      "benchmark_threshold": 0.1,
+      "factor_alpha_tstat": 0.0
+    },
+    {
+      "candidate_id": "volume_anomaly_v1_mut_cbd6",
+      "first_failed_gate": "gate_1",
+      "wall_seconds_total": 2.524,
+      "sharpe": 0.0,
+      "sortino": 0.0,
+      "benchmark_threshold": 0.1,
+      "factor_alpha_tstat": 0.0
+    },
+    {
+      "candidate_id": "panic_v1_mut_be0a",
+      "first_failed_gate": "gate_1",
+      "wall_seconds_total": 2.674,
+      "sharpe": 0.0,
+      "sortino": 0.0,
+      "benchmark_threshold": 0.1,
+      "factor_alpha_tstat": 0.0
+    },
+    {
+      "candidate_id": "panic_v1_mut_1835",
+      "first_failed_gate": "gate_1",
+      "wall_seconds_total": 2.809,
+      "sharpe": 0.0,
+      "sortino": 0.0,
+      "benchmark_threshold": 0.1,
+      "factor_alpha_tstat": 0.0
+    },
+    {
+      "candidate_id": "panic_v1_mut_31c1",
+      "first_failed_gate": "gate_1",
+      "wall_seconds_total": 2.515,
+      "sharpe": 0.0,
+      "sortino": 0.0,
+      "benchmark_threshold": 0.1,
+      "factor_alpha_tstat": 0.0
+    },
+    {
+      "candidate_id": "herding_v1_mut_8404",
+      "first_failed_gate": "gate_1",
+      "wall_seconds_total": 2.457,
+      "sharpe": 0.0,
+      "sortino": 0.0,
+      "benchmark_threshold": 0.1,
+      "factor_alpha_tstat": 0.0
+    },
+    {
+      "candidate_id": "herding_v1_mut_5fae",
+      "first_failed_gate": "gate_1",
+      "wall_seconds_total": 2.469,
+      "sharpe": 0.0,
+      "sortino": 0.0,
+      "benchmark_threshold": 0.1,
+      "factor_alpha_tstat": 0.0
+    },
+    {
+      "candidate_id": "herding_v1_mut_3438",
+      "first_failed_gate": "gate_1",
+      "wall_seconds_total": 2.452,
+      "sharpe": 0.0,
+      "sortino": 0.0,
+      "benchmark_threshold": 0.1,
+      "factor_alpha_tstat": 0.0
+    },
+    {
+      "candidate_id": "earnings_vol_v1_mut_b35c",
+      "first_failed_gate": "gate_1",
+      "wall_seconds_total": 2.511,
+      "sharpe": 0.0,
+      "sortino": 0.0,
+      "benchmark_threshold": 0.1,
+      "factor_alpha_tstat": 0.0
+    },
+    {
+      "candidate_id": "earnings_vol_v1_mut_a736",
+      "first_failed_gate": "gate_1",
+      "wall_seconds_total": 2.831,
+      "sharpe": 0.0,
+      "sortino": 0.0,
+      "benchmark_threshold": 0.1,
+      "factor_alpha_tstat": 0.0
+    },
+    {
+      "candidate_id": "earnings_vol_v1_mut_1883",
+      "first_failed_gate": "gate_1",
+      "wall_seconds_total": 2.341,
+      "sharpe": 0.0,
+      "sortino": 0.0,
+      "benchmark_threshold": 0.1,
+      "factor_alpha_tstat": 0.0
+    },
+    {
+      "candidate_id": "composite_gen0_a79029",
+      "first_failed_gate": "gate_1",
+      "wall_seconds_total": 2.408,
+      "sharpe": 0.0,
+      "sortino": 0.0,
+      "benchmark_threshold": 0.1,
+      "factor_alpha_tstat": 0.0
+    },
+    {
+      "candidate_id": "composite_gen0_7e9b70",
+      "first_failed_gate": "gate_1",
+      "wall_seconds_total": 2.389,
+      "sharpe": 0.0,
+      "sortino": 0.0,
+      "benchmark_threshold": 0.1,
+      "factor_alpha_tstat": 0.0
+    },
+    {
+      "candidate_id": "composite_gen0_eaa429",
+      "first_failed_gate": "gate_1",
+      "wall_seconds_total": 2.252,
+      "sharpe": 0.0,
+      "sortino": 0.0,
+      "benchmark_threshold": 0.1,
+      "factor_alpha_tstat": 0.0
+    }
+  ]
+}
