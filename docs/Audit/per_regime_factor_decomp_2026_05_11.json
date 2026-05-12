@@ -1,0 +1,721 @@
+{
+  "generated": "2026-05-11 (T-2026-05-11-029 dispatch)",
+  "spec": "inbox T-2026-05-11-029",
+  "t002_arm1_run_ids": {
+    "2021": "191c14ba-3e8d-4f7f-ae08-8b24bf54dec0",
+    "2022": "85ae17d9-a7b9-473b-933a-94dc0c681fcc",
+    "2023": "a23ce948-9fd0-43ef-84c6-dc6aaa7653ca",
+    "2024": "a1591104-7c2b-428c-a02a-a1fa712fe569",
+    "2025": "a3aac752-6daa-487a-a3e5-2f1e4d81d319"
+  },
+  "t020_run_ids": {
+    "momentum_12_1_v1": {
+      "2021": "d4058acf-cf7f-404a-9e3c-b8cbbf0db157",
+      "2022": "832b5cfd-73db-4b24-87a6-52eed96ee070",
+      "2023": "b87a30ff-0643-4f00-9396-4021ab5e985b",
+      "2024": "eb7ad3a9-ea09-414d-a1f8-d830ebbb8aa5",
+      "2025": "9e00423c-8c9e-4a04-a189-a1f908a05222"
+    },
+    "momentum_6_1_v1": {
+      "2021": "182a2c48-d5a5-45b3-b69f-2bb09b7dc54a",
+      "2022": "307a9c18-859b-46a3-adcf-ba009e5e27f4",
+      "2023": "0430c338-5de1-4680-acc4-f0f641e91809",
+      "2024": "6a2c7e03-accd-4491-a063-bbeddb4f99fa",
+      "2025": "70b822af-6acb-446f-b6d9-1db82e2e07cb"
+    },
+    "short_term_reversal_v1": {
+      "2021": "6b349146-143c-4c8f-9f5b-123ac88a19cf",
+      "2022": "7693cf71-ccd1-4ed1-8f3a-037daf035bc6",
+      "2023": "5daa56bb-c6ca-41ca-826c-0b0a13fb536f",
+      "2024": "f8540b65-376b-49cc-9866-fa85f52f3df1",
+      "2025": "155c1c6d-33a0-463d-b0f0-224400bbbb77"
+    },
+    "pairs_trading_MA_V_v1": {
+      "2021": "722ba4a0-12a3-4b6a-b781-edd24fef1407",
+      "2022": "9e92086e-da21-4b5a-aef8-0bcc2665f089",
+      "2023": "4d450f47-7972-42d1-9969-2c126b084e66",
+      "2024": "e20b7d0b-23ac-457a-8cb5-ca4b42468fcf",
+      "2025": "12267b74-6d51-4253-8b49-9322fa10b987"
+    },
+    "dividend_initiation_drift_v1": {
+      "2021": "903571dd-05bf-4793-b1e1-4ca5c299ef28",
+      "2022": "6fc11041-7423-419a-b4fe-7efe434e2027",
+      "2023": "fcce92d8-0d30-4244-860e-8835372494fc",
+      "2024": "dfe5c781-553d-400a-8975-a40b86e33ed4",
+      "2025": "24242e71-17da-4dc4-8981-a9815fa30d27"
+    }
+  },
+  "per_edge": [
+    {
+      "edge_id": "volume_anomaly_v1",
+      "n_closed_trades": 542,
+      "regimes_observed": [
+        "cautious_decline",
+        "emerging_expansion",
+        "market_turmoil",
+        "robust_expansion"
+      ],
+      "per_regime": {
+        "robust_expansion": {
+          "ok": true,
+          "n_obs": 92,
+          "lag_neweywest": 3,
+          "alpha_daily": -1.510553301896925e-05,
+          "alpha_annualized": -0.0038065943207802513,
+          "alpha_se_annualized_hac": 0.014347966161951515,
+          "alpha_tstat_hac": -0.2653054988988421,
+          "alpha_ci_low_analytic": -0.03192860799820522,
+          "alpha_ci_high_analytic": 0.02431541935664472,
+          "alpha_ci_low_bootstrap": -0.030673149458907995,
+          "alpha_ci_high_bootstrap": 0.02824218944617124,
+          "r_squared": 0.04233925497766167
+        },
+        "emerging_expansion": {
+          "ok": true,
+          "n_obs": 85,
+          "lag_neweywest": 3,
+          "alpha_daily": 4.786356700688979e-05,
+          "alpha_annualized": 0.012061618885736227,
+          "alpha_se_annualized_hac": 0.018210300112436212,
+          "alpha_tstat_hac": 0.6623514610557727,
+          "alpha_ci_low_analytic": -0.023630569334638748,
+          "alpha_ci_high_analytic": 0.0477538071061112,
+          "alpha_ci_low_bootstrap": -0.020043531663198506,
+          "alpha_ci_high_bootstrap": 0.05295248215056401,
+          "r_squared": 0.08965727073192764
+        },
+        "cautious_decline": {
+          "ok": true,
+          "n_obs": 81,
+          "lag_neweywest": 3,
+          "alpha_daily": 3.092257867799784e-05,
+          "alpha_annualized": 0.007792489826855455,
+          "alpha_se_annualized_hac": 0.016868470729353064,
+          "alpha_tstat_hac": 0.46195591478815173,
+          "alpha_ci_low_analytic": -0.025269712802676546,
+          "alpha_ci_high_analytic": 0.040854692456387454,
+          "alpha_ci_low_bootstrap": -0.02330557502185238,
+          "alpha_ci_high_bootstrap": 0.03796741691188629,
+          "r_squared": 0.12695929054804633
+        },
+        "market_turmoil": {
+          "ok": false,
+          "n_obs": 10,
+          "reason": "n_obs<30 (insufficient for HAC inference)"
+        }
+      },
+      "verdict": "UNIFORMLY NOISY \u2014 |\u03b1 t|<2 across all 3 sufficient-data regime(s); no detectable signal. Keep paused; no factor-adjusted alpha. (note: insufficient data in ['market_turmoil'])",
+      "t004_aggregate_alpha_tstat": 0.83
+    },
+    {
+      "edge_id": "gap_fill_v1",
+      "n_closed_trades": 433,
+      "regimes_observed": [
+        "cautious_decline",
+        "emerging_expansion",
+        "market_turmoil",
+        "robust_expansion"
+      ],
+      "per_regime": {
+        "robust_expansion": {
+          "ok": true,
+          "n_obs": 75,
+          "lag_neweywest": 3,
+          "alpha_daily": -8.954606252763093e-05,
+          "alpha_annualized": -0.022565607756962994,
+          "alpha_se_annualized_hac": 0.011803259847989411,
+          "alpha_tstat_hac": -1.9118114866213725,
+          "alpha_ci_low_analytic": -0.04569999705902224,
+          "alpha_ci_high_analytic": 0.0005687815450962537,
+          "alpha_ci_low_bootstrap": -0.045396185551288305,
+          "alpha_ci_high_bootstrap": 0.002506943395593201,
+          "r_squared": 0.08231603192849246
+        },
+        "emerging_expansion": {
+          "ok": true,
+          "n_obs": 82,
+          "lag_neweywest": 3,
+          "alpha_daily": -4.803730971597987e-05,
+          "alpha_annualized": -0.012105402048426927,
+          "alpha_se_annualized_hac": 0.014855774897251822,
+          "alpha_tstat_hac": -0.8148617040950392,
+          "alpha_ci_low_analytic": -0.0412227208470405,
+          "alpha_ci_high_analytic": 0.017011916750186644,
+          "alpha_ci_low_bootstrap": -0.04081448193706019,
+          "alpha_ci_high_bootstrap": 0.041607097440948364,
+          "r_squared": 0.10363045009614791
+        },
+        "cautious_decline": {
+          "ok": true,
+          "n_obs": 67,
+          "lag_neweywest": 3,
+          "alpha_daily": 0.00016888162343229956,
+          "alpha_annualized": 0.04255816910493949,
+          "alpha_se_annualized_hac": 0.029595330821696967,
+          "alpha_tstat_hac": 1.438002817449136,
+          "alpha_ci_low_analytic": -0.01544867930558657,
+          "alpha_ci_high_analytic": 0.10056501751546554,
+          "alpha_ci_low_bootstrap": -0.00827207060753891,
+          "alpha_ci_high_bootstrap": 0.10053205457520742,
+          "r_squared": 0.11285220552721464
+        },
+        "market_turmoil": {
+          "ok": false,
+          "n_obs": 19,
+          "reason": "n_obs<30 (insufficient for HAC inference)"
+        }
+      },
+      "verdict": "UNIFORMLY NOISY \u2014 |\u03b1 t|<2 across all 3 sufficient-data regime(s); no detectable signal. Keep paused; no factor-adjusted alpha. (note: insufficient data in ['market_turmoil'])",
+      "t004_aggregate_alpha_tstat": -0.04
+    },
+    {
+      "edge_id": "value_book_to_market_v1",
+      "n_closed_trades": 1674,
+      "regimes_observed": [
+        "cautious_decline",
+        "emerging_expansion",
+        "market_turmoil",
+        "robust_expansion"
+      ],
+      "per_regime": {
+        "robust_expansion": {
+          "ok": true,
+          "n_obs": 239,
+          "lag_neweywest": 4,
+          "alpha_daily": -1.817229879718687e-05,
+          "alpha_annualized": -0.004579419296891091,
+          "alpha_se_annualized_hac": 0.012585221156012402,
+          "alpha_tstat_hac": -0.36387277109575006,
+          "alpha_ci_low_analytic": -0.029246452762675394,
+          "alpha_ci_high_analytic": 0.020087614168893216,
+          "alpha_ci_low_bootstrap": -0.028102496774426312,
+          "alpha_ci_high_bootstrap": 0.022053739885395777,
+          "r_squared": 0.11759941840011001
+        },
+        "emerging_expansion": {
+          "ok": true,
+          "n_obs": 230,
+          "lag_neweywest": 4,
+          "alpha_daily": -7.468459743621484e-05,
+          "alpha_annualized": -0.018820518553926142,
+          "alpha_se_annualized_hac": 0.0106007070913574,
+          "alpha_tstat_hac": -1.7754021870173389,
+          "alpha_ci_low_analytic": -0.039597904452986644,
+          "alpha_ci_high_analytic": 0.0019568673451343596,
+          "alpha_ci_low_bootstrap": -0.04083928080349784,
+          "alpha_ci_high_bootstrap": 0.006447365372396349,
+          "r_squared": 0.09858746007056873
+        },
+        "cautious_decline": {
+          "ok": true,
+          "n_obs": 153,
+          "lag_neweywest": 4,
+          "alpha_daily": -0.00016812089730113531,
+          "alpha_annualized": -0.0423664661198861,
+          "alpha_se_annualized_hac": 0.014412405969713875,
+          "alpha_tstat_hac": -2.9395831763908595,
+          "alpha_ci_low_analytic": -0.0706147818205253,
+          "alpha_ci_high_analytic": -0.014118150419246904,
+          "alpha_ci_low_bootstrap": -0.07296645784432475,
+          "alpha_ci_high_bootstrap": -0.014578436977482977,
+          "r_squared": 0.4225455189376712
+        },
+        "market_turmoil": {
+          "ok": false,
+          "n_obs": 26,
+          "reason": "n_obs<30 (insufficient for HAC inference)"
+        }
+      },
+      "verdict": "UNIFORMLY NEGATIVE \u2014 \u03b1 (t<-2) in ['cautious_decline']; no significantly-positive regime. CONFIRMED RETIRE CANDIDATE (stronger than T-004's aggregate finding). (note: insufficient data in ['market_turmoil'])",
+      "t004_aggregate_alpha_tstat": -2.6
+    },
+    {
+      "edge_id": "accruals_inv_sloan_v1",
+      "n_closed_trades": 1858,
+      "regimes_observed": [
+        "cautious_decline",
+        "emerging_expansion",
+        "market_turmoil",
+        "robust_expansion"
+      ],
+      "per_regime": {
+        "robust_expansion": {
+          "ok": true,
+          "n_obs": 237,
+          "lag_neweywest": 4,
+          "alpha_daily": -0.0001195902746171122,
+          "alpha_annualized": -0.030136749203512274,
+          "alpha_se_annualized_hac": 0.011096160752885687,
+          "alpha_tstat_hac": -2.715961842538633,
+          "alpha_ci_low_analytic": -0.051885224279168224,
+          "alpha_ci_high_analytic": -0.008388274127856327,
+          "alpha_ci_low_bootstrap": -0.05463786189008773,
+          "alpha_ci_high_bootstrap": -0.010925673873143008,
+          "r_squared": 0.10672379762399242
+        },
+        "emerging_expansion": {
+          "ok": true,
+          "n_obs": 250,
+          "lag_neweywest": 4,
+          "alpha_daily": -8.38211481369763e-05,
+          "alpha_annualized": -0.021122929330518028,
+          "alpha_se_annualized_hac": 0.008262825370240603,
+          "alpha_tstat_hac": -2.5563809452629096,
+          "alpha_ci_low_analytic": -0.03731806705618961,
+          "alpha_ci_high_analytic": -0.004927791604846445,
+          "alpha_ci_low_bootstrap": -0.03736416695270615,
+          "alpha_ci_high_bootstrap": -0.0039738271612747384,
+          "r_squared": 0.10094516388856367
+        },
+        "cautious_decline": {
+          "ok": true,
+          "n_obs": 164,
+          "lag_neweywest": 4,
+          "alpha_daily": -0.00023361255566280804,
+          "alpha_annualized": -0.058870364027027625,
+          "alpha_se_annualized_hac": 0.02150303751587811,
+          "alpha_tstat_hac": -2.7377696747985962,
+          "alpha_ci_low_analytic": -0.10101631755814872,
+          "alpha_ci_high_analytic": -0.016724410495906526,
+          "alpha_ci_low_bootstrap": -0.10207383115687312,
+          "alpha_ci_high_bootstrap": -0.018500045710036227,
+          "r_squared": 0.29231993545254276
+        },
+        "market_turmoil": {
+          "ok": false,
+          "n_obs": 24,
+          "reason": "n_obs<30 (insufficient for HAC inference)"
+        }
+      },
+      "verdict": "UNIFORMLY NEGATIVE \u2014 \u03b1 (t<-2) in ['robust_expansion', 'emerging_expansion', 'cautious_decline']; no significantly-positive regime. CONFIRMED RETIRE CANDIDATE (stronger than T-004's aggregate finding). (note: insufficient data in ['market_turmoil'])",
+      "t004_aggregate_alpha_tstat": -4.08
+    },
+    {
+      "edge_id": "value_earnings_yield_v1",
+      "n_closed_trades": 2401,
+      "regimes_observed": [
+        "cautious_decline",
+        "emerging_expansion",
+        "market_turmoil",
+        "robust_expansion"
+      ],
+      "per_regime": {
+        "robust_expansion": {
+          "ok": true,
+          "n_obs": 248,
+          "lag_neweywest": 4,
+          "alpha_daily": -0.00012897114787342563,
+          "alpha_annualized": -0.03250072926410326,
+          "alpha_se_annualized_hac": 0.008378219616847746,
+          "alpha_tstat_hac": -3.8791928059211536,
+          "alpha_ci_low_analytic": -0.04892203971312484,
+          "alpha_ci_high_analytic": -0.016079418815081677,
+          "alpha_ci_low_bootstrap": -0.05042088636574,
+          "alpha_ci_high_bootstrap": -0.01625824637617697,
+          "r_squared": 0.14185365669171768
+        },
+        "emerging_expansion": {
+          "ok": true,
+          "n_obs": 245,
+          "lag_neweywest": 4,
+          "alpha_daily": -0.00014984995544992842,
+          "alpha_annualized": -0.037762188773381965,
+          "alpha_se_annualized_hac": 0.008345678598782411,
+          "alpha_tstat_hac": -4.524759529907042,
+          "alpha_ci_low_analytic": -0.05411971882699549,
+          "alpha_ci_high_analytic": -0.02140465871976844,
+          "alpha_ci_low_bootstrap": -0.05358453267123407,
+          "alpha_ci_high_bootstrap": -0.02099484950232909,
+          "r_squared": 0.19619520634267096
+        },
+        "cautious_decline": {
+          "ok": true,
+          "n_obs": 168,
+          "lag_neweywest": 4,
+          "alpha_daily": -0.00017731784277745977,
+          "alpha_annualized": -0.04468409637991986,
+          "alpha_se_annualized_hac": 0.015991688574185633,
+          "alpha_tstat_hac": -2.7942075142740435,
+          "alpha_ci_low_analytic": -0.0760278059853237,
+          "alpha_ci_high_analytic": -0.013340386774516017,
+          "alpha_ci_low_bootstrap": -0.08046615428211278,
+          "alpha_ci_high_bootstrap": -0.010702539015349828,
+          "r_squared": 0.3469723115428044
+        },
+        "market_turmoil": {
+          "ok": false,
+          "n_obs": 28,
+          "reason": "n_obs<30 (insufficient for HAC inference)"
+        }
+      },
+      "verdict": "UNIFORMLY NEGATIVE \u2014 \u03b1 (t<-2) in ['robust_expansion', 'emerging_expansion', 'cautious_decline']; no significantly-positive regime. CONFIRMED RETIRE CANDIDATE (stronger than T-004's aggregate finding). (note: insufficient data in ['market_turmoil'])",
+      "t004_aggregate_alpha_tstat": -5.69
+    },
+    {
+      "edge_id": "accruals_inv_asset_growth_v1",
+      "n_closed_trades": 994,
+      "regimes_observed": [
+        "cautious_decline",
+        "emerging_expansion",
+        "market_turmoil",
+        "robust_expansion"
+      ],
+      "per_regime": {
+        "robust_expansion": {
+          "ok": true,
+          "n_obs": 169,
+          "lag_neweywest": 4,
+          "alpha_daily": -0.0001262415048279846,
+          "alpha_annualized": -0.03181285921665212,
+          "alpha_se_annualized_hac": 0.007803994598670821,
+          "alpha_tstat_hac": -4.076484012696587,
+          "alpha_ci_low_analytic": -0.04710868863004693,
+          "alpha_ci_high_analytic": -0.01651702980325731,
+          "alpha_ci_low_bootstrap": -0.04751936033772773,
+          "alpha_ci_high_bootstrap": -0.016725481291408006,
+          "r_squared": 0.19320432344031846
+        },
+        "emerging_expansion": {
+          "ok": true,
+          "n_obs": 169,
+          "lag_neweywest": 4,
+          "alpha_daily": -0.00010078503763228939,
+          "alpha_annualized": -0.025397829483336926,
+          "alpha_se_annualized_hac": 0.009023498186520658,
+          "alpha_tstat_hac": -2.8146323031655633,
+          "alpha_ci_low_analytic": -0.04308388592891742,
+          "alpha_ci_high_analytic": -0.0077117730377564385,
+          "alpha_ci_low_bootstrap": -0.043553015393741915,
+          "alpha_ci_high_bootstrap": -0.00938766755868292,
+          "r_squared": 0.12260539084986022
+        },
+        "cautious_decline": {
+          "ok": true,
+          "n_obs": 114,
+          "lag_neweywest": 4,
+          "alpha_daily": -0.00021584837415663461,
+          "alpha_annualized": -0.054393790287471926,
+          "alpha_se_annualized_hac": 0.020902207350990323,
+          "alpha_tstat_hac": -2.602298856483921,
+          "alpha_ci_low_analytic": -0.09536211669541296,
+          "alpha_ci_high_analytic": -0.013425463879530891,
+          "alpha_ci_low_bootstrap": -0.08894060133165355,
+          "alpha_ci_high_bootstrap": -0.013290539522517257,
+          "r_squared": 0.33708927918943676
+        },
+        "market_turmoil": {
+          "ok": false,
+          "n_obs": 20,
+          "reason": "n_obs<30 (insufficient for HAC inference)"
+        }
+      },
+      "verdict": "UNIFORMLY NEGATIVE \u2014 \u03b1 (t<-2) in ['robust_expansion', 'emerging_expansion', 'cautious_decline']; no significantly-positive regime. CONFIRMED RETIRE CANDIDATE (stronger than T-004's aggregate finding). (note: insufficient data in ['market_turmoil'])",
+      "t004_aggregate_alpha_tstat": -5.12
+    },
+    {
+      "edge_id": "momentum_12_1_v1",
+      "n_closed_trades": 5228,
+      "regimes_observed": [
+        "cautious_decline",
+        "emerging_expansion",
+        "market_turmoil",
+        "robust_expansion"
+      ],
+      "per_regime": {
+        "robust_expansion": {
+          "ok": true,
+          "n_obs": 352,
+          "lag_neweywest": 5,
+          "alpha_daily": 8.84490691559251e-05,
+          "alpha_annualized": 0.022289165427293128,
+          "alpha_se_annualized_hac": 0.022096771879849233,
+          "alpha_tstat_hac": 1.0087068621828579,
+          "alpha_ci_low_analytic": -0.02102050745721137,
+          "alpha_ci_high_analytic": 0.06559883831179762,
+          "alpha_ci_low_bootstrap": -0.02126727554685359,
+          "alpha_ci_high_bootstrap": 0.06237987453920131,
+          "r_squared": 0.20599703362517674
+        },
+        "emerging_expansion": {
+          "ok": true,
+          "n_obs": 370,
+          "lag_neweywest": 5,
+          "alpha_daily": 0.00016742779869481102,
+          "alpha_annualized": 0.04219180527109238,
+          "alpha_se_annualized_hac": 0.035729434334724544,
+          "alpha_tstat_hac": 1.1808696682915916,
+          "alpha_ci_low_analytic": -0.027837886024967735,
+          "alpha_ci_high_analytic": 0.1122214965671525,
+          "alpha_ci_low_bootstrap": -0.035560915801124804,
+          "alpha_ci_high_bootstrap": 0.10788637193961709,
+          "r_squared": 0.19678636136957062
+        },
+        "cautious_decline": {
+          "ok": true,
+          "n_obs": 269,
+          "lag_neweywest": 4,
+          "alpha_daily": -0.00021353099812033364,
+          "alpha_annualized": -0.05380981152632408,
+          "alpha_se_annualized_hac": 0.040420247044174164,
+          "alpha_tstat_hac": -1.3312588482578256,
+          "alpha_ci_low_analytic": -0.13303349573290546,
+          "alpha_ci_high_analytic": 0.025413872680257285,
+          "alpha_ci_low_bootstrap": -0.14072422369611992,
+          "alpha_ci_high_bootstrap": 0.01865096047488353,
+          "r_squared": 0.1726128644208318
+        },
+        "market_turmoil": {
+          "ok": true,
+          "n_obs": 50,
+          "lag_neweywest": 3,
+          "alpha_daily": -0.0001447627574569862,
+          "alpha_annualized": -0.036480214879160526,
+          "alpha_se_annualized_hac": 0.06610584698858352,
+          "alpha_tstat_hac": -0.5518455105107519,
+          "alpha_ci_low_analytic": -0.16604767497678422,
+          "alpha_ci_high_analytic": 0.09308724521846315,
+          "alpha_ci_low_bootstrap": -0.15493118863367128,
+          "alpha_ci_high_bootstrap": 0.07151509659232791,
+          "r_squared": 0.3429397982153424
+        }
+      },
+      "verdict": "UNIFORMLY NOISY \u2014 |\u03b1 t|<2 across all 4 sufficient-data regime(s); no detectable signal. Keep paused; no factor-adjusted alpha.",
+      "t004_aggregate_alpha_tstat": 0.36
+    },
+    {
+      "edge_id": "momentum_6_1_v1",
+      "n_closed_trades": 5376,
+      "regimes_observed": [
+        "cautious_decline",
+        "emerging_expansion",
+        "market_turmoil",
+        "robust_expansion"
+      ],
+      "per_regime": {
+        "robust_expansion": {
+          "ok": true,
+          "n_obs": 349,
+          "lag_neweywest": 5,
+          "alpha_daily": 5.286629363640191e-06,
+          "alpha_annualized": 0.001332230599637328,
+          "alpha_se_annualized_hac": 0.027418885527728896,
+          "alpha_tstat_hac": 0.048588065269466726,
+          "alpha_ci_low_analytic": -0.0524087850347113,
+          "alpha_ci_high_analytic": 0.05507324623398596,
+          "alpha_ci_low_bootstrap": -0.058826205497732216,
+          "alpha_ci_high_bootstrap": 0.05065098973825006,
+          "r_squared": 0.20272064755386854
+        },
+        "emerging_expansion": {
+          "ok": true,
+          "n_obs": 384,
+          "lag_neweywest": 5,
+          "alpha_daily": 4.107832048531142e-05,
+          "alpha_annualized": 0.010351736762298478,
+          "alpha_se_annualized_hac": 0.03228321681594771,
+          "alpha_tstat_hac": 0.32065381902043866,
+          "alpha_ci_low_analytic": -0.05292336819695903,
+          "alpha_ci_high_analytic": 0.07362684172155598,
+          "alpha_ci_low_bootstrap": -0.05574676992303295,
+          "alpha_ci_high_bootstrap": 0.0710078645243704,
+          "r_squared": 0.0939345079062689
+        },
+        "cautious_decline": {
+          "ok": true,
+          "n_obs": 275,
+          "lag_neweywest": 5,
+          "alpha_daily": -0.0002781432796512543,
+          "alpha_annualized": -0.07009210647211608,
+          "alpha_se_annualized_hac": 0.030658134743491914,
+          "alpha_tstat_hac": -2.286248235861615,
+          "alpha_ci_low_analytic": -0.13018205056936022,
+          "alpha_ci_high_analytic": -0.010002162374871934,
+          "alpha_ci_low_bootstrap": -0.1391230566498445,
+          "alpha_ci_high_bootstrap": -0.01762459092103894,
+          "r_squared": 0.29797183216151746
+        },
+        "market_turmoil": {
+          "ok": true,
+          "n_obs": 46,
+          "lag_neweywest": 3,
+          "alpha_daily": -0.0003529996991090319,
+          "alpha_annualized": -0.08895592417547604,
+          "alpha_se_annualized_hac": 0.05450061146501403,
+          "alpha_tstat_hac": -1.6322004796694833,
+          "alpha_ci_low_analytic": -0.19577712264690356,
+          "alpha_ci_high_analytic": 0.017865274295951458,
+          "alpha_ci_low_bootstrap": -0.20749663666148055,
+          "alpha_ci_high_bootstrap": 0.018936860645164224,
+          "r_squared": 0.19586755768260022
+        }
+      },
+      "verdict": "UNIFORMLY NEGATIVE \u2014 \u03b1 (t<-2) in ['cautious_decline']; no significantly-positive regime. CONFIRMED RETIRE CANDIDATE (stronger than T-004's aggregate finding).",
+      "t004_aggregate_alpha_tstat": -1.01
+    },
+    {
+      "edge_id": "short_term_reversal_v1",
+      "n_closed_trades": 3259,
+      "regimes_observed": [
+        "cautious_decline",
+        "emerging_expansion",
+        "market_turmoil",
+        "robust_expansion"
+      ],
+      "per_regime": {
+        "robust_expansion": {
+          "ok": true,
+          "n_obs": 335,
+          "lag_neweywest": 5,
+          "alpha_daily": 0.00019906383369192325,
+          "alpha_annualized": 0.05016408609036466,
+          "alpha_se_annualized_hac": 0.028492353118192513,
+          "alpha_tstat_hac": 1.7606157652993089,
+          "alpha_ci_low_analytic": -0.005680926021292665,
+          "alpha_ci_high_analytic": 0.10600909820202198,
+          "alpha_ci_low_bootstrap": -0.01081152547257832,
+          "alpha_ci_high_bootstrap": 0.10400101361101556,
+          "r_squared": 0.159282048242259
+        },
+        "emerging_expansion": {
+          "ok": true,
+          "n_obs": 366,
+          "lag_neweywest": 5,
+          "alpha_daily": 0.00012162437390915085,
+          "alpha_annualized": 0.030649342225106013,
+          "alpha_se_annualized_hac": 0.03469748260082452,
+          "alpha_tstat_hac": 0.8833304299827704,
+          "alpha_ci_low_analytic": -0.03735772367251004,
+          "alpha_ci_high_analytic": 0.09865640812272207,
+          "alpha_ci_low_bootstrap": -0.028692115598631242,
+          "alpha_ci_high_bootstrap": 0.09064323468096909,
+          "r_squared": 0.12752877600304302
+        },
+        "cautious_decline": {
+          "ok": true,
+          "n_obs": 278,
+          "lag_neweywest": 5,
+          "alpha_daily": -2.032707715509569e-05,
+          "alpha_annualized": -0.005122423443084114,
+          "alpha_se_annualized_hac": 0.029807610586448454,
+          "alpha_tstat_hac": -0.17184951568754528,
+          "alpha_ci_low_analytic": -0.06354534019252309,
+          "alpha_ci_high_analytic": 0.053300493306354856,
+          "alpha_ci_low_bootstrap": -0.06767034639620467,
+          "alpha_ci_high_bootstrap": 0.052566089091481846,
+          "r_squared": 0.20742851214756464
+        },
+        "market_turmoil": {
+          "ok": true,
+          "n_obs": 40,
+          "lag_neweywest": 3,
+          "alpha_daily": 0.0004954108970797533,
+          "alpha_annualized": 0.12484354606409784,
+          "alpha_se_annualized_hac": 0.07284199620513643,
+          "alpha_tstat_hac": 1.7138951781677632,
+          "alpha_ci_low_analytic": -0.017926766497969565,
+          "alpha_ci_high_analytic": 0.26761385862616527,
+          "alpha_ci_low_bootstrap": 0.004055587028187808,
+          "alpha_ci_high_bootstrap": 0.2641568474556922,
+          "r_squared": 0.2306141884994679
+        }
+      },
+      "verdict": "UNIFORMLY NOISY \u2014 |\u03b1 t|<2 across all 4 sufficient-data regime(s); no detectable signal. Keep paused; no factor-adjusted alpha.",
+      "t004_aggregate_alpha_tstat": 1.76
+    },
+    {
+      "edge_id": "pairs_trading_MA_V_v1",
+      "n_closed_trades": 87,
+      "regimes_observed": [
+        "cautious_decline",
+        "emerging_expansion",
+        "market_turmoil",
+        "robust_expansion"
+      ],
+      "per_regime": {
+        "robust_expansion": {
+          "ok": false,
+          "n_obs": 16,
+          "reason": "n_obs<30 (insufficient for HAC inference)"
+        },
+        "emerging_expansion": {
+          "ok": false,
+          "n_obs": 27,
+          "reason": "n_obs<30 (insufficient for HAC inference)"
+        },
+        "cautious_decline": {
+          "ok": false,
+          "n_obs": 16,
+          "reason": "n_obs<30 (insufficient for HAC inference)"
+        },
+        "market_turmoil": {
+          "ok": false,
+          "n_obs": 3,
+          "reason": "n_obs<30 (insufficient for HAC inference)"
+        }
+      },
+      "verdict": "INSUFFICIENT DATA \u2014 n_obs<30 in ALL regimes ['robust_expansion', 'emerging_expansion', 'cautious_decline', 'market_turmoil']; cannot bucket without more samples.",
+      "t004_aggregate_alpha_tstat": null
+    },
+    {
+      "edge_id": "dividend_initiation_drift_v1",
+      "n_closed_trades": 172,
+      "regimes_observed": [
+        "cautious_decline",
+        "emerging_expansion",
+        "market_turmoil",
+        "robust_expansion"
+      ],
+      "per_regime": {
+        "robust_expansion": {
+          "ok": true,
+          "n_obs": 65,
+          "lag_neweywest": 3,
+          "alpha_daily": 0.002907051352709131,
+          "alpha_annualized": 0.732576940882701,
+          "alpha_se_annualized_hac": 0.24514065276726912,
+          "alpha_tstat_hac": 2.988394346727112,
+          "alpha_ci_low_analytic": 0.2521012614588535,
+          "alpha_ci_high_analytic": 1.2130526203065486,
+          "alpha_ci_low_bootstrap": 0.29311588242670056,
+          "alpha_ci_high_bootstrap": 1.1539546398269025,
+          "r_squared": 0.23473534665010398
+        },
+        "emerging_expansion": {
+          "ok": true,
+          "n_obs": 56,
+          "lag_neweywest": 3,
+          "alpha_daily": -0.001321888083675267,
+          "alpha_annualized": -0.3331157970861673,
+          "alpha_se_annualized_hac": 0.32443454272192296,
+          "alpha_tstat_hac": -1.0267581074795884,
+          "alpha_ci_low_analytic": -0.9690075008211363,
+          "alpha_ci_high_analytic": 0.30277590664880166,
+          "alpha_ci_low_bootstrap": -0.9545045029081481,
+          "alpha_ci_high_bootstrap": 0.2743419588327697,
+          "r_squared": 0.17350388922326454
+        },
+        "cautious_decline": {
+          "ok": true,
+          "n_obs": 34,
+          "lag_neweywest": 3,
+          "alpha_daily": -0.0005504586713809921,
+          "alpha_annualized": -0.13871558518801003,
+          "alpha_se_annualized_hac": 0.32564766835596676,
+          "alpha_tstat_hac": -0.4259683046045319,
+          "alpha_ci_low_analytic": -0.776985015165705,
+          "alpha_ci_high_analytic": 0.49955384478968484,
+          "alpha_ci_low_bootstrap": -0.7739890132253308,
+          "alpha_ci_high_bootstrap": 0.7686961733420619,
+          "r_squared": 0.4273334927054624
+        },
+        "market_turmoil": {
+          "ok": false,
+          "n_obs": 3,
+          "reason": "n_obs<30 (insufficient for HAC inference)"
+        }
+      },
+      "verdict": "UNIFORMLY POSITIVE \u2014 \u03b1 (t>+2) in ['robust_expansion']; no significantly-negative regime. STRONG PROMOTE CANDIDATE (active or Sortino-vehicle dispatch). (note: insufficient data in ['market_turmoil'])",
+      "t004_aggregate_alpha_tstat": null
+    }
+  ]
+}
