@@ -51,6 +51,11 @@ class CockpitLogger:
         "regime_label",
     ]
 
+    # Column order must match PortfolioEngine.snapshot() dict-insertion order
+    # plus the run_id field appended by the writer. The reader (cockpit.metrics)
+    # and the snap dict's natural order must agree; otherwise the read
+    # silently mis-aligns and reports flat equity in losing years.
+    # See T-2026-05-12-034 audit for the bug-class.
     SNAPSHOT_COLUMNS = [
         "timestamp",
         "cash",
@@ -59,6 +64,8 @@ class CockpitLogger:
         "unrealized_pnl",
         "equity",
         "positions",
+        "peak_equity",
+        "current_drawdown_pct",
         "open_pos_by_edge",
         "run_id",
     ]
@@ -137,6 +144,14 @@ class CockpitLogger:
                 return
             df = pd.DataFrame(buffer)
             df["run_id"] = self.run_id
+            if path == self.snap_path:
+                cols = self.SNAPSHOT_COLUMNS
+            elif path == self.trade_path:
+                cols = self.TRADE_COLUMNS
+            else:
+                cols = None
+            if cols is not None:
+                df = df.reindex(columns=cols)
             df.to_csv(path, mode="a", header=False, index=False)
             buffer.clear()
             if is_info_enabled() or is_debug_enabled("LOGGER"):
@@ -277,6 +292,7 @@ class CockpitLogger:
             if self._trade_buffer:
                 df_t = pd.DataFrame(self._trade_buffer)
                 df_t["run_id"] = self.run_id
+                df_t = df_t.reindex(columns=self.TRADE_COLUMNS)
                 df_t.to_csv(self.trade_path, mode="a", header=False, index=False)
                 flushed_t = len(df_t)
                 self._trade_buffer.clear()
@@ -287,6 +303,7 @@ class CockpitLogger:
             if self._snap_buffer:
                 df_s = pd.DataFrame(self._snap_buffer)
                 df_s["run_id"] = self.run_id
+                df_s = df_s.reindex(columns=self.SNAPSHOT_COLUMNS)
                 df_s.to_csv(self.snap_path, mode="a", header=False, index=False)
                 flushed_s = len(df_s)
                 self._snap_buffer.clear()

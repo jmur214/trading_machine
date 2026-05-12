@@ -122,10 +122,42 @@ class PerformanceMetrics:
     Defends against impossible values: epsilon floors, NaN/inf guards, capped MDD domain.
     """
 
+    @staticmethod
+    def _assert_snapshot_csv_alignment(path: str) -> None:
+        """Raise if the snapshot CSV's header field-count differs from its data
+        rows. The pre-T-034 writer emitted 11 fields against a 9-column header,
+        causing pandas to silently mis-align the `equity` column with an
+        unrelated constant (peak_equity), producing zero-Sharpe results for
+        losing years."""
+        import csv as _csv
+        try:
+            with open(path, "r", newline="") as fh:
+                reader = _csv.reader(fh)
+                header = next(reader, None)
+                first_data = next(reader, None)
+        except FileNotFoundError:
+            return
+        if header is None or first_data is None:
+            return
+        if len(first_data) != len(header):
+            raise ValueError(
+                f"[METRICS] snapshot CSV {path} has {len(header)} header "
+                f"columns but {len(first_data)} fields in the first data "
+                f"row. This indicates a writer/reader schema mismatch; "
+                f"computed metrics would silently mis-align. See "
+                f"T-2026-05-12-034. Header: {header}"
+            )
+
     def __init__(self, snapshots_path: str, trades_path: str | None = None, risk_free_rate: float = 0.02):
         self.snapshots_path = snapshots_path
         self.trades_path = trades_path
         self.risk_free_rate = float(risk_free_rate)
+
+        # Field-count guard: silent mis-alignment between a snapshots CSV header
+        # and its data rows produced wrong (typically zero-Sharpe) metrics for
+        # losing years. See T-2026-05-12-030 → T-034. Fail loud rather than
+        # silently re-aligning.
+        self._assert_snapshot_csv_alignment(self.snapshots_path)
 
         # Load snapshots
         self.snapshots = pd.read_csv(self.snapshots_path)
