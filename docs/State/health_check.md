@@ -64,6 +64,13 @@ then LOW. Within each severity, list newest at the top.
 - Forward action: dispatch a Discovery cycle on substrate-honest data; let the gauntlet validate which (if any) of the new paused edges deserve promotion. Adding MORE paused edges is wasted effort until the existing inventory's gauntlet outcome is known.
 
 
+### [HIGH → 2026-05-12 EVENING UPDATE BY T-036] All 6 active edges are UNIFORMLY NEGATIVE on factor-adjusted α (re-confirmed at stronger level)
+- Category: alpha integrity / factor-vs-idiosyncratic decomposition
+- 2026-05-12 evening update post-T-036 Part B (per-regime factor decomp on cockpit-fixed trade logs): the cockpit-bug-correction strengthened, not weakened, the T-004/T-029 "no idiosyncratic alpha" finding. **`volume_anomaly_v1` and `gap_fill_v1` — labeled as "5-year dollar PnL winners" in the morning 2024 attribution audit (commit d1ed01f) — are UNIFORMLY NEGATIVE on factor-adjusted α** (volume_anomaly emerging_expansion t = -2.06, robust_expansion t = -2.27; gap_fill robust_expansion t = -2.77). Their positive dollar PnL is Mkt+Mom factor beta exposure, NOT idiosyncratic alpha.
+- Implication: the 0.598 corrected Sharpe baseline IS REAL (the strategy makes money) but it's **beta-driven, not alpha-driven**. After factor exposure subtraction, the residual α is uniformly negative or noisy across all 11 edges in the T-029/T-036 panel.
+- Bucket counts (11 edges, post-T-036): UNIFORMLY NEGATIVE 7 (+2 from T-029) | UNIFORMLY NOISY 1 (STR — equity-level Sharpe 0.999 but factor-explained) | UNIFORMLY POSITIVE 1 (dividend_initiation_drift_v1 — currently inert/paused per T-019) | INSUFFICIENT DATA 1 (pairs_MA_V).
+- Forward action: T-043 spec needs to incorporate factor-adjusted α inputs alongside raw Sharpe for the Engine F lifecycle re-evaluation. T-041 (spin-offs, structurally non-factor) becomes more important. Discovery's Gate 6 (FF5+Mom t > 2) becomes the highest-leverage filter for finding idiosyncratic α.
+
 ### [HIGH → RE-CORRECTED 2026-05-12 BY T-035] The substrate-honest baseline is 0.598, not 0.270
 - Category: measurement integrity / canonical baseline
 - 2026-05-12 update: T-2026-05-12-035 re-measured T-002 Arm 1 with the cockpit metrics-pipeline fix (T-034) applied. **Corrected mean Arm 1 Sharpe = 0.598** (vs T-002 reported 0.270, Δ +0.328). The shift is from bug-correction, not substrate change.

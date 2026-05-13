@@ -4,6 +4,25 @@ date: 2026-05-12
 author: director (post-T-035)
 data_source: T-035 corrected trade logs (cockpit-bug-free), rep 1 of each year (3/3 reps bitwise identical so any rep is canonical)
 status: director-side analysis (not an agent dispatch)
+caveat_added: 2026-05-12 (post-T-036 Part B per-regime decomp)
+---
+
+## CAVEAT — read this before the rest
+
+This audit's framing of "3 of 6 active edges are 5-year net losers, 2 are winners, 1 is mixed" is **CORRECT ON REALIZED DOLLAR PnL but MISLEADING ON ALPHA**.
+
+T-036 Part B (per-regime factor decomp on cockpit-fixed trade logs) landed after this audit and revealed:
+
+- **`volume_anomaly_v1` and `gap_fill_v1`** (this audit's "dollar-PnL winners") promoted from "UNIFORMLY NOISY" to **UNIFORMLY NEGATIVE** on factor-adjusted α. Both have significantly negative t-stats in expansion regimes (volume_anomaly emerging_expansion t = -2.06, robust_expansion t = -2.27; gap_fill robust_expansion t = -2.77).
+- Their positive dollar PnL is **Mkt + Mom factor beta exposure, NOT idiosyncratic alpha**. Worse than a passive factor portfolio would be in expansion regimes.
+- The 3 dollar-PnL "losers" (value_earnings_yield_v1, accruals_inv_sloan_v1, accruals_inv_asset_growth_v1) are **also UNIFORMLY NEGATIVE on factor-adjusted α** — but they fail on BOTH dollar PnL and factor α, while the 2 "winners" fail only on factor α.
+
+**Bucket counts (11 edges, post-T-036):** 7 UNIFORMLY NEGATIVE, 1 UNIFORMLY NOISY (STR), 1 UNIFORMLY POSITIVE (dividend_initiation_drift_v1 — currently inert/paused), 1 INSUFFICIENT DATA (pairs_MA_V).
+
+**Revised interpretation:** The T-043 "Engine F lifecycle re-evaluation" proposed below was framed as "let Engine F retire the 3 dollar-PnL losers." Better framing: **Engine F lifecycle should re-evaluate with BOTH the corrected per-edge dollar Sharpes AND T-036 Part B's factor-adjusted α verdicts as inputs.** All 6 active edges have negative factor-adjusted α; the question is whether Engine F's retirement gate uses raw Sharpe (CLAUDE.md kill threshold) or factor-adjusted α (T-029/T-036 verdict) or both. That's a director-side decision before dispatching the spec.
+
+**The rest of this audit reads as-written for the dollar-PnL story, which remains valid as one of two lenses. Reader should hold both in mind.**
+
 ---
 
 # 2024 Attribution Dive — why the corrected Arm 1 Sharpe is -0.613

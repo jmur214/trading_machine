@@ -39,11 +39,30 @@
 > - Engine D gene-encoding extension and Gate 1 caching remain the next structural fixes
 > - Moonshot Sleeve, AI layer — still parked per engines-first directive
 >
+> ### T-036 landed (post-T-035 update) — per-regime verdict gets HARSHER, not gentler
+>
+> T-036 Part A: STR mean Sharpe 0.281 → **0.999** (+0.718). Strong bull-conditional profile, 2022 -0.556 corrected. STR is genuinely stronger than T-030 indicated.
+>
+> T-036 Part B: per-regime factor decomp regenerated on 7 cockpit-fixed edges. **Verdict-bucket shifts (11-edge panel)**:
+> - UNIFORMLY NEGATIVE: 5 → **7** (+2: `volume_anomaly_v1` and `gap_fill_v1` both promoted from NOISY)
+> - UNIFORMLY NOISY: 3 → 1 (STR holds)
+> - UNIFORMLY POSITIVE: 1 (`dividend_initiation_drift_v1` only — currently paused-inert per T-019)
+> - INSUFFICIENT DATA: 1 (pairs_MA_V)
+>
+> **Critical: my 2026-05-12 morning "2024 attribution dive" audit (commit d1ed01f) labeled `volume_anomaly_v1` and `gap_fill_v1` as "winners" based on +$4,527 and +$3,410 of 5-year realized dollar PnL.** T-036 reveals both are UNIFORMLY NEGATIVE on factor-adjusted α — their positive dollar PnL is Mkt+Mom factor beta exposure, NOT idiosyncratic alpha. They're worse than a passive factor replication would be. The audit was updated with this caveat 2026-05-12 evening.
+>
+> **What this means structurally**: 0/6 active edges have positive factor-adjusted α at t > 2. **Most are SIGNIFICANTLY NEGATIVE**, not merely noisy. T-004's finding now strengthens to "the system has no idiosyncratic alpha at the active-edge level; observed Sharpe is factor-exposure." The 0.598 corrected baseline is real Sharpe-of-the-strategy, but it's beta-driven, not alpha-driven.
+>
+> **Forward implications**:
+> 1. T-043 candidate spec (Engine F lifecycle re-evaluation) needs broader scope: re-run retirement evaluation with BOTH corrected dollar Sharpes AND T-036's factor-adjusted-α verdicts as inputs. All 6 actives fail on factor α; the question is what Engine F's retirement gate uses.
+> 2. `dividend_initiation_drift_v1` is the only UNIFORMLY POSITIVE edge in the 11-edge panel. Currently inert (zero trades over 5 years per T-019). Worth gauntlet-promoting to test whether the factor-positive verdict survives at active-tier capital allocation. Could be a T-044 candidate.
+> 3. T-041 (spin-offs spec) just got more important — spin-off anomaly is structurally NON-factor (driven by forced institutional selling, not Mkt/Mom/Value). The whole point of retail-only edges is to find α that doesn't load on the FF5 factor model.
+> 4. Engine D Discovery (Bayesian opt scaffolding shipped T-028a; T-038 attempted Discovery cycle BLOCKED at 4.8 hr / no emission per B's outbox) becomes the highest-leverage discovery vehicle — Gate 6 explicitly filters for factor-adjusted α at t > 2, which is exactly the gap.
+>
 > ### What was just dispatched (waiting)
 >
-> - T-036 Part A (STR re-measurement with cockpit fix) — running, ~105 min
-> - T-036 Part B (per-regime factor decomp regenerate) — chains after Part A
-> - B's T-038 (Discovery cycle re-run on cleaned anchor + cockpit fix) — disk + sync gates now CLEAR, awaiting user ping
+> - T-036 Part A + B (COMPLETE, merged 0730be3)
+> - B's T-038 (Discovery cycle re-run): BLOCKED at 4.8 hr / no Discovery emission. Last log line at lifecycle phase post-backtest. B's diagnosis: first-ever `seed_from_foundry` runs expensive feature compute. B recommends Option C (profile + targeted vectorize fix, ~5 hr). Awaiting user direction.
 >
 > ### What got drafted today (specs, not yet dispatched)
 >
