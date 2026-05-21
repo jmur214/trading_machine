@@ -84,6 +84,23 @@ length per Politis-White) is the project standard. Iid
 resampling underestimates CI width on serially-correlated 
 financial returns and is not acceptable.
 
+**Backtest length must clear MBL given honest N.** Per 
+Bailey-Borwein-López de Prado-Zhu (Notices AMS 2014): a 
+backtest's window must satisfy `T_years ≥ 2 · ln(N_effective) / 
+SR_target²` to have any chance of clearing DSR. Honest N counts 
+every distinct backtest configuration ever run on the same data 
+substrate, including aggregator-iteration trials (each 
+MetaLearner variant, each HRP slice, each Discovery cycle adds 
+to N_trials). At our current ~75 accumulated N_trials, the 
+5-year substrate-honest window requires SR ≥ 1.55 to clear DSR 
+— our corrected 0.598 baseline cannot clear it regardless of 
+measurement discipline. **The 5-year window is exploratory; no 
+measurement on it should be quoted as deployment evidence until 
+the multi-decade extension lands.** Pre-register every future 
+measurement (hypothesis + threshold + N_trials_consumed) BEFORE 
+running. See `docs/Audit/honest_n_mbl_computation_2026_05_12.md` 
+for the working numbers.
+
 ## Git discipline
 
 **Commit early and often.** After any logically-complete unit of 
