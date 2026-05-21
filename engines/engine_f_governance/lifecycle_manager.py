@@ -53,6 +53,9 @@ import pandas as pd
 import yaml
 
 from core.metrics_engine import MetricsEngine
+from engines.engine_f_governance.factor_alpha_gate import (
+    check_factor_alpha_retirement,
+)
 
 log = logging.getLogger("Lifecycle")
 
@@ -206,6 +209,30 @@ class LifecycleConfig:
     max_retirements_per_cycle: int = 1
     max_pauses_per_cycle: int = 2
 
+    # ----------------------------------------------------------- T-043
+    # Factor-α retirement gate. Symmetric with Discovery Gate 6
+    # (FF5+Mom α t > 2 required to enter): an active edge whose α
+    # t-stat ci_low has been < `factor_alpha_t_threshold` for
+    # >= `factor_alpha_sustained_cycles` consecutive evaluation cycles
+    # is retired. Required because Sharpe-only retirement misses
+    # factor-explained losers — see T-036 audit (7 of 11 panel edges
+    # UNIFORMLY NEGATIVE on α but in the Sharpe-neutral band).
+    #
+    # Defense-first default: disabled. Enable in `GovernorConfig` once
+    # the per-edge re-evaluation table in the T-043 audit doc has been
+    # reviewed and the user has approved the propose-list. The cycle
+    # cap is larger than the legacy 1-per-cycle because there are 7
+    # known factor-negative actives at activation time, and journal-
+    # mode means the user reviews + applies the batch.
+    factor_alpha_enabled: bool = False
+    factor_alpha_t_threshold: float = -2.0  # ci_low must be below this
+    factor_alpha_sustained_cycles: int = 2  # consecutive cycles
+    factor_alpha_min_obs: int = 30  # HAC inference floor
+    factor_alpha_bootstrap_iter: int = 1000
+    factor_alpha_seed: int = 0
+    factor_alpha_max_retirements_per_cycle: int = 10
+    factor_alpha_state_path: str = "data/governor/factor_alpha_state.yml"
+
     # Read-only mode: evaluate gates and return events but do NOT write to
     # registry or history CSV. Use for OOS backtesting where lifecycle
     # decisions should be observed but not committed, so re-running the
@@ -326,6 +353,7 @@ class LifecycleManager:
         as_of: Optional[pd.Timestamp] = None,
         journal: Optional[Any] = None,
         journal_run_id: str = "unknown",
+        factors: Optional[pd.DataFrame] = None,
     ) -> List[LifecycleEvent]:
         """Evaluate lifecycle transitions using the current trade log and benchmark.
 
@@ -426,6 +454,7 @@ class LifecycleManager:
         zero_fill_pauses_used = 0
         zero_fill_retirements_used = 0
         noise_pauses_used = 0
+        factor_alpha_retirements_used = 0
 
         def _all_caps_full() -> bool:
             return (
@@ -434,6 +463,7 @@ class LifecycleManager:
                 and zero_fill_pauses_used >= self.cfg.max_zero_fill_pauses_per_cycle
                 and zero_fill_retirements_used >= self.cfg.max_zero_fill_retirements_per_cycle
                 and noise_pauses_used >= self.cfg.max_noise_pauses_per_cycle
+                and factor_alpha_retirements_used >= self.cfg.factor_alpha_max_retirements_per_cycle
             )
 
         # Evaluate each edge. Important: the base-edge registry entries (e.g.
@@ -569,6 +599,29 @@ class LifecycleManager:
                     )
                     events.append(ev)
                     retirements_used += 1
+                    continue
+
+                # ----- T-043: Factor-α retirement gate ----- #
+                # Symmetric with Discovery Gate 6 (FF5+Mom α t > 2 to
+                # enter): retire if ci_low(α t-stat) has been below
+                # -2.0 for `factor_alpha_sustained_cycles` consecutive
+                # cycles. OR-logic with legacy raw-Sharpe gate — strict
+                # on retirement as well as on entry.
+                if (
+                    self.cfg.factor_alpha_enabled
+                    and factors is not None
+                    and factor_alpha_retirements_used < self.cfg.factor_alpha_max_retirements_per_cycle
+                ):
+                    fa_fired, fa_gate = self._check_factor_alpha_retirement(
+                        edge_id, sub, factors, as_of,
+                    )
+                    if fa_fired:
+                        ev = self._transition(
+                            edge_spec, "retired", fa_gate, edge_sharpe, benchmark_sharpe,
+                            edge_mdd, trade_count, days_active, as_of,
+                        )
+                        events.append(ev)
+                        factor_alpha_retirements_used += 1
 
             elif status == "paused":
                 revive_fired, revive_gate = self._check_revival_gates(pnls)
@@ -698,6 +751,37 @@ class LifecycleManager:
             f"benchmark_under_ci_low_{edge_ci_low:.2f}_vs_{benchmark_sharpe:.2f}"
             f"_margin_{self.cfg.retirement_margin}_point_{edge_sharpe:.2f}",
         )
+
+    def _check_factor_alpha_retirement(
+        self,
+        edge_id: str,
+        edge_trades: pd.DataFrame,
+        factors: pd.DataFrame,
+        as_of: pd.Timestamp,
+    ) -> Tuple[bool, str]:
+        """T-043 gate: retire if α t-stat ci_low has been below
+        `factor_alpha_t_threshold` for at least
+        `factor_alpha_sustained_cycles` consecutive evaluation cycles.
+
+        Uses FF5+Mom HAC OLS with residual moving-block bootstrap CI
+        on the t-stat itself (per CLAUDE.md 6th non-negotiable).
+        State persisted to `factor_alpha_state_path`.
+        """
+        state_path = Path(self.cfg.factor_alpha_state_path)
+        fired, reason, _result, _new_count = check_factor_alpha_retirement(
+            edge_id=edge_id,
+            closed_trades_for_edge=edge_trades,
+            factors=factors,
+            state_path=state_path,
+            t_threshold=self.cfg.factor_alpha_t_threshold,
+            sustained_cycles_required=self.cfg.factor_alpha_sustained_cycles,
+            min_obs=self.cfg.factor_alpha_min_obs,
+            n_iter=self.cfg.factor_alpha_bootstrap_iter,
+            seed=self.cfg.factor_alpha_seed,
+            initial_capital=self.cfg.initial_capital,
+            as_of_ts=as_of.isoformat() if hasattr(as_of, "isoformat") else str(as_of),
+        )
+        return fired, reason
 
     def _check_pause_gates(
         self,
