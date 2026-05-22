@@ -1,29 +1,37 @@
 """engines/engine_a_alpha/edges/_helpers/spinoff_detector.py
 ==============================================================
-Spin-off event detector for `spinoff_reversion_v1` (T-2026-05-12-041).
+Spin-off event detector for `spinoff_reversion_v1` (T-2026-05-12-041
++ T-041b EDGAR scraper).
 
 Sources, in priority order:
-1. **Curated YAML** at `data/spinoff_events_curated.yml` — hand-
+1. **Curated YAML** at `config/spinoff_events_curated.yml` — hand-
    maintained list of known historical spin-offs. Authoritative when
    present; highest confidence (1.0).
-2. **yfinance `Ticker.actions`** — flags "stock split" distributions
-   that are often spin-offs. Coverage variable; confidence 0.7. Looks
-   up via parent_ticker → derived from the existing trade universe.
-3. **SEC EDGAR Form 10 / 10-12B** — authoritative registration source.
-   Confidence 1.0. **DEFERRED to T-041b** because the 10 req/sec rate
-   limit + 500+ filings would dominate the time budget; the curated
-   list covers the validation set the audit requires.
+2. **SEC EDGAR Form 10 / 10-12B** (T-041b addition) — pulls
+   registration statements via the public full-text search API at
+   10 req/sec, caches results at
+   `data/spinoff_events_edgar.parquet`. Confidence 0.9. Uses
+   filing_date as the distribution_date proxy when yfinance lookup
+   fails (filing typically precedes distribution by 60-180 days; we
+   document this as a known limitation).
+3. **yfinance `Ticker.splits`** — best-effort fallback. Coverage
+   variable; confidence 0.7. Placeholder child_ticker because yfinance
+   does not expose the child symbol.
 
 The detector returns a flat list of `SpinoffEvent` records keyed by
 `distribution_date`. Caller filters by window / universe.
 
-Determinism: pure function of (curated file + optional yfinance cache).
-No floating I/O; results stable across reps.
+Determinism: pure function of (curated file + cached EDGAR parquet +
+optional yfinance cache). EDGAR cache is read-only at run time; the
+parquet must be refreshed externally via `detect_spinoffs_edgar`.
 """
 from __future__ import annotations
 
 import logging
+import re
+import time
 from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Dict, List, Optional
 
@@ -34,6 +42,22 @@ logger = logging.getLogger("spinoff_detector")
 
 PROJECT_ROOT = Path(__file__).resolve().parents[4]
 CURATED_PATH = PROJECT_ROOT / "config" / "spinoff_events_curated.yml"
+EDGAR_CACHE_PATH = PROJECT_ROOT / "data" / "spinoff_events_edgar.parquet"
+EDGAR_CACHE_TTL_DAYS = 30  # invalidate after 30 days per spec hard constraint
+
+# EDGAR rate limit policy: 10 req/sec max. SEC fair-use guideline.
+EDGAR_REQUEST_DELAY_SECONDS = 0.11  # 9 req/sec to leave headroom
+
+# SEC requires a User-Agent identifying the requester. Project-specific
+# string set here; can be overridden via env var if user prefers.
+_DEFAULT_EDGAR_USER_AGENT = (
+    "trading_machine-2 research jsm13700@gmail.com"
+)
+
+# Display-name regex to extract ticker symbol. EDGAR display strings
+# look like "Foo Corp  (FOO)  (CIK 0001234567)" — capture the ticker
+# inside the FIRST set of parens that's not the CIK marker.
+_TICKER_RE = re.compile(r"\s\(([A-Z][A-Z0-9.\-]{0,5})\)\s")
 
 
 @dataclass(frozen=True)
@@ -184,28 +208,291 @@ def detect_from_yfinance(
     return out
 
 
+# --------------------------------------------------------------------
+# T-041b: SEC EDGAR Form 10 / 10-12B scraper
+# --------------------------------------------------------------------
+
+def _extract_ticker_from_display_name(display: str) -> Optional[str]:
+    """Pull out the trading ticker from EDGAR's display string.
+
+    Strings look like: 'Foo Corp  (FOO)  (CIK 0001234567)'
+    Returns 'FOO' or None if no match. Falls back to None when the
+    string contains only the CIK marker (sub-public entities).
+    """
+    if not display:
+        return None
+    m = _TICKER_RE.search(display)
+    if not m:
+        return None
+    candidate = m.group(1)
+    # Defensive: never match the literal CIK label.
+    if candidate.startswith("CIK"):
+        return None
+    return candidate
+
+
+def _yfinance_first_trade_date(ticker: str) -> Optional[pd.Timestamp]:
+    """Return the earliest trade date yfinance has for `ticker`, or None.
+
+    Used as the distribution_date proxy when EDGAR provides filing_date
+    but not the actual distribution event. yfinance's first available
+    bar for a spin-off child is, by definition, the day trading
+    commenced — i.e. the distribution.
+    """
+    try:
+        import yfinance as yf
+        t = yf.Ticker(ticker)
+        hist = t.history(period="max", auto_adjust=False)
+        if hist is None or hist.empty:
+            return None
+        idx = hist.index
+        if getattr(idx, "tz", None) is not None:
+            idx = idx.tz_localize(None)
+        return pd.Timestamp(idx[0]).normalize()
+    except Exception as e:
+        logger.debug(f"yfinance first-trade lookup failed for {ticker}: {e}")
+        return None
+
+
+def detect_spinoffs_edgar(
+    start_date: str,
+    end_date: str,
+    *,
+    user_agent: str = _DEFAULT_EDGAR_USER_AGENT,
+    rate_limit_seconds: float = EDGAR_REQUEST_DELAY_SECONDS,
+    use_yfinance_for_distribution_date: bool = True,
+) -> List[SpinoffEvent]:
+    """Pull Form 10 / 10-12B filings from SEC EDGAR for the window.
+
+    EDGAR's full-text search API returns at most 100 results per query;
+    we page by month to stay under that limit. Rate-limited per
+    `rate_limit_seconds` (SEC policy = 10 req/sec; we use 9 for
+    headroom).
+
+    For each filing we extract:
+      - filing_date: from EDGAR's `file_date`
+      - subject_ticker: regex-extracted from `display_names`
+      - distribution_date: first yfinance trade date for the ticker
+        (falls back to filing_date when yfinance has no history).
+      - parent_ticker: NOT available from the 10-12B filing alone
+        (that lives in the prospectus body). We mark these events with
+        parent_ticker='UNKNOWN' and confidence=0.9.
+
+    Returns SpinoffEvent list. Caller is responsible for caching to the
+    parquet at `EDGAR_CACHE_PATH` via `refresh_edgar_cache`.
+    """
+    try:
+        import requests
+    except ImportError:
+        logger.warning("requests not installed; skipping EDGAR fetch")
+        return []
+
+    headers = {"User-Agent": user_agent}
+    base_url = "https://efts.sec.gov/LATEST/search-index"
+
+    # Page by month to keep each query under the 100-result cap.
+    months = pd.date_range(start=start_date, end=end_date, freq="MS")
+    if len(months) == 0:
+        months = pd.DatetimeIndex([pd.Timestamp(start_date)])
+
+    raw_hits: List[Dict] = []
+    for i, month_start in enumerate(months):
+        month_end = (month_start + pd.offsets.MonthEnd(0)).date()
+        params = {
+            "q": "",
+            "forms": "10-12B",
+            "dateRange": "custom",
+            "startdt": month_start.date().isoformat(),
+            "enddt": month_end.isoformat(),
+        }
+        try:
+            time.sleep(rate_limit_seconds)
+            r = requests.get(base_url, params=params, headers=headers, timeout=30)
+            if r.status_code == 429:
+                # Rate-limited — exponential backoff
+                for backoff in (1.0, 2.0, 4.0):
+                    logger.warning(f"EDGAR 429; backing off {backoff}s")
+                    time.sleep(backoff)
+                    r = requests.get(base_url, params=params, headers=headers, timeout=30)
+                    if r.status_code != 429:
+                        break
+            if r.status_code != 200:
+                logger.warning(
+                    f"EDGAR query failed for {month_start.date()}: HTTP {r.status_code}"
+                )
+                continue
+            j = r.json()
+            hits = j.get("hits", {}).get("hits", [])
+            raw_hits.extend(hits)
+        except Exception as e:
+            logger.warning(f"EDGAR fetch error for {month_start.date()}: {e}")
+            continue
+
+    events: List[SpinoffEvent] = []
+    seen_tickers: set = set()
+    for hit in raw_hits:
+        src = hit.get("_source", {}) or {}
+        display_list = src.get("display_names") or []
+        if not display_list:
+            continue
+        display = display_list[0]
+        ticker = _extract_ticker_from_display_name(display)
+        if not ticker:
+            continue
+        if ticker in seen_tickers:
+            continue  # one filing per ticker — first one wins
+        seen_tickers.add(ticker)
+
+        filing_date = pd.Timestamp(src.get("file_date") or "").normalize()
+        if pd.isna(filing_date):
+            continue
+
+        distribution_date = filing_date
+        if use_yfinance_for_distribution_date:
+            first_trade = _yfinance_first_trade_date(ticker)
+            if first_trade is not None and first_trade >= filing_date:
+                distribution_date = first_trade
+
+        events.append(SpinoffEvent(
+            parent_ticker="UNKNOWN",  # not extractable from filing metadata alone
+            child_ticker=ticker,
+            distribution_date=distribution_date,
+            distribution_ratio=1.0,  # unknown; default per spec note
+            source="edgar",
+            confidence=0.9,
+            notes=(
+                f"EDGAR Form {src.get('form', '10-12B')} filing {src.get('adsh', '?')}; "
+                f"filing_date={filing_date.date()}; "
+                f"distribution_date={'yfinance first-trade' if use_yfinance_for_distribution_date and distribution_date != filing_date else 'filing_date fallback'}"
+            ),
+        ))
+
+    return events
+
+
+def _edgar_cache_age_days(cache_path: Path = EDGAR_CACHE_PATH) -> Optional[float]:
+    """Return cache age in days, or None if no cache file."""
+    if not cache_path.exists():
+        return None
+    mtime = cache_path.stat().st_mtime
+    now = datetime.now(timezone.utc).timestamp()
+    return (now - mtime) / 86400.0
+
+
+def _edgar_cache_is_fresh(
+    cache_path: Path = EDGAR_CACHE_PATH,
+    ttl_days: int = EDGAR_CACHE_TTL_DAYS,
+) -> bool:
+    age = _edgar_cache_age_days(cache_path)
+    if age is None:
+        return False
+    return age <= ttl_days
+
+
+def load_edgar_cached_events(
+    cache_path: Path = EDGAR_CACHE_PATH,
+    enforce_ttl: bool = True,
+) -> List[SpinoffEvent]:
+    """Load EDGAR-cached SpinoffEvent list from parquet.
+
+    Returns an empty list when the cache is missing or stale beyond
+    `EDGAR_CACHE_TTL_DAYS`. Caller can override with `enforce_ttl=False`
+    (tests).
+    """
+    if not cache_path.exists():
+        return []
+    if enforce_ttl and not _edgar_cache_is_fresh(cache_path):
+        logger.warning(
+            f"EDGAR cache at {cache_path} is older than {EDGAR_CACHE_TTL_DAYS} days; "
+            "ignoring. Re-run `refresh_edgar_cache` to update."
+        )
+        return []
+    try:
+        df = pd.read_parquet(cache_path)
+    except Exception as e:
+        logger.warning(f"could not read EDGAR cache: {e}")
+        return []
+
+    out: List[SpinoffEvent] = []
+    for _, row in df.iterrows():
+        try:
+            out.append(SpinoffEvent(
+                parent_ticker=row.get("parent_ticker", "UNKNOWN"),
+                child_ticker=row.get("child_ticker", ""),
+                distribution_date=pd.Timestamp(row["distribution_date"]),
+                distribution_ratio=float(row.get("distribution_ratio", 1.0)),
+                source=row.get("source", "edgar"),
+                confidence=float(row.get("confidence", 0.9)),
+                notes=str(row.get("notes", "")),
+            ))
+        except Exception as e:
+            logger.debug(f"skipping malformed cache row: {e}")
+            continue
+    return out
+
+
+def refresh_edgar_cache(
+    start_date: str,
+    end_date: str,
+    cache_path: Path = EDGAR_CACHE_PATH,
+    **kwargs,
+) -> int:
+    """Run `detect_spinoffs_edgar` for the window and persist to parquet.
+
+    Overwrites any existing cache file. Returns the number of events
+    cached.
+    """
+    events = detect_spinoffs_edgar(start_date, end_date, **kwargs)
+    cache_path.parent.mkdir(parents=True, exist_ok=True)
+    rows = []
+    for e in events:
+        rows.append({
+            "parent_ticker": e.parent_ticker,
+            "child_ticker": e.child_ticker,
+            "distribution_date": e.distribution_date,
+            "distribution_ratio": e.distribution_ratio,
+            "source": e.source,
+            "confidence": e.confidence,
+            "notes": e.notes,
+        })
+    df = pd.DataFrame(rows)
+    df.to_parquet(cache_path, index=False)
+    logger.info(f"wrote {len(events)} EDGAR events to {cache_path}")
+    return len(events)
+
+
 def get_events(
     *,
     use_yfinance: bool = False,
     yfinance_parent_tickers: Optional[List[str]] = None,
+    use_edgar_cache: bool = True,
+    edgar_cache_path: Path = EDGAR_CACHE_PATH,
     curated_path: Path = CURATED_PATH,
     use_cache: bool = True,
 ) -> List[SpinoffEvent]:
     """Return the merged list of spin-off events from all configured sources.
 
-    Curated entries take precedence on (parent, distribution_date) collisions
-    (highest confidence). yfinance entries are appended for any (parent, date)
-    not already covered by curated.
+    Source precedence (highest → lowest confidence):
+      1. Curated YAML (confidence 1.0)
+      2. EDGAR cached parquet (confidence 0.9) — T-041b addition
+      3. yfinance detection (confidence 0.7)
+
+    Higher-confidence sources WIN on (child_ticker, distribution_date)
+    collisions. Lower-confidence sources contribute any (child, date)
+    not already covered.
 
     Parameters
     ----------
     use_yfinance
-        Enable yfinance-based detection. Default False because it's slow
-        and the placeholder child_ticker is rarely actionable; the curated
-        list is the primary signal source.
+        Enable yfinance-based detection. Default False.
     yfinance_parent_tickers
-        Parent tickers to query when `use_yfinance=True`. Default None
-        (no-op).
+        Parent tickers to query when `use_yfinance=True`.
+    use_edgar_cache
+        Default True — read from EDGAR parquet cache. Set False to
+        skip the EDGAR layer (tests, or when running in environments
+        with no cache file).
+    edgar_cache_path
+        Override for EDGAR parquet location. Tests use this.
     curated_path
         Override for the curated YAML location. Tests use this.
     use_cache
@@ -217,17 +504,34 @@ def get_events(
 
     curated = load_curated_events(curated_path)
 
+    edgar_events: List[SpinoffEvent] = []
+    if use_edgar_cache:
+        edgar_events = load_edgar_cached_events(edgar_cache_path)
+
     yf_events: List[SpinoffEvent] = []
     if use_yfinance and yfinance_parent_tickers:
         yf_events = detect_from_yfinance(yfinance_parent_tickers)
 
-    seen_keys = {(e.parent_ticker, e.distribution_date) for e in curated}
+    # Precedence: curated > EDGAR > yfinance, by (child_ticker, date).
+    # Curated entries pin both the (parent, child) pair AND the
+    # authoritative distribution_date; EDGAR fills in gaps; yfinance
+    # surfaces leftover candidates for manual review.
+    seen_child_date = {
+        (e.child_ticker, e.distribution_date) for e in curated
+    }
     merged: List[SpinoffEvent] = list(curated)
-    for ev in yf_events:
-        if (ev.parent_ticker, ev.distribution_date) in seen_keys:
+    for ev in edgar_events:
+        key = (ev.child_ticker, ev.distribution_date)
+        if key in seen_child_date:
             continue
         merged.append(ev)
-        seen_keys.add((ev.parent_ticker, ev.distribution_date))
+        seen_child_date.add(key)
+    for ev in yf_events:
+        key = (ev.child_ticker, ev.distribution_date)
+        if key in seen_child_date:
+            continue
+        merged.append(ev)
+        seen_child_date.add(key)
 
     merged.sort(key=lambda e: (e.distribution_date, e.parent_ticker))
 

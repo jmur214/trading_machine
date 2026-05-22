@@ -20,11 +20,15 @@ import yaml
 
 from engines.engine_a_alpha.edges._helpers.spinoff_detector import (
     SpinoffEvent,
+    _edgar_cache_age_days,
+    _edgar_cache_is_fresh,
+    _extract_ticker_from_display_name,
     clear_cache,
     events_by_child,
     events_in_window,
     get_events,
     load_curated_events,
+    load_edgar_cached_events,
 )
 from engines.engine_a_alpha.edges.spinoff_reversion_v1 import (
     SpinoffReversionEdge,
@@ -236,6 +240,163 @@ def test_edge_determinism_across_repeated_calls():
         results.append(e.compute_signals(data_map, as_of))
     # All three reps identical
     assert results[0] == results[1] == results[2]
+
+
+# -------------------- T-041b EDGAR scraper tests -------------------- #
+
+def test_extract_ticker_from_display_name():
+    """Regex extracts trading ticker from EDGAR's display string."""
+    assert _extract_ticker_from_display_name(
+        "Texas Pacific Land Corp  (TPL)  (CIK 0001811074)"
+    ) == "TPL"
+    assert _extract_ticker_from_display_name(
+        "Aaron's Company, Inc.  (AAN)  (CIK 0001821393)"
+    ) == "AAN"
+    # No ticker in display string (sub-public entity)
+    assert _extract_ticker_from_display_name(
+        "Some Subsidiary LLC  (CIK 0001234567)"
+    ) is None
+    # Empty / malformed strings
+    assert _extract_ticker_from_display_name("") is None
+    assert _extract_ticker_from_display_name(None) is None
+
+
+def test_edgar_cache_round_trip(tmp_path):
+    """refresh_edgar_cache (mocked) writes parquet; load_edgar_cached_events reads it back."""
+    import pandas as pd
+    from engines.engine_a_alpha.edges._helpers import spinoff_detector
+
+    cache_path = tmp_path / "edgar_test.parquet"
+    # Hand-build a parquet matching the schema refresh_edgar_cache writes
+    df = pd.DataFrame([
+        {
+            "parent_ticker": "UNKNOWN",
+            "child_ticker": "TPL",
+            "distribution_date": pd.Timestamp("2020-11-01"),
+            "distribution_ratio": 1.0,
+            "source": "edgar",
+            "confidence": 0.9,
+            "notes": "EDGAR Form 10-12B test fixture",
+        },
+        {
+            "parent_ticker": "UNKNOWN",
+            "child_ticker": "AAN",
+            "distribution_date": pd.Timestamp("2020-12-01"),
+            "distribution_ratio": 1.0,
+            "source": "edgar",
+            "confidence": 0.9,
+            "notes": "EDGAR Form 10-12B test fixture",
+        },
+    ])
+    df.to_parquet(cache_path, index=False)
+
+    events = load_edgar_cached_events(cache_path, enforce_ttl=False)
+    assert len(events) == 2
+    assert events[0].child_ticker == "TPL"
+    assert events[0].source == "edgar"
+    assert events[0].confidence == 0.9
+    assert events[0].distribution_date == pd.Timestamp("2020-11-01")
+    assert events[1].child_ticker == "AAN"
+
+
+def test_edgar_cache_ttl_invalidation(tmp_path):
+    """Cache older than EDGAR_CACHE_TTL_DAYS is ignored by default."""
+    import os
+    import time
+    import pandas as pd
+
+    cache_path = tmp_path / "stale.parquet"
+    df = pd.DataFrame([
+        {
+            "parent_ticker": "UNKNOWN",
+            "child_ticker": "STALE",
+            "distribution_date": pd.Timestamp("2020-01-01"),
+            "distribution_ratio": 1.0,
+            "source": "edgar",
+            "confidence": 0.9,
+            "notes": "test fixture",
+        },
+    ])
+    df.to_parquet(cache_path, index=False)
+
+    # Backdate mtime to 45 days ago — past the 30-day TTL
+    past = time.time() - 45 * 86400
+    os.utime(cache_path, (past, past))
+
+    # With enforce_ttl=True (default): empty list (stale)
+    events_default = load_edgar_cached_events(cache_path, enforce_ttl=True)
+    assert events_default == []
+    # With enforce_ttl=False: full list
+    events_force = load_edgar_cached_events(cache_path, enforce_ttl=False)
+    assert len(events_force) == 1
+    # _edgar_cache_is_fresh agrees
+    assert not _edgar_cache_is_fresh(cache_path)
+    age = _edgar_cache_age_days(cache_path)
+    assert age is not None
+    assert age > 30
+
+
+def test_get_events_merges_curated_and_edgar(tmp_path):
+    """get_events surfaces EDGAR events that don't collide with curated."""
+    import pandas as pd
+    import yaml
+    from engines.engine_a_alpha.edges._helpers.spinoff_detector import clear_cache
+
+    # Curated: just RACE
+    curated_path = tmp_path / "curated.yml"
+    curated_path.write_text(yaml.safe_dump({
+        "events": [
+            {
+                "parent_ticker": "F",
+                "child_ticker": "RACE",
+                "distribution_date": "2016-01-04",
+                "distribution_ratio": 0.1,
+                "notes": "Ferrari/Fiat",
+            },
+        ],
+    }))
+
+    # EDGAR cache: includes RACE (duplicate — curated wins) + a new TPL event
+    edgar_path = tmp_path / "edgar.parquet"
+    edgar_df = pd.DataFrame([
+        {
+            "parent_ticker": "UNKNOWN",
+            "child_ticker": "RACE",  # duplicate of curated
+            "distribution_date": pd.Timestamp("2016-01-04"),
+            "distribution_ratio": 1.0,
+            "source": "edgar",
+            "confidence": 0.9,
+            "notes": "EDGAR duplicate — curated should win",
+        },
+        {
+            "parent_ticker": "UNKNOWN",
+            "child_ticker": "TPL",  # new — EDGAR adds
+            "distribution_date": pd.Timestamp("2020-11-01"),
+            "distribution_ratio": 1.0,
+            "source": "edgar",
+            "confidence": 0.9,
+            "notes": "EDGAR new",
+        },
+    ])
+    edgar_df.to_parquet(edgar_path, index=False)
+    # Bump mtime to "now" so it passes TTL check
+    import os, time as _t
+    now = _t.time()
+    os.utime(edgar_path, (now, now))
+
+    clear_cache()
+    events = get_events(
+        use_yfinance=False,
+        curated_path=curated_path,
+        use_edgar_cache=True,
+        edgar_cache_path=edgar_path,
+        use_cache=False,
+    )
+
+    children = {(e.child_ticker, e.source) for e in events}
+    assert ("RACE", "curated") in children
+    assert ("RACE", "edgar") not in children  # de-duped against curated
+    assert ("TPL", "edgar") in children
 
 
 def test_event_post_init_normalizes_inputs():
