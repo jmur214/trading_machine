@@ -121,19 +121,39 @@ _FOUNDRY_PROBE_DATES: Tuple[_date, ...] = (
 
 
 def _classify_feature_ticker_independence(feat) -> bool:
-    """Empirically determine whether a Foundry feature is ticker-
-    independent. Cached after first call.
+    """Determine whether a Foundry feature is ticker-independent.
+    Cached after first call.
 
-    A feature is ticker-independent iff `feat.func(ticker, dt)` returns
-    the same non-None value for two distinct synthetic tickers on at
-    least one of `_FOUNDRY_PROBE_DATES`. This catches calendar / macro
-    features that don't depend on ticker; it correctly rejects
-    `local_ohlcv`-backed features (they return None for synthetic
-    tickers because no CSV exists, which fails the "non-None" test).
+    Two paths in priority order:
+
+    1. **Explicit declaration** (T-2026-05-12-038-CONT): if the
+       `@feature(..., ticker_independent=True)` decorator field is set,
+       trust it without an empirical probe. This is the correct path for
+       universe-wide features (`correlation_average_60d`,
+       `dispersion_60d`, etc.) that return None for synthetic probe
+       tickers and would otherwise be misclassified as ticker-dependent.
+
+    2. **Empirical probe** (T-2026-05-08-013, original): feature is
+       ticker-independent iff `feat.func(ticker, dt)` returns the same
+       non-None value for two distinct synthetic tickers on at least one
+       of `_FOUNDRY_PROBE_DATES`. This catches calendar / macro features
+       that don't depend on ticker; it safely rejects `local_ohlcv`-
+       backed features that return None for synthetic tickers.
+
+    Path 2 is the SAFE DEFAULT: a feature missing the explicit
+    annotation falls back to the empirical probe, preserving pre-
+    T-038-CONT behavior for every feature except those newly annotated.
     """
     fid = feat.feature_id
     if fid in _FOUNDRY_TICKER_INDEPENDENCE:
         return _FOUNDRY_TICKER_INDEPENDENCE[fid]
+
+    # Path 1: trust the explicit decorator field when present.
+    if getattr(feat, "ticker_independent", False):
+        _FOUNDRY_TICKER_INDEPENDENCE[fid] = True
+        return True
+
+    # Path 2: empirical probe (pre-T-038-CONT behavior).
     func = feat.func
     independent = False
     for d in _FOUNDRY_PROBE_DATES:
