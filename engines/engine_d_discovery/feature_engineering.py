@@ -247,9 +247,32 @@ class FeatureEngineer:
         added as ``Foundry_<feature_id>`` columns. When ``None`` the
         Foundry pass is skipped — preserves backward-compat for
         callers that don't yet thread the ticker through.
+
+        T-054c (2026-05-12): when ticker is None we emit a one-shot
+        WARNING via stdlib warnings.warn (DeprecationWarning category).
+        This makes the "silent Foundry skip" LOUD per the T-034
+        fail-loud-not-silent pattern, preventing future sibling bugs
+        like T-054 (discovery.py:135) and T-054b (rule_based_edge.py:137
+        + scripts/run_shadow_paper.py:86) where production callers
+        accidentally omitted ticker= and saw foundry_feature columns
+        silently disappear for months. Tests + __main__ demos may pass
+        ticker=None intentionally; they'll see the warning but otherwise
+        function unchanged.
         """
         if ohlc_df.empty:
             return pd.DataFrame()
+        if ticker is None:
+            import warnings
+            warnings.warn(
+                "FeatureEngineer.compute_all_features called with ticker=None. "
+                "The Foundry pass will be SKIPPED — no Foundry_<feature_id> columns "
+                "will be added. If your caller is production code (not a test or "
+                "__main__ demo), this is almost certainly a bug — see T-054 / T-054b "
+                "for the prior sibling-bug class. Pass ticker= explicitly to silence "
+                "this warning and populate Foundry features.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
 
         # 1. Technical (Trend/Momentum/Volatility)
         df = self._compute_technicals(ohlc_df.copy())

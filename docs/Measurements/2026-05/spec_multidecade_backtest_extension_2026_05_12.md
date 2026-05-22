@@ -1,7 +1,7 @@
 # Spec — T-2026-05-12-050: Multi-decade backtest extension (1990+ minimum, 2010-2024 → 1990-2024)
 
 **Date drafted:** 2026-05-12 LATE (director-side, post-research-synthesis + MBL math)
-**Status:** SPEC for queue. **Blocked on USER ACTION: Norgate Data subscription ($80/mo). Same dependency as T-056.**
+**Status:** SPEC DEFERRED 2026-05-12 LATE per user directive — "still not ready to pay for data before this thing is making money or even close to it." Same Norgate dependency as T-056; both held until the system demonstrates meaningful alpha first. Spec retained for fast dispatch once that gate clears. **DO NOT dispatch in this state.** Caveat: the MBL math (`docs/Audit/honest_n_mbl_computation_2026_05_12.md`) still holds — without multi-decade extension, no deployment decision is statistically valid; the deferral means we will not have a DSR-clearing measurement until paid data lands.
 **Will be executed by:** Agent A or B once Norgate credentials in `.env` (~16-24 hr).
 **Sequencing:** can run in parallel with T-056 (both share Norgate but touch different substrate scopes).
 **Output:** extended substrate-honest universe (1990-2024) + cost model recalibrated for older eras + smoke validation against known historical anomalies + audit doc.

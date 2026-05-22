@@ -1,7 +1,7 @@
 # Spec — T-2026-05-12-056: Norgate microcap substrate integration
 
 **Date drafted:** 2026-05-12 LATE (director-side, post-research-synthesis)
-**Status:** SPEC for queue. **Blocked on USER ACTION: Norgate Data subscription ($80/mo). User has approved the spend.**
+**Status:** SPEC DEFERRED 2026-05-12 LATE per user directive — "still not ready to pay for data before this thing is making money or even close to it." Norgate subscription on hold until the system demonstrates meaningful alpha first. Spec retained for fast dispatch once that gate clears (likely post-T-041b spinoff gauntlet outcome + T-055 vol-targeting A/B). **DO NOT dispatch in this state.**
 **Will be executed by:** Agent A or B once Norgate credentials are in `.env` (~12-16 hr).
 **Sequencing:** independent of T-054, T-055; can dispatch in parallel once data access ready.
 **Output:** new substrate adapter + microcap universe ($50M-$500M cap, ~1500 tickers) + cost model + smoke validation + audit doc.

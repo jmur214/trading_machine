@@ -145,8 +145,11 @@ def test_foundry_pass_skipped_when_ticker_none():
     `compute_all_features(..., ticker=None)` skips the Foundry pass."""
     fe = FeatureEngineer()
     data = _synthetic_data_map(n_tickers=1)["T000"]
-    no_ticker = fe.compute_all_features(data, pd.DataFrame())
-    with_ticker = fe.compute_all_features(data, pd.DataFrame(), ticker="T000")
+    import warnings as _w
+    with _w.catch_warnings():
+        _w.simplefilter("ignore", DeprecationWarning)  # warning is intentional
+        no_ticker = fe.compute_all_features(data, pd.DataFrame())
+        with_ticker = fe.compute_all_features(data, pd.DataFrame(), ticker="T000")
     foundry_off = [c for c in no_ticker.columns if c.startswith("Foundry_")]
     foundry_on = [c for c in with_ticker.columns if c.startswith("Foundry_")]
     assert len(foundry_off) == 0, (
@@ -154,4 +157,49 @@ def test_foundry_pass_skipped_when_ticker_none():
     )
     assert len(foundry_on) > 0, (
         "ticker=<str> should populate Foundry cols"
+    )
+
+
+def test_t054c_loud_warn_when_ticker_omitted():
+    """T-054c regression test.
+
+    When production code omits ticker=, the Foundry pass is silently
+    skipped — the bug-class that bit T-054 (discovery.py:135),
+    T-054b (rule_based_edge.py:137, run_shadow_paper.py:86) for
+    months. T-054c adds a DeprecationWarning so the silent skip
+    becomes LOUD, preventing future siblings.
+    """
+    import warnings as _w
+    fe = FeatureEngineer()
+    data = _synthetic_data_map(n_tickers=1)["T000"]
+    with _w.catch_warnings(record=True) as caught:
+        _w.simplefilter("always")
+        fe.compute_all_features(data, pd.DataFrame())
+    deprecation = [
+        w for w in caught
+        if issubclass(w.category, DeprecationWarning)
+        and "ticker=None" in str(w.message)
+    ]
+    assert len(deprecation) >= 1, (
+        "Expected DeprecationWarning when ticker=None — "
+        "T-054c LOUD warn is the bug-class closer"
+    )
+
+
+def test_t054c_no_warn_when_ticker_provided():
+    """The LOUD warn must NOT fire when ticker= is correctly passed."""
+    import warnings as _w
+    fe = FeatureEngineer()
+    data = _synthetic_data_map(n_tickers=1)["T000"]
+    with _w.catch_warnings(record=True) as caught:
+        _w.simplefilter("always")
+        fe.compute_all_features(data, pd.DataFrame(), ticker="T000")
+    deprecation = [
+        w for w in caught
+        if issubclass(w.category, DeprecationWarning)
+        and "ticker=None" in str(w.message)
+    ]
+    assert len(deprecation) == 0, (
+        f"DeprecationWarning fired even though ticker was provided: "
+        f"{[str(w.message) for w in deprecation]}"
     )
