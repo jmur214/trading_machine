@@ -1,5 +1,55 @@
-# Forward Plan — live (last substantive update 2026-05-12, canonical baseline shifts 0.270 → 0.598)
+# Forward Plan — live (last substantive update 2026-05-12 LATE, structural Engine D bug surfaced + Engine F factor-α gate shipped + first non-factor edge shipped)
 
+> **2026-05-12 LATE — STRUCTURAL ENGINE D BUG: production `hunt()` does NOT pass `ticker=` to `compute_all_features`. The foundry_feature gene type has been a dead-letter office for the entire project arc.**
+>
+> Surfaced 2026-05-12 evening by Agent B during T-038-CONT vectorization investigation. Empirical proof: production hunt() on 53 tickers × 1yr completes in 20.5 sec emitting 3 candidates. The T-038 silent-CPU 65min was in a DIFFERENT, still-unprofiled code path. The vectorization optimization (95×/11× speedup) is REAL but applies to code that's bypassed in production hunt().
+>
+> ### What this changes about Engine D's history
+>
+> - T-021 (May 11): "all 3 candidates were rsi_bounce_v1 mutations." Reframed: foundry_feature genes (20% of GA emissions per T-022) reference feature_ids whose columns never get computed in production → trivially fail Gate 1.
+> - T-025 (May 11): 30/30 Gate 1 kill rate. Reframed: not signal weakness, structural plumbing failure.
+> - T-026 BLOCKED on stale composites — masked the wiring issue.
+> - **The entire vocabulary expansion (T-006 + T-014 + T-022 + T-024) was effectively invisible to production Discovery.** The "Foundry features invisible to GA gene encoding" finding from 2026-05-11 was correct but the diagnosis was off — gene encoding was fine; the FEATURE COMPUTE was the gap.
+> - T-052's 4 new regime features (VIX/VIX3M, EBP+HY OAS, ANFCI, Faber multi-asset trend) are correctly registered but DEAD-ON-ARRIVAL in production until the wiring lands.
+>
+> **Highest-leverage next dispatch: T-054 — wire ticker= through production hunt().** Per B's outbox: this single fix unblocks T-022 + T-023 + T-024 + T-038-CONT + T-052 cumulatively. Estimated <1-2 hr fix once profiled.
+>
+> ### T-043 shipped — Engine F lifecycle factor-α gate (DEFAULT DISABLED)
+>
+> The asymmetric-gauntlet bug (strict on entry, loose on retirement) is closed. New `engines/engine_f_governance/factor_alpha_gate.py` runs FF5+Mom HAC OLS with residual block-bootstrap on the t-statistic.
+>
+> **Re-evaluation on T-035/T-036 cockpit-fixed trade logs:**
+>
+> | Edge | Verdict | Gate fires? |
+> |---|---|---|
+> | `gap_fill_v1` | UNIFORMLY NEGATIVE | **RETIRE** (ci_low alone fires: point -0.93, ci_low -3.9) |
+> | `volume_anomaly_v1` | UNIFORMLY NEGATIVE | **RETIRE** (ci_low alone: point -0.93, ci_low -4.0) |
+> | `value_book_to_market_v1` | UNIFORMLY NEGATIVE | **RETIRE** |
+> | `accruals_inv_sloan_v1` | UNIFORMLY NEGATIVE | **RETIRE** |
+> | `value_earnings_yield_v1` | UNIFORMLY NEGATIVE | **RETIRE** |
+> | `accruals_inv_asset_growth_v1` | UNIFORMLY NEGATIVE | **RETIRE** |
+> | `short_term_reversal_v1` | UNIFORMLY NOISY | KEEP (ci_low=-0.12 above -2.0) |
+>
+> **6 of 7 evaluated edges would retire on flag-flip. Gate defaults DISABLED — explicit user approval required before `factor_alpha_enabled=True`.**
+>
+> The gap_fill/volume_anomaly cases are textbook CLAUDE.md 6th-non-negotiable: point estimates above threshold, ci_lows materially below. The ci_low rule prevents the goalpost-moving that point-only gates would have permitted.
+>
+> ### T-041 shipped — first retail-only structurally-non-factor edge (paused tier='feature')
+>
+> `spinoff_reversion_v1`: long-only BUY at distribution_date+3 trading days, hold 90 days. 13 hand-curated historical spinoffs in `config/spinoff_events_curated.yml`. 16/16 tests pass. Auto-registered paused/feature.
+>
+> Honest scope deferral: T-041b will add universe-resolver wiring + EDGAR scraping (~30 more events) + full 8-gate gauntlet validation. NO threshold-lowering — same α t > 2 bar as every edge.
+>
+> ### Director-side analyses landed in parallel (Phase 0 + MBL)
+>
+> 1. **Phase 0 pairwise raw-signal correlation diagnostic** (`docs/Audit/pairwise_signal_correlation_phase0_2026_05_12.md`): the signal-diversity gate **FIRED**. Max |ρ| = 0.62 on per-(ticker,date) panel, 0.95 on per-day mean. The "10 edges" are mathematically ~6-7 distinct clusters. No aggregator change rescues this stack. **Strong prior (unverified): the current 4 V/Q/A actives cluster ρ > 0.7 by construction** (all SimFin-derived, value+accruals variants). T-053 fresh-capture spec drafted to confirm.
+>
+> 2. **Honest-N + MBL computation** (`docs/Audit/honest_n_mbl_computation_2026_05_12.md`): ~75 distinct N_trials accumulated on the substrate-honest 5-year window. At our 0.598 corrected baseline, **MBL ≈ 24 years — data deficit of 19 years.** Even at SR=1.0 hypothetical engine-completion lift, still under-powered by 3.6 years. **The 5-year window cannot validate any deployment decision regardless of measurement discipline.** Multi-decade extension is now load-bearing (T-050 candidate; Norgate $80/mo is the cheapest gate).
+>
+> 3. **CLAUDE.md Gate 0 (MBL check)** added as the 7th non-negotiable rule (commit `770c3c2`).
+>
+> ---
+>
 > **2026-05-12 — CANONICAL SUBSTRATE-HONEST BASELINE CORRECTED: 0.270 → 0.598 (+0.328). T-002's reading was contaminated by the cockpit metrics-pipeline bug, BI-DIRECTIONALLY (winning years inflated AS WELL AS losing years zeroed).**
 >
 > T-2026-05-12-034 fixed the bug (`cockpit/logger.py` field-count alignment + `cockpit/metrics.py` fail-loud assert). T-2026-05-12-035 re-measured T-002 Arm 1 with the fix applied — single-arm, identical grid (6 active edges × 5 years × 3 reps × F6 historical S&P 500 union).
