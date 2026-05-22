@@ -22,6 +22,33 @@ then LOW. Within each severity, list newest at the top.
 
 ### HIGH
 
+### [HIGH — DISCOVERY 2026-05-12 EVENING by Agent B] Engine D production `hunt()` does NOT pass `ticker=` to `compute_all_features` — foundry_feature gene type has been a dead-letter office for the entire project arc
+- Category: structural plumbing failure / engine integration
+- Surfaced 2026-05-12 evening by Agent B during T-038-CONT vectorization investigation. Empirical: production hunt() on 53 tickers × 1yr completes in 20.5 sec emitting 3 candidates; the smoke's 65min silent CPU was in a DIFFERENT, still-unprofiled code path.
+- **Cascade impact**: T-022 (gene encoding extension), T-023 (Gate 1 caching), T-024 (seed enrichment), T-038-CONT (vectorization), T-052 (4 regime features) all share this dead-letter destiny until the wiring fix lands. The "Foundry features invisible to GA gene encoding" diagnosis from 2026-05-11 was correct but located in the wrong layer — gene encoding was fine; the FEATURE COMPUTE in production was the gap.
+- **Reframes Engine D history**: T-021's "all 3 candidates were rsi_bounce_v1 mutations" was structural plumbing failure, not signal weakness. T-025's 30/30 Gate 1 kill rate was the same dead-letter pattern. T-026 BLOCKED on stale composites masked the wiring issue.
+- Forward action: T-054 dispatch in flight (Agent A as of 2026-05-12 LATE). Single likely-1-line fix in `engines/engine_d_discovery/discovery.py` unblocks ~30+ hr of prior agent investment.
+- Discipline implication: parallels the cockpit metrics-pipeline bug pattern — silent structural gap masked as functional weakness. **Worth a broader dead-letter audit across the codebase** (any registered-but-never-invoked feature/method/config flag). See newly-flagged MEDIUM entry below.
+
+### [HIGH → RESOLVED 2026-05-12 by T-043 ship + flag-flip] Lifecycle gauntlet was asymmetric — strict on entry (Gate 6 FF5+Mom α t > 2), loose on retirement (raw Sharpe only)
+- Category: governance / lifecycle policy
+- T-043 (merged 219648b 2026-05-12) added `engines/engine_f_governance/factor_alpha_gate.py` — symmetric retirement gate matching Discovery Gate 6.
+- Re-evaluation on T-035/T-036 cockpit-fixed trade logs: **6 of 7 evaluated edges fire** (gap_fill, volume_anomaly, value_book_to_market, accruals_inv_sloan, value_earnings_yield, accruals_inv_asset_growth retire; STR keeps as UNIFORMLY NOISY).
+- `factor_alpha_enabled` flag flipped True in commit b45f829 per user explicit approval. Next live discovery cycle writes retirement decisions to lifecycle journal; user applies via journal_apply.
+- gap_fill_v1 + volume_anomaly_v1 fire on **ci_low alone** (point -0.93 above -2.0 threshold; ci_low -3.9/-4.0). Textbook CLAUDE.md 6th non-negotiable working as designed.
+
+### [MEDIUM → ELEVATED 2026-05-12] Worth a broader codebase audit for other dead-letter / unreachable-code patterns (post-T-054 discovery)
+- Category: code hygiene / structural plumbing
+- The T-054 production-hunt() ticker= wiring bug is the second "registered but unreachable" bug class discovered (after the cockpit metrics-pipeline bug which was schema-mismatch, not unreachable code per se). Per the user 2026-05-12 directive "bones must be PERFECT before LLM," a deliberate dead-letter audit is overdue.
+- Candidates to search for:
+  - Functions defined but never invoked in production code paths (especially in engines/)
+  - Class methods that exist on a class but are only called from tests
+  - Config flags that gate code paths nothing else references
+  - Feature classes registered in a factory but never instantiated downstream
+  - CLI scripts that import functionality not actually exercised by `__main__`
+- Recommended dispatch: `code-health` subagent against engines/engine_d_discovery/ + engines/engine_a_alpha/edges/ as Phase 1 (where T-022/T-024 worked and the gap was). Then engines/engine_b_risk/ + engines/engine_c_portfolio/ as Phase 2.
+- Director-side analysis of `engines/engine_d_discovery/` already started (separate audit forthcoming).
+
 ### [HIGH] Worktree anchor divergence — director/A/B have different `_isolated_anchor/edges.yml`, inflating apparent canon-md5 drift
 - Category: harness state / cross-worktree measurement comparability
 - First flagged: 2026-05-11 by A's T-024 outbox (Q1 canon shifted 182af6a1 → 28cfa38f, Sharpe 0.127 → 0.281). Director-side investigation found root cause: each worktree's `data/governor/_isolated_anchor/edges.yml` has diverged. Director + B have md5 `818330dc...` (size 86,674, mtimes May 7-8); A has md5 `8da9ce85...` (size 88,278, mtime May 10). A's anchor is 1,604 bytes larger — almost certainly the auto-registered T-014/T-016/T-017/T-018 paused edges appended to A's anchor's edges.yml during a recent backtest run (which suggests one or more measurement runs had end-of-run edges.yml mutations NOT gated by journal-mode).
