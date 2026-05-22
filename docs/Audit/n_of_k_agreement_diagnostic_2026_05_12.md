@@ -9,7 +9,46 @@ gate_decision: SUPPORTS the compound-alpha hypothesis with statistical significa
 
 # N-of-K agreement diagnostic — does compound alpha exist in our data?
 
-## TL;DR — yes, at N≥2 and N=3 the bootstrap CI lower bound clears zero
+## ⚠️ 2026-05-22 FOLLOW-UP REVISION — factor decomposition does NOT support idiosyncratic alpha at any N
+
+**Director ran FF5+Mom factor decomp on the daily-aggregated return streams for N≥1, N≥2, N≥3:**
+
+| N | n_days | Sharpe_raw | alpha%/yr | alpha_t | Beta_Mkt | Beta_Mom | Verdict |
+|---|---|---|---|---|---|---|---|
+| N≥1 | 1004 | 0.345 | +0.63% | +0.120 | +0.012 | +0.032 | fails t>2 |
+| N≥2 | 1004 | 0.422 | +3.25% | +0.427 | +0.007 | +0.056 | fails t>2 |
+| **N≥3** | 854 | **-0.004** | **-2.80%** | **-0.168** | -0.064 | **+0.119** | fails t>2 |
+
+**The story shifts materially.** The per-bar Sharpe finding (N=2: 0.326 ci_low +0.076; N=3: 0.634 ci_low +0.060) was real at the *signal level*, but when the bars are aggregated to a daily portfolio return stream (equal-weight across same-day trades) and decomposed against FF5+Mom factors with HAC SE, **none of the N-buckets clear t > 2 α**. The N≥3 bucket actually has slightly negative annual α with t-stat -0.168.
+
+**What's going on (two layers):**
+
+1. **Per-bar Sharpe overstates the diversification benefit.** Per-bar bootstrap CI treats each (date, ticker) bar as independent. In reality bars on the same date are correlated (market-wide flow). When aggregated to daily, the strategy-level σ is higher than the per-bar σ would suggest. Sharpe falls accordingly.
+
+2. **N≥3 events concentrate momentum factor exposure.** Beta_Mom rises from +0.032 (N≥1) to +0.056 (N≥2) to +0.119 (N≥3). Edge-participation data confirms: PEAD + momentum_edge + low_vol are the most-common N≥3 participants. **When ≥3 edges agree on direction, they're often agreeing because the SAME factor is driving the call.** That's not compound alpha; it's amplified factor exposure.
+
+**Revised interpretation:**
+
+The per-bar signal-level finding (compound alpha exists in raw returns) and the daily-portfolio factor-decomp finding (no idiosyncratic α at t > 2) are CONSISTENT with each other and with the broader 0/11 T-029/T-036 finding:
+
+- **Signal-level**: agreement among edges DOES correlate with positive forward returns. This is real.
+- **Factor-explanation**: the realized return concentrates Mkt + Mom factor beta. This is also real.
+- **Idiosyncratic α**: zero — same as every prior measurement on this substrate.
+
+**The T-057 (confidence-gated execution) framing should be REVISED accordingly:**
+
+- ❌ **Not**: "compound alpha exists, capture it via N-threshold gate"
+- ✅ **Yes**: "filter N=1 noise bars to deliver factor exposure more efficiently with lower turnover + lower costs + concentrated capital on higher-conviction signals"
+
+This is still valuable. Just not in the "we found alpha" sense. It's a Sharpe-restructurer in the same category as T-055 vol-targeting — improves the *delivery* of whatever exposure exists.
+
+**Lesson** (for future audit discipline): when a per-bar diagnostic clears bootstrap CI, the IMMEDIATELY-NEXT check should be daily-aggregate factor decomp. Per-bar SD ≠ portfolio SD; per-bar Sharpe ≠ portfolio Sharpe; per-bar signal ≠ idiosyncratic α. The previous version of this audit (committed 285e615) skipped this step and oversold the result. **The N-of-K diagnostic confirms compound signal but NOT compound alpha.** Same trap as every prior project measurement.
+
+The PHASE 0 finding (max ρ > 0.5 between raw signals → linear aggregation can't break t=2) remains the load-bearing structural diagnosis. T-057 may improve cost-efficiency but won't manufacture α that doesn't exist in the underlying factor-decomposed return stream.
+
+---
+
+## ORIGINAL FINDING (preserved for history) — TL;DR was: yes, at N≥2 and N=3 the bootstrap CI lower bound clears zero
 
 The 2026-05-16 multi-strategy research dive's second-priority prescribed diagnostic (after Phase 0 pairwise correlation): partition trades by "how many edges agreed on the direction this bar" and check whether realized returns concentrate in high-agreement bars.
 
