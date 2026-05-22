@@ -1,0 +1,100 @@
+# data/spinoff_events_curated.yml
+# ================================
+# Curated list of known historical spin-offs in US large/mid-cap.
+# Sources: SEC EDGAR Form 10/10-12B filings + Cusatis-Miles-Woolridge
+# (1993) anomaly literature + Greenblatt (1997) trade list + financial
+# news archives.
+#
+# This list is hand-maintained for backfill validation. Auto-detected
+# events from yfinance / EDGAR are merged in by `spinoff_detector.py`
+# at runtime; curated entries take precedence on conflict (highest
+# confidence source).
+#
+# Schema per event:
+#   - parent_ticker: ticker before/at spin-off
+#   - child_ticker:  new entity ticker (or 'TBD' if the symbol changed)
+#   - distribution_date: ISO date (YYYY-MM-DD) - day-of distribution
+#   - distribution_ratio: shares of child per share of parent
+#   - notes: free-form context
+#
+# Distribution dates are pinned to the **actual distribution day**,
+# not the announcement day. Index-fund forced selling fires after
+# distribution.
+events:
+  - parent_ticker: F        # Fiat Chrysler Automobiles
+    child_ticker: RACE      # Ferrari N.V.
+    distribution_date: "2016-01-04"
+    distribution_ratio: 0.1
+    notes: "Ferrari spun off from Fiat Chrysler. Index fund / FCAU shareholders received 0.1 RACE per FCAU share. Classic high-quality spin-off case."
+
+  - parent_ticker: HAL      # Halliburton
+    child_ticker: KBR       # KBR Inc.
+    distribution_date: "2007-04-05"
+    distribution_ratio: 0.65
+    notes: "Halliburton spun off KBR (engineering/construction division). Each HAL share got 0.65 KBR shares. Heavy forced-selling window from index funds."
+
+  - parent_ticker: ABT      # Abbott Laboratories
+    child_ticker: ABBV      # AbbVie
+    distribution_date: "2013-01-02"
+    distribution_ratio: 1.0
+    notes: "Pharma spin-off of AbbVie from Abbott. One-for-one distribution. Highly tracked spin-off, classic case."
+
+  - parent_ticker: GE       # General Electric
+    child_ticker: GEHC      # GE HealthCare Technologies
+    distribution_date: "2023-01-04"
+    distribution_ratio: 0.333
+    notes: "GE HealthCare spin-off. 1 GEHC per 3 GE shares (0.333 ratio). Recent test case from large-cap parent."
+
+  - parent_ticker: GE
+    child_ticker: GEV       # GE Vernova (energy)
+    distribution_date: "2024-04-02"
+    distribution_ratio: 0.25
+    notes: "GE Vernova (energy) spin-off — second piece of the GE three-way breakup. 1 GEV per 4 GE shares."
+
+  - parent_ticker: DD       # DuPont (post-Dow merger)
+    child_ticker: CTVA      # Corteva Agriscience
+    distribution_date: "2019-06-03"
+    distribution_ratio: 0.333
+    notes: "Corteva spun off from DowDuPont as the agriscience pure-play. 1 CTVA per 3 DowDuPont shares."
+
+  - parent_ticker: DD
+    child_ticker: DOW       # Dow Inc.
+    distribution_date: "2019-04-02"
+    distribution_ratio: 0.333
+    notes: "Dow Inc. spun off from DowDuPont as the materials science pure-play. First leg of the DowDuPont three-way split."
+
+  - parent_ticker: HPE      # Hewlett Packard Enterprise
+    child_ticker: MFGP      # Micro Focus (CSC merger spin-off)
+    distribution_date: "2017-09-01"
+    distribution_ratio: 0.137
+    notes: "HPE Software division spin-merger with Micro Focus."
+
+  - parent_ticker: BAX      # Baxter International
+    child_ticker: BXLT      # Baxalta
+    distribution_date: "2015-07-01"
+    distribution_ratio: 1.0
+    notes: "Biopharma spin-off from Baxter. Eventually acquired by Shire."
+
+  - parent_ticker: BMY      # Bristol-Myers Squibb
+    child_ticker: MJN       # Mead Johnson Nutrition (formula brand)
+    distribution_date: "2009-12-23"
+    distribution_ratio: 0.1639
+    notes: "Mead Johnson spun off from Bristol-Myers Squibb. Each BMY share got 0.1639 MJN shares."
+
+  - parent_ticker: KFT      # Kraft Foods (pre-split)
+    child_ticker: MDLZ      # Mondelez International
+    distribution_date: "2012-10-02"
+    distribution_ratio: 0.333
+    notes: "Mondelez (snacks/intl) split from Kraft (NA grocery). 1 MDLZ per 3 KFT shares. Classic forced-selling case."
+
+  - parent_ticker: TYC      # Tyco International (pre-split)
+    child_ticker: COV       # Covidien
+    distribution_date: "2007-06-29"
+    distribution_ratio: 0.25
+    notes: "Tyco three-way split. Covidien (healthcare) + Tyco Electronics + Tyco International. Each TYC got 0.25 COV."
+
+  - parent_ticker: PEP      # PepsiCo (precedent — bottlers, but kept for testing)
+    child_ticker: PBG       # Pepsi Bottling Group
+    distribution_date: "1999-03-31"
+    distribution_ratio: 1.0
+    notes: "Older event for detector range-testing."
