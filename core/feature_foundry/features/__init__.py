@@ -29,6 +29,11 @@ from . import high_minus_low_60d  # noqa: F401
 from . import weekday_dummy  # noqa: F401
 # Fifth batch — calendar anomaly battery (T-2026-05-09-014)
 from . import calendar as _calendar_battery  # noqa: F401
+# Sixth batch — 4-signal regime ensemble (T-2026-05-12-052)
+from . import vix_term_structure_slope  # noqa: F401
+from . import hy_oas_change_20d  # noqa: F401
+from . import anfci_z_60d  # noqa: F401
+from . import faber_multi_asset_trend  # noqa: F401
 
 __all__ = [
     "cot_commercial_net_long",
