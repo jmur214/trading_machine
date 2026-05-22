@@ -224,7 +224,13 @@ class LifecycleConfig:
     # cap is larger than the legacy 1-per-cycle because there are 7
     # known factor-negative actives at activation time, and journal-
     # mode means the user reviews + applies the batch.
-    factor_alpha_enabled: bool = False
+    factor_alpha_enabled: bool = True  # ENABLED 2026-05-12 per user approval
+    # post-T-043 review: 6 of 7 evaluated edges fire the gate
+    # (gap_fill, volume_anomaly, value_book_to_market, accruals_inv_sloan,
+    # value_earnings_yield, accruals_inv_asset_growth retire; STR keeps).
+    # gap_fill + volume_anomaly fire on ci_low alone — textbook CLAUDE.md
+    # 6th non-negotiable. Next live discovery cycle writes retirements
+    # to the lifecycle journal; user reviews + applies via journal_apply.
     factor_alpha_t_threshold: float = -2.0  # ci_low must be below this
     factor_alpha_sustained_cycles: int = 2  # consecutive cycles
     factor_alpha_min_obs: int = 30  # HAC inference floor
