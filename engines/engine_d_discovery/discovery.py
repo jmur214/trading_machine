@@ -23,6 +23,19 @@ from engines.engine_a_alpha.edges.earnings_vol_edge import EarningsVolEdge
 from engines.engine_d_discovery.tree_scanner import DecisionTreeScanner
 from engines.engine_d_discovery.feature_engineering import FeatureEngineer
 
+# T-2026-05-12-052 targeted seed list — one Gen-0 single-gene long
+# candidate per new regime-ensemble feature. Without this, the
+# 20%-foundry × 4/35 sampling probability gives each specific feature
+# <2% expected coverage across 5-random-seed runs. Targeted seeds
+# guarantee at least one validation pass per new feature in cycle 0.
+_T052_TARGET_FEATURE_IDS: Tuple[str, ...] = (
+    "vix_term_structure_slope",
+    "hy_oas_change_20d",
+    "anfci_z_60d",
+    "faber_multi_asset_trend_above_10mo_sma",
+)
+
+
 class DiscoveryEngine:
     """
     Engine D (Discovery): The Evolutionary Lab.
@@ -302,6 +315,26 @@ class DiscoveryEngine:
             existing = self.get_queued_candidates(status="active")
             existing += self.get_queued_candidates(status="candidate")
             ga.seed_from_registry(existing)
+
+            # T-2026-05-12-052: targeted seeding for the 4-signal regime
+            # ensemble. Guarantees at least one Gen-0 candidate per new
+            # regime-Foundry feature (otherwise the 20%-foundry × N-genes
+            # × N-features Bernoulli sampling has <2% chance of touching
+            # each specific new feature in a 5-random-seed run). Each
+            # target gets a single-gene long-direction genome.
+            for fid in _T052_TARGET_FEATURE_IDS:
+                suffix = "".join(random.choices("abcdef0123456789", k=6))
+                gene = {
+                    "type": "foundry_feature",
+                    "feature_id": fid,
+                    "operator": "greater",
+                    "threshold": 0.0,
+                }
+                ga.population.append({
+                    "edge_id": f"composite_t052_seed_{fid}_{suffix}",
+                    "genes": [gene],
+                    "direction": "long",
+                })
 
             # Fill remaining with random genomes
             while len(ga.population) < ga.population_size:
