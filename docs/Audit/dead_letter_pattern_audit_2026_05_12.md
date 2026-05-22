@@ -13,6 +13,26 @@ After Agent B surfaced the production `hunt()` ticker= wiring bug (T-054), the u
 
 **Audit result: largely clean.** The T-054 bug is contained — it's not the surface of a deeper systemic pattern. All checked engines (A, D, F partially) have callers that pass the necessary context to callees.
 
+### ⚠️ AUDIT INCOMPLETE — REVISED 2026-05-12 LATE post-T-054
+
+**This audit (originally committed d888a2d) missed TWO sibling instances of the T-054 wiring bug.** Both were caught downstream: Agent A surfaced one in their T-054 outbox; the director found a third via a more exhaustive grep when applying A's catch.
+
+**Sibling 1 (caught by Agent A in T-054 outbox)**: `engines/engine_a_alpha/edges/rule_based_edge.py:137` calls `compute_all_features(ohlc_df=df, fund_df=pd.DataFrame())` without `ticker=`. Same dead-letter behavior — foundry_feature columns never populated for rule-based edges.
+
+**Sibling 2 (caught by director re-scanning)**: `scripts/run_shadow_paper.py:86` calls `fe.compute_all_features(df, fund_df=fund_df)` without `ticker=`. This script is production-active — `scripts/run_autonomous_cycle.py` imports `run_shadow_session` from it. Same dead-letter behavior.
+
+**Both fixed in commit (T-054b)** — single-line additions of `ticker=ticker` (rule_based_edge) and `ticker=sym` (run_shadow_paper).
+
+**Why this audit's earlier "Hunt 1 — Other compute_all_features call sites ✅ CLEAN" verdict was wrong:**
+- The grep included `tests/*` and dismissed them as test-only, correctly.
+- BUT I also under-counted the production sites — only enumerated discovery.py:130 (the known bug) + feature_engineering.py:716 (correctly identified as __main__ demo). Missed rule_based_edge.py:137 and run_shadow_paper.py:86, both of which appeared in my grep output but I dismissed them based on the surrounding-line snippet (line 27 of rule_based_edge.py was a docstring; I didn't scroll to line 137).
+
+**Discipline lesson for the audit pattern**: when grepping for a call site, list ALL hits with line numbers and inspect each context separately. Do not dismiss a file based on the first hit's context — multiple hits per file are common (docstring at the top, real call site below). The "incomplete audit" failure mode is the same shape as the "incomplete debug" failure mode that caused the production hunt() bug to persist for months — surface-level scan vs end-to-end trace.
+
+**Status post-T-054b**: all THREE known production `compute_all_features` call sites now pass `ticker=`. Director recommends adding the proposed "ticker=None LOUD warn" observability per A's open follow-up — once the function emits a warning when invoked without ticker, future siblings of this bug pattern surface immediately.
+
+---
+
 ## What was checked
 
 ### Hunt 1 — Other `compute_all_features` call sites in Engine D ✅ CLEAN

@@ -134,9 +134,14 @@ class RuleBasedEdge(EdgeTemplate):
         try:
             from engines.engine_d_discovery.feature_engineering import FeatureEngineer
             fe = FeatureEngineer()
+            # T-054b: pass ticker= so foundry_feature columns populate.
+            # Sibling of the T-054 discovery.py:130 wiring bug. See
+            # docs/Audit/production_hunt_ticker_wiring_2026_05_12.md +
+            # docs/Audit/dead_letter_pattern_audit_2026_05_12.md.
             enriched = fe.compute_all_features(
                 ohlc_df=df,
                 fund_df=pd.DataFrame(),  # rules referencing fundamentals fall back to row.get → None
+                ticker=ticker,
             )
         except Exception:
             # Fail-safe: return the original df so check_signal's

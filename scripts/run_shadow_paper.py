@@ -82,8 +82,10 @@ def run_shadow_session():
             
             # Fundamentals
             fund_df = fund_loader.generate_point_in_time(sym, df)
-            
-            df = fe.compute_all_features(df, fund_df=fund_df)
+
+            # T-054b: pass ticker= so foundry_feature columns populate.
+            # Sibling of the T-054 discovery.py:135 wiring bug.
+            df = fe.compute_all_features(df, fund_df=fund_df, ticker=sym)
             
             if df.empty: continue
             
