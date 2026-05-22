@@ -1,0 +1,329 @@
+{
+  "task": "T-2026-05-12-038-CONT",
+  "n_tickers": 10,
+  "n_tickers_with_data": 10,
+  "window_years": 1,
+  "n_features": 31,
+  "n_ticker_independent_features": 15,
+  "classify_pass_sec": 2.226,
+  "overall_loop_sec": 110.01,
+  "per_feature": [
+    {
+      "feature_id": "correlation_average_60d",
+      "tier": "B",
+      "ticker_independent": false,
+      "total_sec": 76.986,
+      "n_calls": 2459,
+      "n_cache_hits": 0,
+      "per_call_us": 31307.8,
+      "first_call_us": 132039.3
+    },
+    {
+      "feature_id": "dispersion_60d",
+      "tier": "B",
+      "ticker_independent": true,
+      "total_sec": 28.7874,
+      "n_calls": 703,
+      "n_cache_hits": 1756,
+      "per_call_us": 40949.4,
+      "first_call_us": 40917.6
+    },
+    {
+      "feature_id": "beta_252d",
+      "tier": "B",
+      "ticker_independent": false,
+      "total_sec": 1.3077,
+      "n_calls": 2459,
+      "n_cache_hits": 0,
+      "per_call_us": 531.8,
+      "first_call_us": 1308.8
+    },
+    {
+      "feature_id": "moving_avg_distance_50d",
+      "tier": "B",
+      "ticker_independent": false,
+      "total_sec": 0.2441,
+      "n_calls": 2459,
+      "n_cache_hits": 0,
+      "per_call_us": 99.3,
+      "first_call_us": 916.5
+    },
+    {
+      "feature_id": "ma_cross_50_200",
+      "tier": "B",
+      "ticker_independent": false,
+      "total_sec": 0.24,
+      "n_calls": 2459,
+      "n_cache_hits": 0,
+      "per_call_us": 97.6,
+      "first_call_us": 123.5
+    },
+    {
+      "feature_id": "drawdown_60d",
+      "tier": "B",
+      "ticker_independent": false,
+      "total_sec": 0.2354,
+      "n_calls": 2459,
+      "n_cache_hits": 0,
+      "per_call_us": 95.7,
+      "first_call_us": 94.6
+    },
+    {
+      "feature_id": "vol_regime_5_60",
+      "tier": "B",
+      "ticker_independent": false,
+      "total_sec": 0.2326,
+      "n_calls": 2459,
+      "n_cache_hits": 0,
+      "per_call_us": 94.6,
+      "first_call_us": 111.0
+    },
+    {
+      "feature_id": "vvix_or_proxy",
+      "tier": "B",
+      "ticker_independent": true,
+      "total_sec": 0.2237,
+      "n_calls": 703,
+      "n_cache_hits": 1756,
+      "per_call_us": 318.2,
+      "first_call_us": 353.1
+    },
+    {
+      "feature_id": "high_minus_low_60d",
+      "tier": "B",
+      "ticker_independent": false,
+      "total_sec": 0.2155,
+      "n_calls": 2459,
+      "n_cache_hits": 0,
+      "per_call_us": 87.7,
+      "first_call_us": 140.5
+    },
+    {
+      "feature_id": "skew_60d",
+      "tier": "B",
+      "ticker_independent": false,
+      "total_sec": 0.2099,
+      "n_calls": 2459,
+      "n_cache_hits": 0,
+      "per_call_us": 85.4,
+      "first_call_us": 470.5
+    },
+    {
+      "feature_id": "dist_52w_high",
+      "tier": "B",
+      "ticker_independent": false,
+      "total_sec": 0.1938,
+      "n_calls": 2459,
+      "n_cache_hits": 0,
+      "per_call_us": 78.8,
+      "first_call_us": 145.5
+    },
+    {
+      "feature_id": "realized_vol_60d",
+      "tier": "B",
+      "ticker_independent": false,
+      "total_sec": 0.1909,
+      "n_calls": 2459,
+      "n_cache_hits": 0,
+      "per_call_us": 77.6,
+      "first_call_us": 154.0
+    },
+    {
+      "feature_id": "hyg_lqd_spread",
+      "tier": "B",
+      "ticker_independent": true,
+      "total_sec": 0.1862,
+      "n_calls": 703,
+      "n_cache_hits": 1756,
+      "per_call_us": 264.9,
+      "first_call_us": 1100.9
+    },
+    {
+      "feature_id": "vix_change_5d",
+      "tier": "B",
+      "ticker_independent": true,
+      "total_sec": 0.1288,
+      "n_calls": 703,
+      "n_cache_hits": 1756,
+      "per_call_us": 183.3,
+      "first_call_us": 303.1
+    },
+    {
+      "feature_id": "mom_12_1",
+      "tier": "B",
+      "ticker_independent": false,
+      "total_sec": 0.1226,
+      "n_calls": 2459,
+      "n_cache_hits": 0,
+      "per_call_us": 49.9,
+      "first_call_us": 102.5
+    },
+    {
+      "feature_id": "reversal_1m",
+      "tier": "B",
+      "ticker_independent": false,
+      "total_sec": 0.1214,
+      "n_calls": 2459,
+      "n_cache_hits": 0,
+      "per_call_us": 49.4,
+      "first_call_us": 62.7
+    },
+    {
+      "feature_id": "mom_6_1",
+      "tier": "B",
+      "ticker_independent": false,
+      "total_sec": 0.1206,
+      "n_calls": 2459,
+      "n_cache_hits": 0,
+      "per_call_us": 49.1,
+      "first_call_us": 62.4
+    },
+    {
+      "feature_id": "dxy_change_20d",
+      "tier": "B",
+      "ticker_independent": true,
+      "total_sec": 0.1041,
+      "n_calls": 703,
+      "n_cache_hits": 1756,
+      "per_call_us": 148.1,
+      "first_call_us": 211.3
+    },
+    {
+      "feature_id": "earnings_proximity_5d",
+      "tier": "B",
+      "ticker_independent": false,
+      "total_sec": 0.0945,
+      "n_calls": 2459,
+      "n_cache_hits": 0,
+      "per_call_us": 38.4,
+      "first_call_us": 676.5
+    },
+    {
+      "feature_id": "tax_loss_season",
+      "tier": "A",
+      "ticker_independent": true,
+      "total_sec": 0.0022,
+      "n_calls": 703,
+      "n_cache_hits": 1756,
+      "per_call_us": 3.1,
+      "first_call_us": 0.3
+    },
+    {
+      "feature_id": "pre_holiday",
+      "tier": "A",
+      "ticker_independent": true,
+      "total_sec": 0.0017,
+      "n_calls": 703,
+      "n_cache_hits": 1756,
+      "per_call_us": 2.4,
+      "first_call_us": 3.8
+    },
+    {
+      "feature_id": "days_to_quarter_end",
+      "tier": "B",
+      "ticker_independent": true,
+      "total_sec": 0.0013,
+      "n_calls": 703,
+      "n_cache_hits": 1756,
+      "per_call_us": 1.9,
+      "first_call_us": 3.3
+    },
+    {
+      "feature_id": "month_of_year_dummy",
+      "tier": "B",
+      "ticker_independent": true,
+      "total_sec": 0.001,
+      "n_calls": 703,
+      "n_cache_hits": 1756,
+      "per_call_us": 1.4,
+      "first_call_us": 0.4
+    },
+    {
+      "feature_id": "weekday_dummy",
+      "tier": "B",
+      "ticker_independent": true,
+      "total_sec": 0.0008,
+      "n_calls": 703,
+      "n_cache_hits": 1756,
+      "per_call_us": 1.1,
+      "first_call_us": 1.8
+    },
+    {
+      "feature_id": "fomc_drift",
+      "tier": "A",
+      "ticker_independent": true,
+      "total_sec": 0.0008,
+      "n_calls": 703,
+      "n_cache_hits": 1756,
+      "per_call_us": 1.2,
+      "first_call_us": 6.5
+    },
+    {
+      "feature_id": "january_effect",
+      "tier": "A",
+      "ticker_independent": true,
+      "total_sec": 0.0007,
+      "n_calls": 703,
+      "n_cache_hits": 1756,
+      "per_call_us": 1.0,
+      "first_call_us": 3.2
+    },
+    {
+      "feature_id": "cot_commercial_net_long",
+      "tier": "B",
+      "ticker_independent": false,
+      "total_sec": 0.0005,
+      "n_calls": 2459,
+      "n_cache_hits": 0,
+      "per_call_us": 0.2,
+      "first_call_us": 3.0
+    },
+    {
+      "feature_id": "pair_zscore_60d",
+      "tier": "B",
+      "ticker_independent": false,
+      "total_sec": 0.0005,
+      "n_calls": 2459,
+      "n_cache_hits": 0,
+      "per_call_us": 0.2,
+      "first_call_us": 0.5
+    },
+    {
+      "feature_id": "pre_fomc_reduce",
+      "tier": "A",
+      "ticker_independent": true,
+      "total_sec": 0.0004,
+      "n_calls": 703,
+      "n_cache_hits": 1756,
+      "per_call_us": 0.6,
+      "first_call_us": 0.2
+    },
+    {
+      "feature_id": "sell_in_may_halloween",
+      "tier": "A",
+      "ticker_independent": true,
+      "total_sec": 0.0004,
+      "n_calls": 703,
+      "n_cache_hits": 1756,
+      "per_call_us": 0.6,
+      "first_call_us": 0.5
+    },
+    {
+      "feature_id": "triple_witching_premium",
+      "tier": "A",
+      "ticker_independent": true,
+      "total_sec": 0.0004,
+      "n_calls": 703,
+      "n_cache_hits": 1756,
+      "per_call_us": 0.6,
+      "first_call_us": 0.5
+    }
+  ],
+  "per_ticker_median_sec": 0.4081786874885438,
+  "per_ticker_p95_sec": 41.319868362499975,
+  "extrapolation_700t_4yr": {
+    "scaling_factor_tickers": 70.0,
+    "scaling_factor_window": 4.0,
+    "extrapolated_sec": 30803.255408525
+  }
+}

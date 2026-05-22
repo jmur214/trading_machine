@@ -56,6 +56,7 @@ class Feature:
     license: str
     source: str                 # name of the DataSource it consumes
     description: str = ""
+    ticker_independent: bool = False
     registered_at: str = field(
         default_factory=lambda: datetime.now(timezone.utc).isoformat()
     )
@@ -142,9 +143,18 @@ def feature(
     license: str,
     source: str,
     description: str = "",
+    ticker_independent: bool = False,
 ):
     """Decorator that wraps a `(ticker, date) -> Optional[float]` function
     in a `Feature` and registers it with the Foundry registry.
+
+    `ticker_independent=True` declares that the function's return value is
+    a function of `dt` only (the `ticker` argument is kept for substrate
+    uniformity but not consulted). When set, Engine D's per-process value
+    cache memoizes the result by `(feature_id, dt)` so the second-and-
+    later ticker calls hit the cache without re-running the underlying
+    compute. This is the contract; callers that violate it (e.g., return
+    different values for different tickers) will produce stale results.
 
     Returns the `Feature` instance itself (callable) so call sites get
     the same surface as the underlying function.
@@ -159,6 +169,7 @@ def feature(
             license=license,
             source=source,
             description=description or (func.__doc__ or "").strip(),
+            ticker_independent=ticker_independent,
         )
         get_feature_registry().register(feat)
         # Advisory leakage scan at registration time. Local import avoids
