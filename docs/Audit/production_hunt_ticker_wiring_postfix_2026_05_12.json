@@ -1,0 +1,14 @@
+{
+  "task_id": "T-2026-05-12-054",
+  "phase": "post-fix-smoke",
+  "wall_time_seconds": 4.6,
+  "n_tickers": 50,
+  "n_compute_all_features_calls": 50,
+  "all_calls_passed_ticker": true,
+  "foundry_cols_per_call": {
+    "min": 35,
+    "max": 35,
+    "mean": 35.0
+  },
+  "n_candidates": 0
+}

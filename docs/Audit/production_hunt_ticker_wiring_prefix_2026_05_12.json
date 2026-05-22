@@ -1,0 +1,13 @@
+{
+  "task_id": "T-2026-05-12-054",
+  "phase": "pre-fix",
+  "n_hunt_compute_calls": 3,
+  "production_hunt_passes_ticker": false,
+  "foundry_cols_no_ticker": 0,
+  "foundry_cols_with_ticker": 35,
+  "first_hunt_call": {
+    "ticker_kw": null,
+    "has_ticker": false
+  },
+  "observation": "Production hunt() calls compute_all_features WITHOUT ticker= kwarg. The compute_all_features ticker-optional contract skips the Foundry pass when ticker is None. Therefore foundry_feature gene types reference columns that are NEVER computed in production. This is the bug class T-054 fixes."
+}

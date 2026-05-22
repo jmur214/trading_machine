@@ -126,11 +126,17 @@ class DiscoveryEngine:
             if fundamentals_map and ticker in fundamentals_map:
                 fund_df = fundamentals_map[ticker]
 
-            # Compute all features (technical + calendar + microstructure + inter-market + regime)
+            # Compute all features (technical + calendar + microstructure + inter-market + regime).
+            # T-054: pass `ticker=` so the Foundry pass is exercised (not
+            # silently skipped). Pre-T-054, the omission made every
+            # foundry_feature gene (~20% of GA emissions per T-022) a
+            # dead-letter — referenced columns were never computed, Gate 1
+            # always failed. See docs/Audit/production_hunt_ticker_wiring_2026_05_12.md.
             f_df = fe.compute_all_features(
                 df, fund_df,
                 spy_df=spy_df, tlt_df=tlt_df, gld_df=gld_df,
                 regime_meta=regime_meta,
+                ticker=ticker,
             )
 
             # Add Targets

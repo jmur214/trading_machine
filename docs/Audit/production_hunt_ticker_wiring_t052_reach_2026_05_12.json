@@ -1,0 +1,12 @@
+{
+  "task_id": "T-2026-05-12-054",
+  "phase": "Part-D-t052-reachability",
+  "t052_4_regime_features_reachable": {
+    "vix_term_structure_slope": true,
+    "hy_oas_change_20d": true,
+    "anfci_z_60d": true,
+    "faber_multi_asset_trend": false
+  },
+  "all_reachable": false,
+  "total_foundry_cols_in_hunt_output": 35
+}

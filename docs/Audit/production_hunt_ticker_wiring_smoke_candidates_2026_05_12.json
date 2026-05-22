@@ -1,0 +1,7 @@
+{
+  "task_id": "T-2026-05-12-054",
+  "phase": "post-fix-generate_candidates-smoke",
+  "n_mutations": 3,
+  "total_candidates": 73,
+  "candidates_with_foundry_feature_gene": 0
+}
