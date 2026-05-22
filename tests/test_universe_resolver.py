@@ -293,3 +293,129 @@ class TestDeterminism:
             "anchor_dates",
         ):
             assert info1[k] == info2[k]
+
+
+# ---------------------------------------------------------------------------
+# T-041b spinoff-children injection
+# ---------------------------------------------------------------------------
+class _FakeSpinoff:
+    """Duck-typed SpinoffEvent for resolver tests."""
+    def __init__(self, child_ticker, distribution_date):
+        self.child_ticker = child_ticker
+        self.distribution_date = pd.Timestamp(distribution_date)
+
+
+class TestResolverSpinoffInjection:
+    def test_spinoff_child_added_when_distribution_in_window(self, tmp_path: Path):
+        """RACE (2016-01-04) added when window covers 2015-2017."""
+        events = [_FakeSpinoff("RACE", "2016-01-04")]
+        tickers, info = resolve_universe(
+            static_tickers=["AAPL"],
+            start="2015-01-01",
+            end="2017-12-31",
+            use_historical=False,
+            cache_dir=tmp_path,
+            spinoff_events=events,
+        )
+        assert "RACE" in tickers
+        assert info["n_spinoff_children_added"] == 1
+        assert info["spinoff_children_added"] == ["RACE"]
+
+    def test_spinoff_child_NOT_added_when_distribution_outside_window(self, tmp_path: Path):
+        """RACE (2016-01-04) excluded when window is 2017-2018 (event before
+        window start) AND when window is 2014-2015 (event after window end).
+        Both are no-look-ahead / no-back-projection semantics."""
+        events = [_FakeSpinoff("RACE", "2016-01-04")]
+
+        # Event BEFORE window — excluded (it's "already happened"; if the
+        # ticker is still tradeable it should come in via membership)
+        tickers_after, info_after = resolve_universe(
+            static_tickers=["AAPL"],
+            start="2017-01-01",
+            end="2018-12-31",
+            use_historical=False,
+            cache_dir=tmp_path,
+            spinoff_events=events,
+        )
+        assert "RACE" not in tickers_after
+        assert info_after["n_spinoff_children_added"] == 0
+
+        # Event AFTER window — excluded (no look-ahead)
+        tickers_before, info_before = resolve_universe(
+            static_tickers=["AAPL"],
+            start="2014-01-01",
+            end="2015-12-31",
+            use_historical=False,
+            cache_dir=tmp_path,
+            spinoff_events=events,
+        )
+        assert "RACE" not in tickers_before
+        assert info_before["n_spinoff_children_added"] == 0
+
+    def test_parent_continues_trading_alongside_child(self, tmp_path: Path):
+        """Parent ticker isn't dropped when its child is added — both
+        coexist in the universe."""
+        events = [_FakeSpinoff("RACE", "2016-01-04")]
+        tickers, _ = resolve_universe(
+            static_tickers=["F", "MSFT"],  # F is the parent (Fiat)
+            start="2015-01-01",
+            end="2017-12-31",
+            use_historical=False,
+            cache_dir=tmp_path,
+            spinoff_events=events,
+        )
+        assert "F" in tickers  # parent stays
+        assert "RACE" in tickers  # child added
+        assert "MSFT" in tickers  # unrelated static stays
+
+    def test_multiple_spinoffs_all_added_in_window(self, tmp_path: Path):
+        """Two spin-offs in window → both children added; one outside excluded."""
+        events = [
+            _FakeSpinoff("RACE", "2016-01-04"),
+            _FakeSpinoff("ABBV", "2013-01-02"),
+            _FakeSpinoff("GEHC", "2023-01-04"),
+        ]
+        tickers, info = resolve_universe(
+            static_tickers=["AAPL"],
+            start="2015-01-01",
+            end="2020-12-31",
+            use_historical=False,
+            cache_dir=tmp_path,
+            spinoff_events=events,
+        )
+        assert "RACE" in tickers
+        assert "ABBV" not in tickers  # 2013 is before 2015 window start
+        assert "GEHC" not in tickers  # 2023 is after 2020 window end
+        assert info["n_spinoff_children_added"] == 1
+
+    def test_spinoff_with_available_filter_drops_uncached_child(self, tmp_path: Path):
+        """available_filter still applies to spinoff children: a child
+        without a CSV on disk gets dropped."""
+        events = [_FakeSpinoff("RACE", "2016-01-04")]
+        tickers, info = resolve_universe(
+            static_tickers=["AAPL"],
+            start="2015-01-01",
+            end="2017-12-31",
+            use_historical=False,
+            cache_dir=tmp_path,
+            spinoff_events=events,
+            available_filter=["AAPL"],  # RACE not cached
+        )
+        assert "RACE" not in tickers
+        assert "RACE" in info["missing_from_cache"]
+        # The injection itself still happened — info records the event
+        # was matched to the window before being filtered out
+        assert info["n_spinoff_children_added"] == 1
+
+    def test_no_spinoff_events_kwarg_is_backward_compat(self, tmp_path: Path):
+        """Without spinoff_events, resolver behaves identically to pre-T-041b."""
+        tickers, info = resolve_universe(
+            static_tickers=["AAPL", "MSFT"],
+            start="2021-01-01",
+            end="2024-12-31",
+            use_historical=False,
+            cache_dir=tmp_path,
+        )
+        assert tickers == ["AAPL", "MSFT"]
+        assert info["n_spinoff_children_added"] == 0
+        assert info["spinoff_children_added"] == []

@@ -796,6 +796,26 @@ class ModeController:
                 ["SPY", "QQQ", "IWM", "TLT", "GLD"],
             )
             anchor_override = self.cfg_bt.get("historical_universe_anchor_dates")
+
+            # T-041b: optional spin-off children injection. When the
+            # spinoff_reversion_v1 edge is active, the resolver needs to
+            # know about distribution dates so it can add child tickers
+            # to the universe in-window. Default OFF for backward
+            # compat — turning on requires `spinoff_events_enabled=True`
+            # in backtest settings.
+            spinoff_events_for_resolver = None
+            if self.cfg_bt.get("spinoff_events_enabled", False):
+                try:
+                    from engines.engine_a_alpha.edges._helpers.spinoff_detector import (
+                        get_events as _get_spinoff_events,
+                    )
+                    spinoff_events_for_resolver = _get_spinoff_events()
+                except Exception as _exc:
+                    print(
+                        f"[RUN_BACKTEST][WARN] spinoff detector load failed; "
+                        f"resolver runs without spinoff children: {_exc}"
+                    )
+
             tickers, uni_info = resolve_universe(
                 static_tickers=tickers,
                 start=start,
@@ -805,6 +825,7 @@ class ModeController:
                 anchor_dates=anchor_override,
                 essential_tickers=essentials,
                 available_filter=cached or None,
+                spinoff_events=spinoff_events_for_resolver,
             )
             print(
                 f"[RUN_BACKTEST] Universe resolver: mode={uni_info['mode']} "

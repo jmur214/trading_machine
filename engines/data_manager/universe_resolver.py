@@ -26,7 +26,7 @@ ModeController, BacktestController, or any other engine.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Optional, Sequence
+from typing import Any, List, Optional, Sequence
 
 import pandas as pd
 
@@ -45,6 +45,50 @@ DEFAULT_ESSENTIAL_TICKERS: tuple[str, ...] = (
 )
 
 
+def _spinoff_children_in_window(
+    spinoff_events: Sequence[Any],
+    start: pd.Timestamp,
+    end: pd.Timestamp,
+) -> List[str]:
+    """T-041b: from a sequence of `SpinoffEvent`-like records, return
+    the unique child tickers whose `distribution_date` falls inside
+    [start, end].
+
+    A child whose distribution_date is BEFORE start is excluded: the
+    spin-off had already happened before the backtest started, and we
+    treat it as part of the prior universe — it should already be
+    captured by historical membership or static_tickers if it's still
+    tradeable in-window.
+
+    A child whose distribution_date is AFTER end is excluded — no
+    look-ahead. The backtest never knew about the spin-off.
+
+    Accepts duck-typed records: anything with `child_ticker` and
+    `distribution_date` attributes works, so callers don't have to
+    import the SpinoffEvent class from Engine A into the data_manager
+    boundary. Engine boundaries: data_manager owns "what's tradeable
+    when," not edge-specific event schemas.
+    """
+    start_ts = pd.Timestamp(start)
+    end_ts = pd.Timestamp(end)
+    if start_ts.tzinfo is not None:
+        start_ts = start_ts.tz_localize(None)
+    if end_ts.tzinfo is not None:
+        end_ts = end_ts.tz_localize(None)
+
+    children: set[str] = set()
+    for ev in spinoff_events:
+        try:
+            d = pd.Timestamp(getattr(ev, "distribution_date"))
+            if d.tzinfo is not None:
+                d = d.tz_localize(None)
+            if start_ts <= d <= end_ts:
+                children.add(str(getattr(ev, "child_ticker")).upper())
+        except (AttributeError, TypeError, ValueError):
+            continue
+    return sorted(children)
+
+
 def resolve_universe(
     *,
     static_tickers: Sequence[str],
@@ -55,6 +99,7 @@ def resolve_universe(
     anchor_dates: Optional[Sequence[str]] = None,
     essential_tickers: Sequence[str] = DEFAULT_ESSENTIAL_TICKERS,
     available_filter: Optional[Sequence[str]] = None,
+    spinoff_events: Optional[Sequence[Any]] = None,
 ) -> tuple[list[str], dict]:
     """Return the (tickers, debug_info) tuple for a backtest run.
 
@@ -108,12 +153,38 @@ def resolve_universe(
         "n_historical_union": 0,
         "n_after_essentials": len(static_tickers),
         "n_after_available_filter": len(static_tickers),
+        "n_spinoff_children_added": 0,
+        "spinoff_children_added": [],
         "anchor_dates": [],
         "missing_from_cache": [],
         "fallback_reason": None,
     }
+
+    # T-041b: compute the list of spin-off children whose distribution
+    # falls inside [start, end]. These get added regardless of the
+    # use_historical flag so a hand-picked static run can still pick up
+    # spin-offs that occurred during the window.
+    spinoff_children: list[str] = []
+    if spinoff_events:
+        spinoff_children = _spinoff_children_in_window(
+            spinoff_events, pd.Timestamp(start), pd.Timestamp(end),
+        )
+        info["n_spinoff_children_added"] = len(spinoff_children)
+        info["spinoff_children_added"] = list(spinoff_children)
+
     if not use_historical:
-        return list(static_tickers), info
+        combined_static = sorted(set(static_tickers) | set(spinoff_children))
+        info["n_after_essentials"] = len(combined_static)
+        if available_filter is not None:
+            avail_set = set(available_filter)
+            filtered = [t for t in combined_static if t in avail_set]
+            info["missing_from_cache"] = [
+                t for t in combined_static if t not in avail_set
+            ]
+            info["n_after_available_filter"] = len(filtered)
+            return filtered, info
+        info["n_after_available_filter"] = len(combined_static)
+        return combined_static, info
 
     membership_parquet = (
         Path(cache_dir) / "universe" / "sp500_membership.parquet"
@@ -151,7 +222,11 @@ def resolve_universe(
     info["n_historical_union"] = len(historical)
     info["anchor_dates"] = [a.strftime("%Y-%m-%d") for a in anchors_ts]
 
-    combined = sorted(set(historical) | set(essential_tickers))
+    combined = sorted(
+        set(historical)
+        | set(essential_tickers)
+        | set(spinoff_children)
+    )
     info["n_after_essentials"] = len(combined)
 
     if available_filter is not None:
