@@ -1,4 +1,55 @@
-# Forward Plan — live (last substantive update 2026-05-12 LATE, structural Engine D bug surfaced + Engine F factor-α gate shipped + first non-factor edge shipped)
+# Forward Plan — live (last substantive update 2026-05-22, post N-of-K diagnostic + T-054 cascade closed + Engine D bug class CLOSED)
+
+> **2026-05-22 SESSION SUMMARY — major-day arc**
+>
+> Two structural findings closed; one new dispatch queue established; data spend deferred.
+>
+> ### Wins (in chronological order, all merged + pushed)
+>
+> 1. **Cockpit metrics-pipeline bug fixed** (T-034 → T-035 → T-036): 0.270 baseline corrected to 0.598; 7/11 panel edges now UNIFORMLY NEGATIVE on factor-adjusted α; bi-directional bug (peak_equity in equity slot inflated winning years AND zeroed losing years).
+> 2. **2024 attribution dive** (commit d1ed01f, updated post-T-036 to flag dollar-PnL "winners" as factor-adjusted-NEGATIVE): all 6 active edges are factor-explained, none idiosyncratic α at t > 2.
+> 3. **Engine F lifecycle factor-α retirement gate shipped** (T-043, 219648b) + **flag-flipped True** (b45f829). 6 of 7 evaluated edges fire on next live cycle. gap_fill + volume_anomaly fire on **ci_low alone** (point -0.93 above threshold; ci_low -3.9/-4.0) — textbook CLAUDE.md 6th non-negotiable.
+> 4. **Spinoff edge T-041 shipped** (eff4362): first retail-only structurally-non-factor edge. paused/feature tier. T-041b in flight for universe-resolver + EDGAR + 8-gate gauntlet.
+> 5. **Production hunt() ticker= wiring bug fixed** (T-054, aebb679). Cascade unlock: T-022 + T-023 + T-024 + T-038-CONT + T-052 all now live. Reframes T-021/T-025/T-026 "single archetype" findings from signal weakness to structural plumbing failure.
+> 6. **Sibling-bug cleanup T-054b** (932ec8f): mirrored fix in `rule_based_edge.py:137` + `run_shadow_paper.py:86`. Director's own dead-letter audit (d888a2d) was INCOMPLETE — missed both siblings; revision committed.
+> 7. **LOUD-warn observability T-054c** (92343b5): `compute_all_features` now emits DeprecationWarning when called with ticker=None. T-034 fail-loud pattern; locks out future siblings.
+> 8. **Phase 0 pairwise correlation diagnostic** (e91f913): max |ρ| = 0.62 on per-(ticker,date) panel. Signal-diversity gate fires — no aggregator change can rescue this stack at these ρ levels.
+> 9. **Honest-N + MBL math** (0aad210): N=75 trials × 5-year window means SR ≥ 1.55 required to clear DSR; current 0.598 baseline cannot. Multi-decade extension load-bearing per metrics dive.
+> 10. **CLAUDE.md Gate 0 (MBL check)** added as 7th non-negotiable (770c3c2).
+> 11. **N-of-K agreement diagnostic** (285e615 + correction 5ff1eae): per-bar Sharpe bootstrap CI clears 0 at N≥2/N≥3 (signal-level finding), but daily-aggregated FF5+Mom-adjusted α t-stat fails t > 2. **Same trap as every prior project measurement — signal exists at the bar but loads on Mkt+Mom factors when aggregated.**
+>
+> ### What this all means
+>
+> **Bones-perfection track is on rails.** Cockpit bug class closed (T-034). Engine D feature-compute wiring bug class closed (T-054/T-054b/T-054c). Lifecycle gauntlet now symmetric (T-043). The two recurring bug patterns of the project arc — silent measurement contamination and silent structural plumbing failure — are both shut down.
+>
+> **Alpha thesis remains: 0/11 edges have idiosyncratic α at t > 2.** Phase 0 + N-of-K + factor decomp all converge: linear weighted-sum cannot rescue this stack (max ρ > 0.5); compound signal exists at N≥2/N≥3 bars but factor-decomposes to zero. Engine completion (T-055 vol-targeting + T-057 confidence-gating) becomes **Sharpe-restructuring infrastructure**, not alpha-discovery. The Sharpe restructurers compound — each delivers +0.05 to +0.20 expected lift on whatever exposure exists.
+>
+> **Data spend (Norgate) DEFERRED per user 2026-05-12**: "still not ready to pay for data before this thing is making money or even close to it." T-056 microcap substrate + T-050 multi-decade extension parked. Implication: no DSR-clearing measurement until that gate clears.
+>
+> **LLM PARKED per user directive**: "bones must be PERFECT before LLM." Active until the Sharpe-restructurer track produces evidence the system delivers factor exposure cleanly + the data spend gate is re-opened.
+>
+> ### Dispatch queue (post-A/B return + post-rest)
+>
+> | Priority | ID | Description | Estimated | Notes |
+> |---|---|---|---|---|
+> | IN FLIGHT | T-041b | Spinoff continuation (universe-resolver + EDGAR + 8-gate gauntlet) | 8-12 hr | A on it; first true-alpha-candidate test |
+> | IN FLIGHT | T-055 | Engine B vol-targeting per Moreira-Muir 2017 | 6-10 hr | B on it; +0.10-0.20 Sharpe restructure |
+> | NEXT | **T-053** | Fresh per-ticker capture on current 6 actives + Phase 0b re-run | 1-2 hr | Confirms compound-signal pattern on current actives; gates T-057 |
+> | NEXT | **T-057** | Confidence-gated execution (N-threshold filter) A/B harness | 6-8 hr | Sharpe-restructurer (NOT alpha-finder per N-of-K correction); +0.05-0.15 expected from cost+turnover reduction |
+> | LOW | Re-eval 146 failed `_mut_` candidates post-T-054 cascade | 2-3 hr | Probably 100+ are bug-failed not signal-failed |
+> | DEFERRED | T-056 | Norgate microcap substrate | 12-16 hr | Blocked: data spend |
+> | DEFERRED | T-050 | Multi-decade backtest extension | 16-24 hr | Blocked: data spend (same Norgate dep) |
+>
+> ### What needs USER decisions
+>
+> - **T-055 result review** when it lands (vol-targeting Sharpe lift confirmation)
+> - **T-041b result review** when it lands (spinoff gauntlet pass/fail — first real alpha test)
+> - **Engine F lifecycle factor-α flag is FLIPPED** — next live discovery cycle will fire 6 retirement decisions to lifecycle journal; user reviews + applies via journal_apply
+> - **T-057 dispatch decision** (post-T-053 confirmation)
+> - LLM unparking — gated on bones-completion + alpha-track progress
+> - Data spend reconsideration — gated on system showing meaningful alpha
+>
+> ---
 
 > **2026-05-12 LATE — STRUCTURAL ENGINE D BUG: production `hunt()` does NOT pass `ticker=` to `compute_all_features`. The foundry_feature gene type has been a dead-letter office for the entire project arc.**
 >
